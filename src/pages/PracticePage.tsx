@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, StatusPill } from '../components/ui'
 import { repertoire } from '../data/mockData'
+import { AlignmentPanel } from '../features/alignment/AlignmentPanel'
+import { useAlignmentAnalysis } from '../features/alignment/useAlignmentAnalysis'
 import { scoreTimeToMilliseconds } from '../features/expected-performance/tempoTimeline'
 import { MidiControls } from '../features/midi/MidiControls'
 import { useMidi } from '../features/midi/MidiContext'
@@ -45,6 +47,8 @@ export function PracticePage() {
     speedMultiplier: session?.speedMultiplier,
   }), [session])
   const capture = usePerformanceRecording(recordingContext)
+  const alignmentSpeed = capture.recording?.practiceContext.speedMultiplier ?? session?.speedMultiplier ?? 1
+  const alignment = useAlignmentAnalysis(session?.plan ?? null, capture.recording, alignmentSpeed)
 
   if (!session) {
     const title = item?.work.title ?? 'No practice score loaded'
@@ -69,7 +73,7 @@ export function PracticePage() {
   const activeAttackCount = capture.recording?.statistics.noteAttackCount ?? midi.activeNotes.length
 
   return (
-    <div className={`page practice-page phase-three-practice ${capture.state.status}`}>
+    <div className={`page practice-page phase-three-practice phase-four-practice ${capture.state.status}`}>
       <Link to="/imports" className="back-link"><ArrowLeft size={15} /> Back to score import</Link>
       <header className="practice-header">
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
@@ -103,8 +107,9 @@ export function PracticePage() {
 
       <div className="practice-summary-grid">
         <section className="panel expected-summary"><div className="section-heading"><div><h2><Music2 /> Expected score</h2><p>Plan data, not a performance grade</p></div></div><div className="summary-metrics"><div><span>Required attacks</span><strong>{plan.statistics.requiredAttackCount}</strong></div><div><span>Onset groups</span><strong>{plan.statistics.onsetGroupCount}</strong></div><div><span>Multi-note groups</span><strong>{plan.statistics.multiNoteGroupCount}</strong></div><div><span>Score span</span><strong>{formatMusicalTime(plan.statistics.totalScoreDuration)}</strong><small>quarter units</small></div></div><div className="timeline-preview"><Clock3 /><span>Reference at 100% <strong>{formatDuration(referenceMs)}</strong></span><span>At {Math.round(session.speedMultiplier * 100)}% <strong>{formatDuration(practiceMs)}</strong></span>{plan.tempoTimeline.usesFallback && <em>120 BPM fallback before authored tempo</em>}</div></section>
-        <section className="panel take-summary"><div className="section-heading"><div><h2><Activity /> Captured take</h2><p>Objective MIDI diagnostics only</p></div></div>{capture.recording ? <><div className="summary-metrics"><div><span>MIDI events</span><strong>{capture.recording.statistics.eventCount}</strong></div><div><span>Note attacks</span><strong>{capture.recording.statistics.noteAttackCount}</strong></div><div><span>Unique pitches</span><strong>{capture.recording.statistics.uniquePitchCount}</strong></div><div><span>Open notes</span><strong>{capture.recording.statistics.openNoteCount}</strong></div></div><div className="take-foot"><span>{capture.recording.statistics.sustainChangeCount} pedal changes</span><span>{capture.recording.statistics.orphanReleaseCount} orphan releases</span><span>{formatDuration(capture.recording.durationMs)} duration</span></div></> : <div className="take-empty">Record a take to inspect event, pitch, velocity, pedal, and key-release statistics. No score comparison occurs in Phase 3.</div>}</section>
+        <section className="panel take-summary"><div className="section-heading"><div><h2><Activity /> Captured take</h2><p>Objective MIDI diagnostics only</p></div></div>{capture.recording ? <><div className="summary-metrics"><div><span>MIDI events</span><strong>{capture.recording.statistics.eventCount}</strong></div><div><span>Note attacks</span><strong>{capture.recording.statistics.noteAttackCount}</strong></div><div><span>Unique pitches</span><strong>{capture.recording.statistics.uniquePitchCount}</strong></div><div><span>Open notes</span><strong>{capture.recording.statistics.openNoteCount}</strong></div></div><div className="take-foot"><span>{capture.recording.statistics.sustainChangeCount} pedal changes</span><span>{capture.recording.statistics.orphanReleaseCount} orphan releases</span><span>{formatDuration(capture.recording.durationMs)} duration</span></div></> : <div className="take-empty">Record a take to inspect event, pitch, velocity, pedal, and key-release statistics. No grading occurs in this view.</div>}</section>
       </div>
+      {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}
     </div>
   )
 }

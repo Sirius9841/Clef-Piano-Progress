@@ -62,3 +62,9 @@ A SkillRating measures a transferable ability such as sight reading, rhythm, cho
 `PerformanceRecording` is session-local observed MIDI truth: ordered normalized events, physical key-press spans, device/context metadata, objective diagnostics, and a wall-clock start time. Fine timing is relative monotonic milliseconds. An open key has no invented release, an orphan Note Off remains an event and warning, and sustain is recorded independently from physical key release.
 
 It is not yet a persisted `PerformanceAttempt`. A future attempt will reference a recording, Arrangement, ScoreVersion, alignment-engine version, and grading results without mutating the original recording.
+
+## Alignment result
+
+`AlignmentResult` is an immutable, versioned correspondence snapshot between one `ExpectedPerformancePlan` and one `PerformanceRecording`. It contains performed onset groups, monotonic group correspondences, expected-only and performed-only groups, exact attack pairs, an affine reference-to-performance time transform, timing residuals, warnings, and objective diagnostics.
+
+Alignment facts are deliberately neutral. An unpaired expected attack is not yet a “missed note,” an unpaired performed attack is not yet a “wrong note,” and a timing residual is not yet a rhythm judgment. Phase 5 and later grading layers will interpret these facts without changing the plan, recording, or alignment history.

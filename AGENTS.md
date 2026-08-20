@@ -58,6 +58,19 @@ This repository builds a serious piano progress and performance-analysis applica
 - Recording tests use injected clocks and IDs, never real sleeps.
 - Do not infer correctness, alignment, timing quality, or grading inside recorder services or React components.
 
+## Alignment rules
+
+- Alignment is correspondence infrastructure, not grading. Grade semantics belong to later grading layers.
+- Never compare expected and performed events by raw array index. Primary alignment operates on onset groups.
+- Performed onset clustering must preserve every MIDI attack, including duplicate and equal-timestamp arrivals.
+- Alignment paths are monotonic and must tolerate inserted, deleted, and substituted musical events without cascading shifts.
+- Score timing remains exact `MusicalTime` until the explicit reference-millisecond conversion; recording timing remains monotonic milliseconds.
+- Recording-start silence is represented by alignment offset, never interpreted directly as a rhythm error.
+- Affine time-transform fitting must be deterministic, robust to outliers, bounded against absurd scales, and explicit about fallback semantics.
+- Never mutate `ExpectedPerformancePlan` or `PerformanceRecording` during alignment. Results are immutable analysis snapshots.
+- Sustain, releases, and velocity remain preserved inputs but do not control Phase 4 attack correspondence.
+- Alignment-engine changes require focused regression tests for gaps, substitutions, chords, repeats, partial takes, and timing transforms.
+
 ## Commands
 
 - Install: `npm install`

@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 3 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score and capture workflows remain outside the initial Home route chunk.
+Phase 4 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score, capture, and alignment workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -12,12 +12,14 @@ browser MIDI boundary       score import boundary
  PerformanceRecorder          NormalizedScore       OSMD renderer
             ↓                           ↓
  PerformanceRecording      ExpectedPerformancePlan
-            └──────────── future alignment ────────┘
+            └────────────── alignment ─────────────┘
                                 ↓
-                     future grading
+                         AlignmentResult
+                                ↓
+                         future grading
 ```
 
-The two Phase 3 outputs are deliberately independent. Alignment, grading, and persistence do not exist yet. OSMD remains a sibling consumer of validated XML, not an upstream dependency of `NormalizedScore` or `ExpectedPerformancePlan`.
+The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 consumes immutable snapshots of both and produces a third, neutral `AlignmentResult`; grading and persistence still do not exist. OSMD remains a sibling renderer and is not an input to alignment.
 
 ## Source organization
 
@@ -30,6 +32,7 @@ The two Phase 3 outputs are deliberately independent. Alignment, grading, and pe
 - `src/features/expected-performance`: pure plan construction, tie-chain reduction, exact onset grouping, tempo timelines, and score-time conversion.
 - `src/features/performance`: framework-independent recorder, key-press derivation, statistics, immutable snapshots, and its React controller hook.
 - `src/features/practice`: session-local transport of the imported score, plan, included parts, and practice speed.
+- `src/features/alignment`: performed-onset derivation, multiset pitch costs, monotonic sequence alignment, robust time fitting, immutable results, diagnostics, and neutral presentation.
 - `src/features/score-renderer`: the isolated OSMD adapter. This is the only feature that imports OSMD.
 - `src/pages`: route-level compositions.
 - `src/styles`: the design system and responsive layout.
@@ -49,3 +52,5 @@ The renderer and Imports page are code-split. OSMD is dynamically imported insid
 Imports requires an explicit part choice for multi-part scores, builds an `ExpectedPerformancePlan`, and places the canonical XML, normalized score, plan, and speed in a session-local provider. Practice reuses the OSMD adapter and piano visualizer. Refreshing loses this in-memory session by design.
 
 `PerformanceRecorder` consumes every normalized MIDI event directly, outside React render cycles. The hook only batches presentation updates. A device disconnect stops the active take with an explicit reason, and a stopped recording is deeply frozen before presentation.
+
+After a take stops, Practice can dynamically load the pure alignment engine. The UI first exposes an explicit processing state, then presents correspondence counts, the affine time transform, a monotonic path, exact pitch pairings, and neutral unpaired groups. The engine never updates recording state or score state, and the analysis remains session-only.

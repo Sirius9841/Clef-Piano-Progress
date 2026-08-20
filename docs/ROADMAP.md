@@ -12,13 +12,13 @@ Production MusicXML/MXL loading and validation, exact rational score timing, det
 
 Expected performance model, exact score-time mapping, explicit part selection, session-local Practice flow, monotonic MIDI performance recording, key-press derivation, and objective capture statistics.
 
-## Phase 4
+## Phase 4 — complete
 
-Score/performance alignment engine.
+Robust score ↔ MIDI performance alignment: deterministic performed-onset clustering, monotonic coarse/refined sequence alignment, affine time-transform fitting, attack correspondences, neutral diagnostics, and Practice integration.
 
-## Phase 5
+## Phase 5 — next
 
-Correct-note grading.
+Correct-note grading and note-level result semantics.
 
 ## Phase 6
 
@@ -26,7 +26,7 @@ Rhythm and tempo grading.
 
 ## Phase 7
 
-Results experience and measure-level heatmap.
+Full results experience and measure-level heatmap.
 
 ## Phase 8
 
@@ -40,4 +40,4 @@ Dynamics and articulation analysis.
 
 Technique Lab exercises and transferable skill measurement.
 
-Future phases do not exist in the current application. Phase 3 produces independent expected-score and observed-MIDI truth, but does not align them or simulate grading, mastery updates, or persistence.
+Future grading phases do not exist in the current application. Phase 4 maps independent expected-score and observed-MIDI truth, but does not calculate accuracy, rhythm, tempo, dynamics, articulation, pedal quality, mastery, or persistence.
