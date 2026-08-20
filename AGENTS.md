@@ -33,6 +33,19 @@ This repository builds a serious piano progress and performance-analysis applica
 - Do not introduce a backend, database, or large dependency before it is requested.
 - Keep dependencies lightweight and justified.
 
+## MusicXML and score-model rules
+
+- OSMD is a notation renderer, never the canonical score model. Do not import OSMD types into `features/musicxml` or future grading code.
+- Application-owned `NormalizedScore` data is the source of truth for future expected-performance and grading work.
+- MusicXML timing uses reduced, exact `MusicalTime` fractions in quarter-note units. Never replace score accumulation with floating-point arithmetic.
+- Parser output and event IDs must remain deterministic for unchanged source XML.
+- Keep the core parser framework-independent and independently testable. Do not parse MusicXML inside React rendering code.
+- Treat uploaded XML and MXL as untrusted input. Keep size, archive-path, XML, DOCTYPE, root-structure, and external-resource validation intact.
+- Preserve Work / Arrangement / ScoreVersion semantics. A changed score import will become a new immutable ScoreVersion when persistence exists.
+- Make unsupported notation explicit with typed errors or structured warnings; do not guess musical meaning.
+- Never put performance grading, hand assignment, fingering, or expected MIDI velocity into the renderer adapter.
+- Any parser change affecting duration, cursor movement, chords, voices, or absolute positions requires focused exact-value tests.
+
 ## Commands
 
 - Install: `npm install`

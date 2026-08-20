@@ -1,7 +1,7 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { HomePage } from '../pages/HomePage'
-import { ImportsPage } from '../pages/ImportsPage'
 import { LibraryPage } from '../pages/LibraryPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PieceDetailPage } from '../pages/PieceDetailPage'
@@ -10,6 +10,12 @@ import { ProgressPage } from '../pages/ProgressPage'
 import { RepertoirePage } from '../pages/RepertoirePage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { TechniquePage } from '../pages/TechniquePage'
+
+const ImportsPage = lazy(() => import('../pages/ImportsPage').then((module) => ({ default: module.ImportsPage })))
+
+function RouteLoader() {
+  return <div className="route-loader"><strong>Opening score workspace…</strong></div>
+}
 
 export function App() {
   return (
@@ -21,7 +27,7 @@ export function App() {
         <Route path="practice/:arrangementId" element={<PracticePage />} />
         <Route path="technique" element={<TechniquePage />} />
         <Route path="library" element={<LibraryPage />} />
-        <Route path="imports" element={<ImportsPage />} />
+        <Route path="imports" element={<Suspense fallback={<RouteLoader />}><ImportsPage /></Suspense>} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

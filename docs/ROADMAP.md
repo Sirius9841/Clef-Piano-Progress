@@ -4,13 +4,13 @@
 
 Foundation, premium UI, domain model, and Web MIDI connectivity.
 
-## Phase 2
+## Phase 2 — complete
 
-MusicXML import, rendering, and normalized score representation.
+Production MusicXML/MXL loading and validation, exact rational score timing, deterministic normalized score representation, structural warnings/statistics, and lazy OSMD notation rendering.
 
-## Phase 3
+## Phase 3 — next
 
-ExpectedNote model and MIDI performance recording.
+Expected performance-event model and MIDI performance recording. This phase will convert normalized score material into the attacks/events consumed by alignment and record timestamped MIDI performances.
 
 ## Phase 4
 
@@ -40,4 +40,4 @@ Dynamics and articulation analysis.
 
 Technique Lab exercises and transferable skill measurement.
 
-Future phases do not exist in the current application; Phase 1 surfaces their intended entry points without simulating them.
+Future phases do not exist in the current application. Phase 2 produces score-side truth but does not simulate recording, alignment, grading, mastery updates, or persistence.
