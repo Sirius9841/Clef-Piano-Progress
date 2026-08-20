@@ -71,6 +71,19 @@ This repository builds a serious piano progress and performance-analysis applica
 - Sustain, releases, and velocity remain preserved inputs but do not control Phase 4 attack correspondence.
 - Alignment-engine changes require focused regression tests for gaps, substitutions, chords, repeats, partial takes, and timing transforms.
 
+## Note-grading rules
+
+- Alignment and grading are separate layers. Phase 5 note grading consumes `AlignmentResult` and never realigns raw MIDI.
+- Simultaneous duplicate expected MIDI pitches form one physically observable key target while retaining every notation attack and source-note ID.
+- Exact pitch correspondences take precedence over wrong-pitch substitution pairing.
+- Wrong-pitch pairing is conservative, deterministic, bounded by centralized options, and limited to leftovers inside one aligned onset-group correspondence.
+- Nearby wrong pitches receive no partial correctness credit; pitch distance only supports substitution provenance.
+- Grace, cue, unsupported microtonal, and default outside-standard-range expectations are preserved as exclusions, never silently counted as missed.
+- Grading scope is explicit. Aligned-span grading must not penalize unplayed material before or after a partial performance.
+- The dedicated note score is precision/recall F1, not an arbitrary weighted formula or an overall performance score.
+- Timing residuals, velocity, note duration, chord spread, and sustain never affect Phase 5 pitch correctness.
+- Note-grading code remains framework- and renderer-independent, immutable, versioned, and provenance-rich for future measure results.
+
 ## Commands
 
 - Install: `npm install`

@@ -10,6 +10,8 @@ import { MidiControls } from '../features/midi/MidiControls'
 import { useMidi } from '../features/midi/MidiContext'
 import { PianoKeyboard } from '../features/midi/PianoKeyboard'
 import { formatMusicalTime } from '../features/musicxml/musicalTime'
+import { NoteGradingPanel } from '../features/note-grading/NoteGradingPanel'
+import { useNoteGradingAnalysis } from '../features/note-grading/useNoteGradingAnalysis'
 import { usePerformanceRecording } from '../features/performance/usePerformanceRecording'
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
@@ -49,6 +51,8 @@ export function PracticePage() {
   const capture = usePerformanceRecording(recordingContext)
   const alignmentSpeed = capture.recording?.practiceContext.speedMultiplier ?? session?.speedMultiplier ?? 1
   const alignment = useAlignmentAnalysis(session?.plan ?? null, capture.recording, alignmentSpeed)
+  const alignmentResult = alignment.state.status === 'ready' || alignment.state.status === 'unavailable' ? alignment.state.result ?? null : null
+  const noteGrading = useNoteGradingAnalysis(session?.plan ?? null, capture.recording, alignmentResult)
 
   if (!session) {
     const title = item?.work.title ?? 'No practice score loaded'
@@ -73,7 +77,7 @@ export function PracticePage() {
   const activeAttackCount = capture.recording?.statistics.noteAttackCount ?? midi.activeNotes.length
 
   return (
-    <div className={`page practice-page phase-three-practice phase-four-practice ${capture.state.status}`}>
+    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice ${capture.state.status}`}>
       <Link to="/imports" className="back-link"><ArrowLeft size={15} /> Back to score import</Link>
       <header className="practice-header">
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
@@ -110,6 +114,7 @@ export function PracticePage() {
         <section className="panel take-summary"><div className="section-heading"><div><h2><Activity /> Captured take</h2><p>Objective MIDI diagnostics only</p></div></div>{capture.recording ? <><div className="summary-metrics"><div><span>MIDI events</span><strong>{capture.recording.statistics.eventCount}</strong></div><div><span>Note attacks</span><strong>{capture.recording.statistics.noteAttackCount}</strong></div><div><span>Unique pitches</span><strong>{capture.recording.statistics.uniquePitchCount}</strong></div><div><span>Open notes</span><strong>{capture.recording.statistics.openNoteCount}</strong></div></div><div className="take-foot"><span>{capture.recording.statistics.sustainChangeCount} pedal changes</span><span>{capture.recording.statistics.orphanReleaseCount} orphan releases</span><span>{formatDuration(capture.recording.durationMs)} duration</span></div></> : <div className="take-empty">Record a take to inspect event, pitch, velocity, pedal, and key-release statistics. No grading occurs in this view.</div>}</section>
       </div>
       {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}
+      {capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}
     </div>
   )
 }

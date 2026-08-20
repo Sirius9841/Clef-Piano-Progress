@@ -68,3 +68,9 @@ It is not yet a persisted `PerformanceAttempt`. A future attempt will reference 
 `AlignmentResult` is an immutable, versioned correspondence snapshot between one `ExpectedPerformancePlan` and one `PerformanceRecording`. It contains performed onset groups, monotonic group correspondences, expected-only and performed-only groups, exact attack pairs, an affine reference-to-performance time transform, timing residuals, warnings, and objective diagnostics.
 
 Alignment facts are deliberately neutral. An unpaired expected attack is not yet a “missed note,” an unpaired performed attack is not yet a “wrong note,” and a timing residual is not yet a rhythm judgment. Phase 5 and later grading layers will interpret these facts without changing the plan, recording, or alignment history.
+
+## Note grading result
+
+`NoteGradingResult` is the immutable, versioned Phase 5 interpretation of an `AlignmentResult`. It first collapses simultaneous notation attacks with the same MIDI pitch into a single physically observable `ExpectedKeyTarget`, retaining all attack, source-note, measure, part, staff, and voice provenance. It then classifies in-scope targets and observed attacks as correct, wrong-pitch, missed, additional, excluded, or outside scope.
+
+Every result records aligned-span or full-plan scope and reliable, provisional, or unavailable status. Its dedicated note score is pitch-only precision/recall F1. It is not an overall `Performance Score`; timing, tempo, velocity, duration, articulation, chord spread, and pedal data remain uninterpreted by this layer.

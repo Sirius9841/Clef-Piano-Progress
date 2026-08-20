@@ -16,11 +16,11 @@ Expected performance model, exact score-time mapping, explicit part selection, s
 
 Robust score ↔ MIDI performance alignment: deterministic performed-onset clustering, monotonic coarse/refined sequence alignment, affine time-transform fitting, attack correspondences, neutral diagnostics, and Practice integration.
 
-## Phase 5 — next
+## Phase 5 — complete
 
-Correct-note grading and note-level result semantics.
+Physical expected-key targets, correct/wrong-pitch/missed/additional semantics, conservative substitution assignment, explicit grading scopes, precision/recall/F1 note scoring, and Practice note results.
 
-## Phase 6
+## Phase 6 — next
 
 Rhythm and tempo grading.
 
@@ -40,4 +40,4 @@ Dynamics and articulation analysis.
 
 Technique Lab exercises and transferable skill measurement.
 
-Future grading phases do not exist in the current application. Phase 4 maps independent expected-score and observed-MIDI truth, but does not calculate accuracy, rhythm, tempo, dynamics, articulation, pedal quality, mastery, or persistence.
+Future non-pitch grading phases do not exist in the current application. Phase 5 calculates a dedicated correct-note score only; it does not calculate rhythm, tempo, dynamics, articulation, pedal quality, an overall performance score, mastery, or persistence.
