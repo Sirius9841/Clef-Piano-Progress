@@ -53,6 +53,12 @@ Mastery estimates current knowledge of one Arrangement across multiple signals. 
 
 A SkillRating measures a transferable ability such as sight reading, rhythm, chord fluency, scales, or tempo control. It is independent of arrangement mastery.
 
-## Expected performance events
+## Expected performance plan
 
-Normalized notes are not yet grading expectations. Grace notes, cue notes, tied continuations, rests, and notation directions require an explicit Phase 3 conversion into expected performance events before MIDI alignment. Phase 2 intentionally preserves the evidence needed for that conversion without guessing attacks, hand assignment, velocity, or performance quality.
+`ExpectedPerformancePlan` is a deterministic, derived view of one `NormalizedScore` and an explicit part selection. It distinguishes required attacks, exact onset groups, logical sounding spans, and flexible or excluded notation. Tie continuations extend one sounding span, rests create no attacks, grace timing remains flexible, cue notes are excluded, and non-MIDI pitches are never rounded. The plan contains no observed performance and no grade.
+
+## Performance recording
+
+`PerformanceRecording` is session-local observed MIDI truth: ordered normalized events, physical key-press spans, device/context metadata, objective diagnostics, and a wall-clock start time. Fine timing is relative monotonic milliseconds. An open key has no invented release, an orphan Note Off remains an event and warning, and sustain is recorded independently from physical key release.
+
+It is not yet a persisted `PerformanceAttempt`. A future attempt will reference a recording, Arrangement, ScoreVersion, alignment-engine version, and grading results without mutating the original recording.

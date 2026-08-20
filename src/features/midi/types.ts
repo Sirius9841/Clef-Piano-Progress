@@ -7,7 +7,8 @@ export interface MidiDevice {
 
 interface MidiEventBase {
   channel: number
-  receivedAt: number
+  /** Monotonic, high-resolution timestamp in the browser performance clock domain. */
+  timestampMs: number
 }
 
 export interface NoteOnEvent extends MidiEventBase {

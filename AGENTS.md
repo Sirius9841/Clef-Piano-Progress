@@ -46,6 +46,18 @@ This repository builds a serious piano progress and performance-analysis applica
 - Never put performance grading, hand assignment, fingering, or expected MIDI velocity into the renderer adapter.
 - Any parser change affecting duration, cursor movement, chords, voices, or absolute positions requires focused exact-value tests.
 
+## Performance-model and recording rules
+
+- `NormalizedScore` is notation-side truth, `ExpectedPerformancePlan` is performance-expectation truth, and `PerformanceRecording` is observed MIDI truth. Keep these layers independent.
+- Tied continuation segments do not create new required attacks when exact pitch, part, voice, staff, and onset continuity safely form one chain.
+- Fixed score positions and durations remain exact `MusicalTime`; conversion to floating-point milliseconds happens only at the tempo-timeline boundary.
+- MIDI performance intervals use a monotonic high-resolution timestamp. Wall-clock timestamps are session metadata only.
+- Preserve arrival sequence for equal-timestamp MIDI events. Never reorder a recording solely by timestamp.
+- React controls the recorder but never owns its authoritative event buffer or note-pairing semantics.
+- Sustain events are preserved, but Phase 3 sustain does not extend physical key-release spans.
+- Recording tests use injected clocks and IDs, never real sleeps.
+- Do not infer correctness, alignment, timing quality, or grading inside recorder services or React components.
+
 ## Commands
 
 - Install: `npm install`

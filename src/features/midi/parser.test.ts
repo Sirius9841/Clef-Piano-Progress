@@ -4,13 +4,13 @@ import { parseMidiMessage } from './parser'
 describe('parseMidiMessage', () => {
   it('parses Note On and extracts velocity', () => {
     expect(parseMidiMessage([0x92, 60, 61], 100)).toEqual({
-      type: 'note-on', channel: 2, note: 60, velocity: 61, receivedAt: 100,
+      type: 'note-on', channel: 2, note: 60, velocity: 61, timestampMs: 100,
     })
   })
 
   it('parses Note Off', () => {
     expect(parseMidiMessage([0x81, 64, 18], 101)).toEqual({
-      type: 'note-off', channel: 1, note: 64, velocity: 18, receivedAt: 101,
+      type: 'note-off', channel: 1, note: 64, velocity: 18, timestampMs: 101,
     })
   })
 

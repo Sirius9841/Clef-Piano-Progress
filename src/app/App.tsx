@@ -5,13 +5,13 @@ import { HomePage } from '../pages/HomePage'
 import { LibraryPage } from '../pages/LibraryPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PieceDetailPage } from '../pages/PieceDetailPage'
-import { PracticePage } from '../pages/PracticePage'
 import { ProgressPage } from '../pages/ProgressPage'
 import { RepertoirePage } from '../pages/RepertoirePage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { TechniquePage } from '../pages/TechniquePage'
 
 const ImportsPage = lazy(() => import('../pages/ImportsPage').then((module) => ({ default: module.ImportsPage })))
+const PracticePage = lazy(() => import('../pages/PracticePage').then((module) => ({ default: module.PracticePage })))
 
 function RouteLoader() {
   return <div className="route-loader"><strong>Opening score workspace…</strong></div>
@@ -24,7 +24,7 @@ export function App() {
         <Route index element={<HomePage />} />
         <Route path="repertoire" element={<RepertoirePage />} />
         <Route path="repertoire/:arrangementId" element={<PieceDetailPage />} />
-        <Route path="practice/:arrangementId" element={<PracticePage />} />
+        <Route path="practice/:arrangementId" element={<Suspense fallback={<RouteLoader />}><PracticePage /></Suspense>} />
         <Route path="technique" element={<TechniquePage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="imports" element={<Suspense fallback={<RouteLoader />}><ImportsPage /></Suspense>} />

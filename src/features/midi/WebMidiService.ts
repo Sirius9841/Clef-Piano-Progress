@@ -53,7 +53,7 @@ export class WebMidiService {
     await input.open()
     input.onmidimessage = (message) => {
       if (!message.data) return
-      const event = parseMidiMessage(message.data, Date.now())
+      const event = parseMidiMessage(message.data, message.timeStamp)
       if (event) this.eventListeners.forEach((listener) => listener(event))
     }
     this.selectedInput = input

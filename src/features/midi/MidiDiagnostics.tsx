@@ -30,7 +30,7 @@ export function MidiDiagnostics() {
         <div className="event-feed-header"><span>Recent events</span><Radio size={14} className={midi.selectedDevice ? 'live' : ''} /></div>
         {midi.recentEvents.length === 0 ? <div className="empty-events">Play a note to see MIDI activity here.</div> : midi.recentEvents.map((event, index) => {
           const description = describeEvent(event)
-          return <div className="event-row" key={`${event.receivedAt}-${index}`}><span className={`event-dot ${event.type}`} /><strong>{description.label}</strong><span>{description.detail}</span><time>{new Date(event.receivedAt).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })}</time></div>
+          return <div className="event-row" key={`${event.timestampMs}-${index}`}><span className={`event-dot ${event.type}`} /><strong>{description.label}</strong><span>{description.detail}</span><time>{event.timestampMs.toFixed(1)} ms</time></div>
         })}
       </div>
     </section>

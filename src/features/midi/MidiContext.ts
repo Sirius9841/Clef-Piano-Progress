@@ -13,6 +13,7 @@ export interface MidiContextValue {
   error: string | null
   requestAccess: () => Promise<void>
   selectDevice: (id: string | null) => Promise<void>
+  subscribeToEvents: (listener: (event: MidiEvent) => void) => () => void
   clearEvents: () => void
 }
 

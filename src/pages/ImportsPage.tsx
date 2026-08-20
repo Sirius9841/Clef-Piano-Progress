@@ -1,15 +1,19 @@
 import {
   AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, FileCode2, FileMusic, FolderUp, GitBranch,
-  Info, Library, LoaderCircle, Maximize2, Minus, Music2, Plus, RotateCcw, ShieldCheck, UploadCloud, X,
+  Info, Library, LoaderCircle, Maximize2, Minus, Music2, Play, Plus, RotateCcw, ShieldCheck, UploadCloud, X,
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, PageHeader, StatusPill } from '../components/ui'
+import { buildExpectedPerformancePlan } from '../features/expected-performance/builder'
+import { ExpectedPerformanceBuildError } from '../features/expected-performance/types'
 import demoScoreXml from '../features/musicxml/demo-score.musicxml?raw'
 import { asScoreImportError, type ScoreImportError } from '../features/musicxml/errors'
 import { loadMusicXmlFile } from '../features/musicxml/fileLoader'
 import { formatMusicalTime } from '../features/musicxml/musicalTime'
 import { parseMusicXml } from '../features/musicxml/parser'
 import type { LoadedMusicXml, NormalizedScore, ScoreFileLike, ScoreWarning } from '../features/musicxml/types'
+import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { OsmdScoreRenderer, type ScoreRenderState } from '../features/score-renderer/OsmdScoreRenderer'
 
 type Relationship = 'arrangement' | 'derived' | 'new'
@@ -78,6 +82,8 @@ function RelationshipPanel({ relationship, onChange }: { relationship: Relations
 }
 
 export function ImportsPage() {
+  const navigate = useNavigate()
+  const practice = usePracticeSession()
   const inputRef = useRef<HTMLInputElement>(null)
   const operationRef = useRef(0)
   const [stage, setStage] = useState<ImportStage>('idle')
@@ -89,6 +95,8 @@ export function ImportsPage() {
   const [rendererError, setRendererError] = useState<string | null>(null)
   const [relationship, setRelationship] = useState<Relationship>('arrangement')
   const [zoom, setZoom] = useState(0.82)
+  const [selectedPartIds, setSelectedPartIds] = useState<string[]>([])
+  const [practiceError, setPracticeError] = useState<string | null>(null)
 
   const openFilePicker = useCallback(() => {
     if (!inputRef.current) return
@@ -98,14 +106,14 @@ export function ImportsPage() {
 
   const reset = useCallback(() => {
     operationRef.current += 1
-    setStage('idle'); setLoaded(null); setScore(null); setError(null); setRendererError(null); setProcessingFileName('Selected score'); setZoom(0.82)
+    setStage('idle'); setLoaded(null); setScore(null); setError(null); setRendererError(null); setProcessingFileName('Selected score'); setZoom(0.82); setSelectedPartIds([]); setPracticeError(null)
     if (inputRef.current) inputRef.current.value = ''
   }, [])
 
   const processFile = useCallback(async (candidate: ScoreFileLike | undefined) => {
     if (!candidate) return
     const operation = ++operationRef.current
-    setError(null); setRendererError(null); setLoaded(null); setScore(null); setProcessingFileName(candidate.name); setStage('reading')
+    setError(null); setRendererError(null); setPracticeError(null); setLoaded(null); setScore(null); setSelectedPartIds([]); setProcessingFileName(candidate.name); setStage('reading')
     try {
       const nextLoaded = await loadMusicXmlFile(candidate)
       if (operation !== operationRef.current) return
@@ -113,7 +121,7 @@ export function ImportsPage() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
       const nextScore = parseMusicXml(nextLoaded.musicXmlText)
       if (operation !== operationRef.current) return
-      setScore(nextScore); setStage('rendering')
+      setScore(nextScore); setSelectedPartIds(nextScore.parts.length === 1 ? [nextScore.parts[0]!.id] : []); setStage('rendering')
     } catch (cause) {
       if (operation !== operationRef.current) return
       setError(asScoreImportError(cause)); setStage('error')
@@ -127,6 +135,18 @@ export function ImportsPage() {
   }, [])
 
   const showWorkspace = stage === 'ready' || stage === 'rendering'
+
+  const beginPractice = useCallback(() => {
+    if (!loaded || !score) return
+    setPracticeError(null)
+    try {
+      const plan = buildExpectedPerformancePlan(score, { includedPartIds: selectedPartIds, fallbackQuarterBpm: 120 })
+      practice.startSession({ source: loaded, score, plan, sourceLabel: loaded.fileName, isDemo: false, speedMultiplier: 1 })
+      navigate('/practice/session')
+    } catch (cause) {
+      setPracticeError(cause instanceof ExpectedPerformanceBuildError ? cause.message : 'This score could not be prepared for practice.')
+    }
+  }, [loaded, navigate, practice, score, selectedPartIds])
 
   return (
     <div className="page imports-page phase-two-imports">
@@ -149,6 +169,11 @@ export function ImportsPage() {
       {showWorkspace && loaded && score && <div className="score-workspace reveal">
         <section className="score-overview"><div className="panel score-identity"><div className="score-file-mark"><FileMusic /></div><div><span className="step-label">Validated {loaded.sourceFormat.toUpperCase()}</span><h2>{score.metadata.title ?? 'Untitled Score'}</h2><p>{score.metadata.composer ?? 'Unknown composer'} · {score.metadata.partNames.join(', ') || 'Unnamed part'}</p><div className="score-file-meta"><span>{loaded.fileName}</span><i /><span>{formatBytes(loaded.sourceBytes)}</span>{loaded.sourceBytes !== loaded.uncompressedBytes && <><i /><span>{formatBytes(loaded.uncompressedBytes)} unpacked</span></>}</div></div><div className="score-ready-mark"><CheckCircle2 /><span>Model ready<small>{score.id}</small></span></div><Button variant="ghost" icon={X} onClick={reset}>Close</Button></div>
           <div className="score-stat-grid"><div><span>Measures</span><strong>{score.statistics.measureCount}</strong><small>Across {score.statistics.partCount} part{score.statistics.partCount === 1 ? '' : 's'}</small></div><div><span>Pitched notes</span><strong>{score.statistics.pitchedNoteCount}</strong><small>{score.statistics.chordCount} chord group{score.statistics.chordCount === 1 ? '' : 's'}</small></div><div><span>Voices</span><strong>{score.statistics.uniqueVoices.length}</strong><small>{score.statistics.uniqueVoices.join(', ') || 'Not specified'}</small></div><div><span>Staves</span><strong>{score.statistics.staffCount}</strong><small>{score.parts[0]?.measures[0]?.clefs.map((clef) => `${clef.sign} clef`).join(' · ') || 'No clef data'}</small></div><div><span>Pitch range</span><strong>{score.statistics.pitchRange ? `${score.statistics.pitchRange.lowest.spelling}–${score.statistics.pitchRange.highest.spelling}` : '—'}</strong><small>{score.statistics.pianoRangeViolationCount ? `${score.statistics.pianoRangeViolationCount} outside piano range` : 'Within 88 keys'}</small></div><div><span>Notated span</span><strong>{formatMusicalTime(score.statistics.notatedDuration)}</strong><small>Quarter-note units</small></div></div></section>
+        <section className="panel practice-prep">
+          <div><span className="step-label">Phase 3 performance model</span><h2>Prepare this score for MIDI practice</h2><p>{score.parts.length > 1 ? 'Choose every part you intend to play. Staves within a part stay together.' : `The single ${score.parts[0]?.name ?? 'score'} part is ready to use.`}</p></div>
+          {score.parts.length > 1 && <div className="part-selector" aria-label="Parts to practice">{score.parts.map((part) => <label key={part.id}><input type="checkbox" checked={selectedPartIds.includes(part.id)} onChange={(event) => setSelectedPartIds((current) => event.target.checked ? [...current, part.id] : current.filter((id) => id !== part.id))} /><span><strong>{part.name ?? part.id}</strong><small>{part.id} · {part.measures.length} measures</small></span></label>)}</div>}
+          <div className="practice-prep-action">{practiceError && <span className="practice-build-error"><AlertCircle />{practiceError}</span>}<Button icon={Play} disabled={stage !== 'ready' || selectedPartIds.length === 0} onClick={beginPractice}>Practice this score</Button></div>
+        </section>
         <section className="panel notation-panel"><div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Sheet music preview</h2><p>Rendered from the same canonical XML used by the normalized model</p></div></div><div className="notation-controls"><button onClick={() => setZoom((value) => Math.max(0.5, Number((value - 0.08).toFixed(2))))} aria-label="Zoom out"><Minus /></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom((value) => Math.min(1.5, Number((value + 0.08).toFixed(2))))} aria-label="Zoom in"><Plus /></button><button onClick={() => setZoom(0.82)} aria-label="Reset zoom"><Maximize2 /></button></div></div>{rendererError && <div className="renderer-inline-error"><AlertCircle /><span>{rendererError}</span></div>}<div className="notation-paper"><OsmdScoreRenderer musicXmlText={loaded.musicXmlText} zoom={zoom} onStateChange={handleRendererState} /></div><div className="notation-foot"><span><Info /> OSMD renders notation only; application-owned normalized events remain the score truth.</span><span><ChevronDown /> Scroll to inspect</span></div></section>
         <div className="score-lower-grid"><RelationshipPanel relationship={relationship} onChange={setRelationship} /><WarningList warnings={score.warnings} /></div>
       </div>}

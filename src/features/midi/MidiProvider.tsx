@@ -81,6 +81,8 @@ export function MidiProvider({ children }: { children: ReactNode }) {
     }
   }, [service])
 
+  const subscribeToEvents = useCallback((listener: (event: MidiEvent) => void) => service.subscribeToEvents(listener), [service])
+
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? null
   const value = useMemo<MidiContextValue>(() => ({
     supported: service.isSupported,
@@ -94,8 +96,9 @@ export function MidiProvider({ children }: { children: ReactNode }) {
     error,
     requestAccess,
     selectDevice,
+    subscribeToEvents,
     clearEvents: () => setRecentEvents([]),
-  }), [accessState, activeNotes, devices, error, recentEvents, requestAccess, selectDevice, selectedDevice, selectedDeviceId, service.isSupported, sustainDown])
+  }), [accessState, activeNotes, devices, error, recentEvents, requestAccess, selectDevice, selectedDevice, selectedDeviceId, service.isSupported, subscribeToEvents, sustainDown])
 
   return <MidiContext.Provider value={value}>{children}</MidiContext.Provider>
 }
