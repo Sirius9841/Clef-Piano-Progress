@@ -13,6 +13,8 @@ import { loadMusicXmlFile } from '../features/musicxml/fileLoader'
 import { formatMusicalTime } from '../features/musicxml/musicalTime'
 import { parseMusicXml } from '../features/musicxml/parser'
 import type { LoadedMusicXml, NormalizedScore, ScoreFileLike, ScoreWarning } from '../features/musicxml/types'
+import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
+import type { PersistedWork } from '../features/persistence/types'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { OsmdScoreRenderer, type ScoreRenderState } from '../features/score-renderer/OsmdScoreRenderer'
 
@@ -71,12 +73,27 @@ function WarningList({ warnings }: { warnings: ScoreWarning[] }) {
   )
 }
 
-function RelationshipPanel({ relationship, onChange }: { relationship: Relationship; onChange: (relationship: Relationship) => void }) {
+function RelationshipPanel({ relationship, onChange, works, existingWorkId, sourceWorkId, onExistingWorkChange, onSourceWorkChange, arrangementName, onArrangementNameChange }: {
+  relationship: Relationship
+  onChange: (relationship: Relationship) => void
+  works: readonly PersistedWork[]
+  existingWorkId: string
+  sourceWorkId: string
+  onExistingWorkChange: (id: string) => void
+  onSourceWorkChange: (id: string) => void
+  arrangementName: string
+  onArrangementNameChange: (value: string) => void
+}) {
   return (
     <section className="panel score-relationship">
       <div className="score-section-heading"><div><span className="score-section-icon"><GitBranch /></span><div><h2>Musical relationship</h2><p>Classify this score without conflating works and arrangements</p></div></div></div>
       <div className="relationship-options score-options">{relationships.map(({ id, title, description, icon: Icon }) => <button className={relationship === id ? 'selected' : ''} onClick={() => onChange(id)} key={id}><span className="radio-dot">{relationship === id && <i />}</span><Icon /><span><strong>{title}</strong><small>{description}</small></span></button>)}</div>
-      <div className="session-only-note"><Info /><span>Classification and score data remain in this browser session. Persistence arrives in a later phase.</span></div>
+      <div className="persistence-form">
+        <label><span>Arrangement name</span><input value={arrangementName} onChange={(event) => onArrangementNameChange(event.target.value)} /></label>
+        {relationship === 'arrangement' && <label><span>Existing Work</span><select value={existingWorkId} onChange={(event) => onExistingWorkChange(event.target.value)}><option value="">Choose a Work</option>{works.map((work) => <option key={work.id} value={work.id}>{work.title} — {work.composer}</option>)}</select></label>}
+        {relationship === 'derived' && <label><span>Source Work</span><select value={sourceWorkId} onChange={(event) => onSourceWorkChange(event.target.value)}><option value="">Choose the source Work</option>{works.map((work) => <option key={work.id} value={work.id}>{work.title} — {work.composer}</option>)}</select></label>}
+      </div>
+      <div className="session-only-note"><Info /><span>The canonical score, classification, and immutable ScoreVersion will be stored locally in this browser.</span></div>
     </section>
   )
 }
@@ -84,6 +101,8 @@ function RelationshipPanel({ relationship, onChange }: { relationship: Relations
 export function ImportsPage() {
   const navigate = useNavigate()
   const practice = usePracticeSession()
+  const persistence = usePersistence()
+  const worksQuery = useRepositoryQuery((repository) => repository.listWorks(), 'import-works')
   const inputRef = useRef<HTMLInputElement>(null)
   const operationRef = useRef(0)
   const [stage, setStage] = useState<ImportStage>('idle')
@@ -93,11 +112,16 @@ export function ImportsPage() {
   const [score, setScore] = useState<NormalizedScore | null>(null)
   const [error, setError] = useState<ScoreImportError | null>(null)
   const [rendererError, setRendererError] = useState<string | null>(null)
-  const [relationship, setRelationship] = useState<Relationship>('arrangement')
+  const [relationship, setRelationship] = useState<Relationship>('new')
   const [zoom, setZoom] = useState(0.82)
   const [selectedPartIds, setSelectedPartIds] = useState<string[]>([])
   const [practiceError, setPracticeError] = useState<string | null>(null)
+  const [existingWorkId, setExistingWorkId] = useState('')
+  const [sourceWorkId, setSourceWorkId] = useState('')
+  const [arrangementName, setArrangementName] = useState('Imported arrangement')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
 
+  const persistedWorks = worksQuery.status === 'ready' ? worksQuery.data : []
   const openFilePicker = useCallback(() => {
     if (!inputRef.current) return
     inputRef.current.value = ''
@@ -106,7 +130,7 @@ export function ImportsPage() {
 
   const reset = useCallback(() => {
     operationRef.current += 1
-    setStage('idle'); setLoaded(null); setScore(null); setError(null); setRendererError(null); setProcessingFileName('Selected score'); setZoom(0.82); setSelectedPartIds([]); setPracticeError(null)
+    setStage('idle'); setLoaded(null); setScore(null); setError(null); setRendererError(null); setProcessingFileName('Selected score'); setZoom(0.82); setSelectedPartIds([]); setPracticeError(null); setSaveState('idle')
     if (inputRef.current) inputRef.current.value = ''
   }, [])
 
@@ -136,21 +160,35 @@ export function ImportsPage() {
 
   const showWorkspace = stage === 'ready' || stage === 'rendering'
 
-  const beginPractice = useCallback(() => {
-    if (!loaded || !score) return
+  const beginPractice = useCallback(async () => {
+    if (!loaded || !score || !persistence.repository) return
     setPracticeError(null)
+    setSaveState('saving')
     try {
       const plan = buildExpectedPerformancePlan(score, { includedPartIds: selectedPartIds, fallbackQuarterBpm: 120 })
-      practice.startSession({ source: loaded, score, plan, sourceLabel: loaded.fileName, isDemo: false, speedMultiplier: 1 })
+      const saved = await persistence.repository.importScore({
+        relationship: relationship === 'arrangement' ? 'existing-work-arrangement' : relationship === 'derived' ? 'derived-work' : 'new-work',
+        ...(relationship === 'arrangement' ? { existingWorkId } : {}),
+        ...(relationship === 'derived' ? { sourceWorkId } : {}),
+        work: { title: score.metadata.title ?? 'Untitled Work', composer: score.metadata.composer ?? 'Unknown composer' },
+        arrangement: { name: arrangementName, difficulty: 'Intermediate', includedPartIds: selectedPartIds },
+        loaded,
+        normalizedScoreId: score.id,
+        parserVersion: 'musicxml-parser-1.0.0',
+        status: 'Learning',
+      })
+      setSaveState('saved')
+      practice.startSession({ arrangementId: saved.arrangement.id, scoreVersionId: saved.scoreVersion.id, source: loaded, score, plan, sourceLabel: loaded.fileName, isDemo: false, speedMultiplier: 1 })
       navigate('/practice/session')
     } catch (cause) {
-      setPracticeError(cause instanceof ExpectedPerformanceBuildError ? cause.message : 'This score could not be prepared for practice.')
+      setSaveState('idle')
+      setPracticeError(cause instanceof ExpectedPerformanceBuildError || cause instanceof Error ? cause.message : 'This score could not be saved and prepared for practice.')
     }
-  }, [loaded, navigate, practice, score, selectedPartIds])
+  }, [arrangementName, existingWorkId, loaded, navigate, persistence.repository, practice, relationship, score, selectedPartIds, sourceWorkId])
 
   return (
     <div className="page imports-page phase-two-imports">
-      <PageHeader eyebrow="Score intelligence" title="Import MusicXML" description="Validate, normalize and inspect the exact score that future performance analysis will use." action={<StatusPill tone="positive"><FileCode2 size={13} /> Phase 2 pipeline</StatusPill>} />
+      <PageHeader eyebrow="Score intelligence" title="Import MusicXML" description="Validate, normalize, persist, and inspect the exact score used for performance analysis." action={<StatusPill tone="positive"><FileCode2 size={13} /> Phase 8 local-first</StatusPill>} />
       {stage === 'idle' && <>
         <section className="panel import-hero reveal delay-1">
           <div className={`upload-zone production ${dragActive ? 'drag-active' : ''}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { const nextTarget = event.relatedTarget; if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) setDragActive(false) }} onDrop={(event) => { event.preventDefault(); setDragActive(false); void processFile(event.dataTransfer.files[0]) }}>
@@ -162,7 +200,7 @@ export function ImportsPage() {
           </div>
           <aside className="pipeline-preview"><span className="step-label">Trusted score path</span><h2>One source. Two purposes.</h2><p>The validated XML is sent independently to our normalized model and the notation renderer.</p><div className="pipeline-diagram"><div><FileCode2 /><span>Validated XML</span></div><i /><div className="pipeline-split"><span><Music2 /> Score model<small>Source of truth</small></span><span><FileMusic /> OSMD<small>Renderer only</small></span></div></div><div className="safety-list"><span><ShieldCheck /> Exact fractional timing</span><span><ShieldCheck /> Deterministic event IDs</span><span><ShieldCheck /> Untrusted-input safeguards</span></div></aside>
         </section>
-        <div className="import-assurance"><CheckCircle2 /><span><strong>Historical integrity by design</strong>Each later import revision becomes a separate immutable ScoreVersion; Phase 2 keeps the current file in session only.</span></div>
+        <div className="import-assurance"><CheckCircle2 /><span><strong>Historical integrity by design</strong>The canonical score is fingerprinted and stored as an immutable ScoreVersion in this browser.</span></div>
       </>}
       {(stage === 'reading' || stage === 'parsing') && <ImportProgress stage={stage} fileName={loaded?.fileName ?? processingFileName} />}
       {stage === 'error' && error && <section className="panel import-error-state reveal"><span className="error-code">{error.code}</span><div className="error-illustration"><AlertTriangle /></div><h2>This score could not be imported</h2><p>{presentError(error)}</p>{error.context.detail && <code>{error.context.detail}</code>}<div><Button icon={FolderUp} onClick={openFilePicker}>Choose another file</Button><Button variant="ghost" icon={RotateCcw} onClick={reset}>Start over</Button></div><input ref={inputRef} type="file" accept=".musicxml,.xml,.mxl" onChange={(event) => void processFile(event.target.files?.[0])} /></section>}
@@ -172,10 +210,10 @@ export function ImportsPage() {
         <section className="panel practice-prep">
           <div><span className="step-label">Phase 3 performance model</span><h2>Prepare this score for MIDI practice</h2><p>{score.parts.length > 1 ? 'Choose every part you intend to play. Staves within a part stay together.' : `The single ${score.parts[0]?.name ?? 'score'} part is ready to use.`}</p></div>
           {score.parts.length > 1 && <div className="part-selector" aria-label="Parts to practice">{score.parts.map((part) => <label key={part.id}><input type="checkbox" checked={selectedPartIds.includes(part.id)} onChange={(event) => setSelectedPartIds((current) => event.target.checked ? [...current, part.id] : current.filter((id) => id !== part.id))} /><span><strong>{part.name ?? part.id}</strong><small>{part.id} · {part.measures.length} measures</small></span></label>)}</div>}
-          <div className="practice-prep-action">{practiceError && <span className="practice-build-error"><AlertCircle />{practiceError}</span>}<Button icon={Play} disabled={stage !== 'ready' || selectedPartIds.length === 0} onClick={beginPractice}>Practice this score</Button></div>
+          <div className="practice-prep-action">{practiceError && <span className="practice-build-error"><AlertCircle />{practiceError}</span>}<Button icon={saveState === 'saving' ? LoaderCircle : Play} disabled={stage !== 'ready' || selectedPartIds.length === 0 || saveState === 'saving' || persistence.status !== 'ready'} onClick={() => void beginPractice()}>{saveState === 'saving' ? 'Saving locally…' : 'Add to repertoire & practice'}</Button></div>
         </section>
         <section className="panel notation-panel"><div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Sheet music preview</h2><p>Rendered from the same canonical XML used by the normalized model</p></div></div><div className="notation-controls"><button onClick={() => setZoom((value) => Math.max(0.5, Number((value - 0.08).toFixed(2))))} aria-label="Zoom out"><Minus /></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom((value) => Math.min(1.5, Number((value + 0.08).toFixed(2))))} aria-label="Zoom in"><Plus /></button><button onClick={() => setZoom(0.82)} aria-label="Reset zoom"><Maximize2 /></button></div></div>{rendererError && <div className="renderer-inline-error"><AlertCircle /><span>{rendererError}</span></div>}<div className="notation-paper"><OsmdScoreRenderer musicXmlText={loaded.musicXmlText} zoom={zoom} onStateChange={handleRendererState} /></div><div className="notation-foot"><span><Info /> OSMD renders notation only; application-owned normalized events remain the score truth.</span><span><ChevronDown /> Scroll to inspect</span></div></section>
-        <div className="score-lower-grid"><RelationshipPanel relationship={relationship} onChange={setRelationship} /><WarningList warnings={score.warnings} /></div>
+        <div className="score-lower-grid"><RelationshipPanel relationship={relationship} onChange={setRelationship} works={persistedWorks} existingWorkId={existingWorkId} sourceWorkId={sourceWorkId} onExistingWorkChange={setExistingWorkId} onSourceWorkChange={setSourceWorkId} arrangementName={arrangementName} onArrangementNameChange={setArrangementName} /><WarningList warnings={score.warnings} /></div>
       </div>}
     </div>
   )

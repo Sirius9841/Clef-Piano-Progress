@@ -28,9 +28,9 @@ Tempo-normalized rhythm observations, robust rhythm scoring, effective practice-
 
 Evidence-aware measure aggregation, underlying-data section metrics, confidence-adjusted weak/strong section ranking, deterministic notation-result mapping, musical-order mistake navigation, accessible performance heatmaps, and Practice result integration.
 
-## Phase 8
+## Phase 8 — complete
 
-Persistent repertoire and performance history.
+Versioned IndexedDB persistence, real Work/Arrangement/ScoreVersion imports, repertoire reload, transactional PracticeSessions and PerformanceAttempts, lossless MIDI and analysis history, read-only historical results, context-safe personal bests, rolling trends, and real Home/Progress/Settings data.
 
 ## Phase 9
 
@@ -40,4 +40,4 @@ Dynamics and articulation analysis.
 
 Pedal analysis, reference-performance expression, Technique Lab exercises, and transferable skill measurement.
 
-Phase 7 keeps Notes, Rhythm, and Tempo separate while adding a confidence-adjusted Practice Priority ranking. It does not calculate dynamics, articulation, pedal quality, an overall Performance Score, Mastery, personal bests, or persistence.
+Phase 8 keeps Notes, Rhythm, and Tempo separate while deriving context-safe personal bests and trends. It does not calculate dynamics, articulation, pedal quality, an overall Performance Score, Mastery, cloud sync, or accounts.

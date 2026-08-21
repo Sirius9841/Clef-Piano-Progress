@@ -7,6 +7,8 @@ export function createDemoPracticeSession(): PracticeSession {
   const score = parseMusicXml(demoScoreXml)
   const bytes = new TextEncoder().encode(demoScoreXml).byteLength
   return {
+    arrangementId: null,
+    scoreVersionId: null,
     source: {
       fileName: 'evening-lines-clef-demo.musicxml',
       sourceFormat: 'musicxml',

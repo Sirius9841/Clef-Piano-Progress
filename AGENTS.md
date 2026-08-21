@@ -112,6 +112,19 @@ This repository builds a serious piano progress and performance-analysis applica
 - Renderer highlighting consumes an application-owned mapping model. OSMD remains isolated and is never analysis truth.
 - Performance-result logic remains React- and OSMD-independent, immutable, versioned, serializable, and tested for scopes, evidence, boundaries, duplicates, mapping, determinism, and long scores.
 
+## Persistence and progression rules
+
+- Keep domain/services behind `PianoProgressRepository`; raw IndexedDB APIs belong only in the adapter.
+- Persist canonical MusicXML and immutable ScoreVersion identity. Historical attempts always retain the exact ScoreVersion, expected plan, recording, analysis snapshots, and engine versions they used.
+- PerformanceAttempt save, lightweight summary save, and PracticeSession linkage are one transaction and retries are idempotent by attempt ID.
+- Keep raw MIDI lossless, including arrival order, velocities, releases, sustain, timestamps, device context, warnings, and statistics.
+- Summary projections may accelerate queries but are rebuildable and never replace the authoritative attempt snapshot.
+- Practice time sums completed PracticeSessions, not attempts. One session may contain multiple takes.
+- Personal bests are derived separately for Notes, Rhythm, and Tempo. Headline comparison requires the same Arrangement, ScoreVersion, full-plan scope, and practice speed; equality and partial takes are not new records.
+- Historical result views are read-only. Never silently regrade an old attempt with current engines.
+- Removing Repertoire membership preserves Work, Arrangement, ScoreVersions, sessions, and attempts. Full local deletion requires explicit confirmation.
+- Treat local storage failures and corrupt records as typed, recoverable UI states. Never replace missing evidence with mock data or fake zeroes.
+
 ## Commands
 
 - Install: `npm install`

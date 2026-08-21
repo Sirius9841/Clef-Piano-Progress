@@ -17,4 +17,4 @@ Clef is a desktop-first workspace for pianists who want a truthful picture of th
 
 **Skill Rating** describes a transferable ability across pieces, developed primarily through Technique Lab work.
 
-Phase 1 uses clearly identified mock progress data. It includes real Web MIDI connectivity but no score grading.
+Phase 8 uses real browser-local repertoire, sessions, MIDI takes, and analysis snapshots throughout Home, Repertoire, piece history, and Progress. Technique Lab remains an explicitly labelled future/mock area. There is no backend, account, cloud backup, overall Performance Score, or Mastery calculation yet.

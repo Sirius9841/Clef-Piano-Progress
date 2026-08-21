@@ -37,13 +37,13 @@ Canon Fantasy is therefore a separate Work with its own arrangements, score vers
 
 A ScoreVersion is the exact MusicXML/MXL input used for analysis. It is historically immutable. Editing an import creates another version so old results remain reproducible.
 
-Phase 2 produces an in-memory `NormalizedScore` from validated canonical MusicXML. It is the structural payload a future ScoreVersion will preserve: metadata, ordered parts and measures, exact event timing, contextual signatures, score directions, warnings, and statistics. The current Imports experience is session-only and does not yet create persistent entities.
+Phase 2 produces a `NormalizedScore` from validated canonical MusicXML. Phase 8 persists the exact canonical XML, source metadata, parser version, included-part arrangement setup, and SHA-256 fingerprint in a ScoreVersion. The normalized model is reconstructed for a new live session; historical attempts retain the exact derived plan and analysis snapshots they used.
 
-`NormalizedScore` and `ScoreVersion` are related but not interchangeable. The normalized object describes the score contents; a future ScoreVersion will also provide persisted identity, provenance, creation metadata, and historical immutability. OSMD rendering objects belong to neither concept.
+`NormalizedScore` and `ScoreVersion` are related but not interchangeable. The normalized object describes score contents; a persisted ScoreVersion provides identity, canonical source, selected parts, provenance, creation metadata, and historical immutability. OSMD rendering objects belong to neither concept.
 
 ## PerformanceAttempt and Performance Score
 
-A PerformanceAttempt is one future recording tied to an Arrangement, exact ScoreVersion, timestamp, duration, and grading-engine version. Its Performance Score is the result for that single attempt, potentially containing note accuracy, rhythm, tempo, dynamics, and articulation metrics.
+A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. It retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Notes, Rhythm, and Tempo remain separate; no overall Performance Score is calculated in Phase 8.
 
 ## Mastery
 
@@ -61,7 +61,7 @@ A SkillRating measures a transferable ability such as sight reading, rhythm, cho
 
 `PerformanceRecording` is session-local observed MIDI truth: ordered normalized events, physical key-press spans, device/context metadata, objective diagnostics, and a wall-clock start time. Fine timing is relative monotonic milliseconds. An open key has no invented release, an orphan Note Off remains an event and warning, and sustain is recorded independently from physical key release.
 
-It is not yet a persisted `PerformanceAttempt`. A future attempt will reference a recording, Arrangement, ScoreVersion, alignment-engine version, and grading results without mutating the original recording.
+When the user explicitly saves a completed analysis, this recording is preserved inside a PerformanceAttempt without changing the frozen recording snapshot.
 
 ## Alignment result
 
@@ -85,4 +85,12 @@ The global affine `timeScale` describes performed duration per unit of effective
 
 `PerformanceResults` is the immutable, versioned Phase 7 aggregation snapshot for one exact normalized score, expected plan, alignment, note grade, timing analysis, and grading scope. It contains measure results, sliding section results, weak and strong section recommendations, a deterministic musical-order mistake index, accessible heatmap data, and mappings back to expected attacks and normalized source IDs.
 
-Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rhythm, and 20% Tempo, renormalizes missing dimensions, and adjusts the ranking by evidence confidence. It answers “where should this take be reviewed first?” It is explicitly not the attempt's overall Performance Score, arrangement Mastery, a personal best, or a transferable SkillRating. Phase 7 results remain session-only and do not create a persisted PerformanceAttempt.
+Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rhythm, and 20% Tempo, renormalizes missing dimensions, and adjusts the ranking by evidence confidence. It answers “where should this take be reviewed first?” It is explicitly not the attempt's overall Performance Score, arrangement Mastery, a personal best, or a transferable SkillRating. Phase 8 persists the result inside its exact PerformanceAttempt; historical views are read-only and do not silently rerun newer engines.
+
+## PracticeSession and RepertoireEntry
+
+A PracticeSession represents one continuous practice visit and may own multiple PerformanceAttempts. Practice time is the completed session duration, so recording several takes does not multiply minutes. A RepertoireEntry is removable membership/status for an Arrangement; removing it preserves the underlying Work, Arrangement, ScoreVersions, sessions, and attempt history.
+
+## Personal bests and progress
+
+Personal bests are derived from immutable attempt summaries rather than stored counters. Headline comparisons require the same Arrangement, ScoreVersion, full-plan scope, and practice-speed multiplier. Partial takes remain visible in history but never become headline records. Notes, Rhythm, and Tempo have separate records; there is no overall personal best.

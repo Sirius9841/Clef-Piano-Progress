@@ -65,6 +65,8 @@ A one-sided performed-only attack remains unattributed and carries no invented m
 
 Practice builds results from existing snapshots without rerecording, reparsing MusicXML, or rerunning alignment. The results experience provides independent dimension cards, four heatmap modes, selected-measure evidence, filtered previous/next mistake navigation, weak and strong section review, scope switching, and honest processing/unavailable/provisional states. Raw Phase 4–6 diagnostics remain available as secondary technical detail.
 
-## Deferred work
+## Phase 8 persistence
 
-Phase 7 remains session-only. It does not add persistence, historical trends, an overall Performance Score, Mastery changes, personal bests, dynamics, articulation, pedal grading, or transferable Skill Ratings.
+An explicitly saved Phase 8 attempt persists this exact result with its plan, recording, alignment, note grading, timing analysis, ScoreVersion, and engine versions. Historical views consume the snapshot read-only. Context-safe personal bests and rolling trends are derived from lightweight attempt summaries without changing Phase 7 semantics.
+
+An overall Performance Score, Mastery changes, dynamics, articulation, pedal grading, and transferable Skill Ratings remain deferred.

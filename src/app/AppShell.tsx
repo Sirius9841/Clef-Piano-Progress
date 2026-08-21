@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
 
 const navigation = [
   { label: 'Home', to: '/', icon: Home, end: true },
@@ -24,6 +25,8 @@ const navigation = [
 
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const week = useRepositoryQuery((repository) => repository.getProgress('7d'), 'shell-week')
+  const weekMinutes = week.status === 'ready' ? Math.round(week.data.practiceTimeMs / 60_000) : 0
 
   return (
     <div className="app-shell">
@@ -48,16 +51,16 @@ export function AppShell() {
         <div className="sidebar-bottom">
           <div className="practice-mini">
             <div className="practice-mini-top"><BookOpen size={16} /><span>This week</span></div>
-            <strong>5h 09m</strong>
-            <div className="mini-track"><span style={{ width: '72%' }} /></div>
-            <small>72% of weekly goal</small>
+            <strong>{week.status === 'loading' ? '…' : weekMinutes < 60 ? `${weekMinutes} min` : `${Math.floor(weekMinutes / 60)}h ${weekMinutes % 60}m`}</strong>
+            <div className="mini-track"><span style={{ width: `${Math.min(100, weekMinutes / 300 * 100)}%` }} /></div>
+            <small>{week.status === 'ready' ? `${week.data.sessionCount} completed session${week.data.sessionCount === 1 ? '' : 's'}` : week.status === 'error' ? 'Local data unavailable' : 'Reading local sessions'}</small>
           </div>
           <NavLink to="/settings" onClick={() => setMobileOpen(false)} className={({ isActive }) => `settings-link ${isActive ? 'active' : ''}`}>
             <Settings size={19} /><span>Settings</span>
           </NavLink>
           <div className="profile-row">
-            <div className="avatar">JS</div>
-            <div><strong>Jonas</strong><span>Intermediate · 14 week streak</span></div>
+            <div className="avatar">C</div>
+            <div><strong>Local workspace</strong><span>No account or cloud sync</span></div>
           </div>
         </div>
       </aside>

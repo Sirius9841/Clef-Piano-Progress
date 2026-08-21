@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 7 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score, capture, alignment, grading, and result workflows remain outside the initial Home route chunk.
+Phase 8 is a React, strict TypeScript, Vite, and Tailwind local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -44,6 +44,8 @@ The expected and observed Phase 3 outputs remain independent truth layers. Phase
 - `src/features/note-grading`: physical expected-key targets, conservative wrong-pitch assignment, explicit grading scopes, note-result semantics, F1 metrics, immutable results, and pitch-only presentation.
 - `src/features/timing-analysis`: anchor policy, robust tempo-normalized rhythm intervals, local tempo windows, speed/stability/trend metrics, qualitative tempo-direction observations, immutable results, and timing presentation.
 - `src/features/performance-results`: pure measure/section aggregation, evidence and confidence, Practice Priority ranking, deterministic mistake and notation mapping, application-owned highlight models, result view state, and presentation.
+- `src/features/persistence`: repository contract, serializable records, typed storage errors, SHA-256 score fingerprinting, and the isolated versioned IndexedDB adapter.
+- `src/features/progress`: pure personal-best, comparability, rolling-average, and trend derivations.
 - `src/features/score-renderer`: the isolated OSMD adapter. This is the only feature that imports OSMD.
 - `src/pages`: route-level compositions.
 - `src/styles`: the design system and responsive layout.
@@ -60,7 +62,7 @@ The renderer and Imports page are code-split. OSMD is dynamically imported insid
 
 ## Practice flow
 
-Imports requires an explicit part choice for multi-part scores, builds an `ExpectedPerformancePlan`, and places the canonical XML, normalized score, plan, and speed in a session-local provider. Practice reuses the OSMD adapter and piano visualizer. Refreshing loses this in-memory session by design.
+Imports requires an explicit part choice for multi-part scores, classifies the musical relationship, and transactionally creates a Work, Arrangement, immutable ScoreVersion, and RepertoireEntry. Canonical XML and the included-part setup are persisted; active renderer and analysis objects remain session-local. A saved Arrangement reconstructs its exact plan after reload.
 
 `PerformanceRecorder` consumes every normalized MIDI event directly, outside React render cycles. The hook only batches presentation updates. A device disconnect stops the active take with an explicit reason, and a stopped recording is deeply frozen before presentation.
 
@@ -70,4 +72,4 @@ Once an alignment snapshot exists, Practice can dynamically load the note-gradin
 
 After note scope is established, Practice can dynamically load timing analysis. Rhythm uses structurally continuous matched-onset intervals normalized by a robust local scale, while Tempo compares the alignment/global and local speed ratios with the effective practice timeline. Numeric tempo changes remain authoritative; preserved qualitative words produce directional observations without fabricated targets. Notes, Rhythm, and Tempo remain separate session-only metrics.
 
-Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute the downstream note/timing/result snapshots but reuse the score, recording, and alignment. The results UI owns only selection/filter state; aggregation and notation mapping remain pure. `ScoreHighlightModel` forms the application boundary to the OSMD adapter, which displays measure/problem focus without becoming a source of grading truth. See `PERFORMANCE_RESULTS.md`.
+Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute downstream snapshots but reuse the score, recording, and alignment. An explicit Save action writes the raw recording, plan, every analysis snapshot, engine versions, and PracticeSession linkage in one IndexedDB transaction. Historical Results read those exact snapshots and canonical ScoreVersion without regrading. See `PERFORMANCE_RESULTS.md`, `PERSISTENCE.md`, and `PROGRESS_MODEL.md`.

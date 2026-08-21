@@ -1,8 +1,7 @@
-import { Activity, AlertCircle, ArrowLeft, Cable, CircleStop, Clock3, FileMusic, Gauge, Music2, Play, RotateCcw, Trash2 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { Activity, AlertCircle, ArrowLeft, Cable, CheckCircle2, CircleStop, Clock3, FileMusic, Gauge, Music2, Play, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, StatusPill } from '../components/ui'
-import { repertoire } from '../data/mockData'
 import { AlignmentPanel } from '../features/alignment/AlignmentPanel'
 import { useAlignmentAnalysis } from '../features/alignment/useAlignmentAnalysis'
 import { scoreTimeToMilliseconds } from '../features/expected-performance/tempoTimeline'
@@ -19,6 +18,9 @@ import type { ScoreHighlightModel } from '../features/performance-results/highli
 import { usePerformanceResults } from '../features/performance-results/usePerformanceResults'
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
+import { usePersistence } from '../features/persistence/PersistenceContext'
+import type { PerformanceAttemptRecord, PracticeSessionRecord } from '../features/persistence/types'
+import { detectPersonalBestEvents, formatPercent, type PersonalBestEvent } from '../features/progress/model'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
 import { TimingAnalysisPanel } from '../features/timing-analysis/TimingAnalysisPanel'
 import { useTimingAnalysis } from '../features/timing-analysis/useTimingAnalysis'
@@ -43,10 +45,16 @@ export function PracticePage() {
   const { arrangementId } = useParams()
   const navigate = useNavigate()
   const practice = usePracticeSession()
+  const persistence = usePersistence()
   const midi = useMidi()
   const [zoom, setZoom] = useState(0.72)
   const [scoreHighlights, setScoreHighlights] = useState<ScoreHighlightModel | null>(null)
-  const item = repertoire.find((candidate) => candidate.arrangement.id === arrangementId)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [personalBestEvents, setPersonalBestEvents] = useState<readonly PersonalBestEvent[]>([])
+  const practiceSessionId = useRef(`session:${globalThis.crypto.randomUUID()}`)
+  const practiceSessionStartedAt = useRef<string | null>(null)
+  const [savedRecordingId, setSavedRecordingId] = useState<string | null>(null)
   const session = arrangementId === 'session' ? practice.session : null
 
   const recordingContext = useMemo(() => ({
@@ -77,17 +85,79 @@ export function PracticePage() {
     if (nextTiming) await performanceResults.analyze(grading, nextTiming)
   }
   const updateScoreHighlights = useCallback((model: ScoreHighlightModel | null) => setScoreHighlights(model), [])
+  const startCapture = () => {
+    setSaveStatus('idle')
+    setSaveMessage(null)
+    setPersonalBestEvents([])
+    setSavedRecordingId(null)
+    capture.start()
+  }
+
+  const saveAttempt = async () => {
+    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult || !noteGradingResult || !timingResult || performanceResults.state.status !== 'ready' || !persistence.repository) return
+    setSaveStatus('saving'); setSaveMessage(null); setPersonalBestEvents([])
+    const recording = capture.recording
+    const result = performanceResults.state.result
+    const attemptId = `attempt:${recording.id}`
+    const startedAt = practiceSessionStartedAt.current ?? recording.startedAt
+    practiceSessionStartedAt.current = startedAt
+    const endedAt = new Date(new Date(recording.startedAt).getTime() + recording.durationMs).toISOString()
+    const attempt: PerformanceAttemptRecord = {
+      id: attemptId,
+      schemaVersion: 1,
+      arrangementId: session.arrangementId,
+      scoreVersionId: session.scoreVersionId,
+      practiceSessionId: practiceSessionId.current,
+      performedAt: recording.startedAt,
+      practiceSpeedMultiplier: recording.practiceContext.speedMultiplier ?? session.speedMultiplier,
+      gradingScope: noteGradingResult.scope.type,
+      includedPartIds: session.plan.includedPartIds,
+      engineVersions: {
+        alignment: alignmentResult.diagnostics.alignmentEngineVersion,
+        noteGrading: noteGradingResult.diagnostics.noteGradingEngineVersion,
+        timingAnalysis: timingResult.diagnostics.timingAnalysisEngineVersion,
+        resultAggregation: result.diagnostics.resultAggregationVersion,
+      },
+      expectedPerformancePlan: session.plan,
+      recording,
+      alignment: alignmentResult,
+      noteGrading: noteGradingResult,
+      timingAnalysis: timingResult,
+      performanceResults: result,
+    }
+    const persistentSession: PracticeSessionRecord = {
+      id: practiceSessionId.current,
+      arrangementId: session.arrangementId,
+      scoreVersionId: session.scoreVersionId,
+      startedAt,
+      endedAt,
+      durationMs: Math.max(0, new Date(endedAt).getTime() - new Date(startedAt).getTime()),
+      attemptIds: [attemptId],
+    }
+    try {
+      const history = await persistence.repository.listAttemptSummaries(session.arrangementId)
+      const saved = await persistence.repository.saveAttempt({ session: persistentSession, attempt })
+      const events = saved.created ? detectPersonalBestEvents(saved.summary, history) : []
+      setSavedRecordingId(recording.id)
+      setPersonalBestEvents(events)
+      setSaveMessage(saved.created ? 'Attempt and analysis snapshots saved locally.' : 'This take was already saved; no duplicate was created.')
+      setSaveStatus('saved')
+    } catch (cause) {
+      setSaveMessage(cause instanceof Error ? cause.message : 'The attempt could not be saved. Retry is safe.')
+      setSaveStatus('error')
+    }
+  }
 
   if (!session) {
-    const title = item?.work.title ?? 'No practice score loaded'
-    const subtitle = item ? item.arrangement.name : 'This in-memory session is empty or has expired.'
+    const title = 'No practice score loaded'
+    const subtitle = 'Open a saved Arrangement or import a score to begin a precise practice session.'
     const startDemo = () => {
       practice.startSession(createDemoPracticeSession())
       navigate('/practice/session')
     }
     return (
       <div className="page practice-page">
-        <Link to={item ? `/repertoire/${item.arrangement.id}` : '/'} className="back-link"><ArrowLeft size={15} /> Back</Link>
+        <Link to="/repertoire" className="back-link"><ArrowLeft size={15} /> Back</Link>
         <div className="practice-header"><div><StatusPill tone="neutral"><Music2 size={12} /> Score required</StatusPill><h1>{title}</h1><p>{subtitle}</p></div></div>
         <section className="panel practice-no-score"><FileMusic /><span className="step-label">Honest practice state</span><h2>No playable score attached yet</h2><p>Import a MusicXML score to create an expected performance plan before capturing MIDI practice. Mock repertoire metadata is never substituted for sheet music.</p><div><Link className="button primary" to="/imports">Import MusicXML</Link><Button variant="secondary" icon={Play} onClick={startDemo}>Try demo practice</Button></div></section>
       </div>
@@ -122,9 +192,9 @@ export function PracticePage() {
             {!midi.selectedDevice && capture.state.status !== 'stopped' && <div className="recording-device-notice"><Cable /><span>Connect and select a MIDI input before recording.</span></div>}
             {capture.recording?.stopReason === 'device-disconnected' && <div className="recording-device-notice warning"><AlertCircle /><span>The MIDI input disconnected. This take was stopped safely.</span></div>}
             <div className="recording-actions">
-              {capture.state.status === 'idle' && <Button icon={Activity} disabled={!midi.selectedDevice} onClick={capture.start}>Record take</Button>}
+              {capture.state.status === 'idle' && <Button icon={Activity} disabled={!midi.selectedDevice} onClick={startCapture}>Record take</Button>}
               {capture.state.status === 'recording' && <Button icon={CircleStop} onClick={capture.stop}>Stop recording</Button>}
-              {capture.state.status === 'stopped' && <><Button icon={RotateCcw} disabled={!midi.selectedDevice} onClick={capture.start}>Record again</Button><Button variant="ghost" icon={Trash2} onClick={capture.discard}>Discard take</Button></>}
+              {capture.state.status === 'stopped' && <><Button icon={RotateCcw} disabled={!midi.selectedDevice} onClick={startCapture}>Record again</Button><Button variant="ghost" icon={Trash2} onClick={capture.discard}>Discard take</Button></>}
             </div>
           </section>
           <section className="panel practice-midi"><MidiControls compact /></section>
@@ -139,6 +209,7 @@ export function PracticePage() {
       </div>
       {performanceResults.state.status === 'ready' ? <>
         <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />
+        <section className="panel save-attempt-panel"><div><span className="step-label">Local performance history</span><h2>{savedRecordingId === capture.recording?.id ? 'Take saved' : 'Keep this analysis'}</h2><p>{session.isDemo ? 'Demo takes remain temporary and are never mixed into your real progress.' : 'Saving preserves the raw MIDI recording, exact ScoreVersion, and every analysis snapshot in one transaction.'}</p>{saveMessage && <span className={saveStatus === 'error' ? 'practice-build-error' : 'save-confirmation'}>{saveStatus === 'saved' ? <CheckCircle2 /> : <AlertCircle />}{saveMessage}</span>}{personalBestEvents.length > 0 && <div className="personal-best-events">{personalBestEvents.map((event) => <span key={event.metric}><Sparkles /> {event.kind === 'first-full-result' ? `First full-score ${event.metric} result` : `New ${event.metric} personal best`}: {formatPercent(event.value)}</span>)}</div>}</div><Button icon={savedRecordingId === capture.recording?.id ? CheckCircle2 : Save} disabled={session.isDemo || saveStatus === 'saving' || savedRecordingId === capture.recording?.id} onClick={() => void saveAttempt()}>{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry save' : savedRecordingId === capture.recording?.id ? 'Saved' : 'Save attempt'}</Button></section>
         <details className="technical-analysis-stack"><summary>Technical analysis</summary><div>{capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}{capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}{capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}</div></details>
       </> : <>
         {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}

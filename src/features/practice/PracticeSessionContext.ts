@@ -3,6 +3,8 @@ import type { ExpectedPerformancePlan } from '../expected-performance/types'
 import type { LoadedMusicXml, NormalizedScore } from '../musicxml/types'
 
 export interface PracticeSession {
+  arrangementId: string | null
+  scoreVersionId: string | null
   source: LoadedMusicXml
   score: NormalizedScore
   plan: ExpectedPerformancePlan
