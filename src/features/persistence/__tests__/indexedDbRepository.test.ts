@@ -101,9 +101,40 @@ describe('IndexedDbPianoProgressRepository', () => {
     await repo.initialize()
     await expect(repo.getCounts()).resolves.toEqual({ works: 0, arrangements: 0, scoreVersions: 0, repertoireEntries: 0, practiceSessions: 0, performanceAttempts: 0 })
     const database = await openDatabase('fresh-db')
-    expect(database.version).toBe(2)
+    expect(database.version).toBe(3)
     expect([...database.objectStoreNames]).toEqual(['arrangements', 'attemptSummaries', 'performanceAttempts', 'practiceSessions', 'repertoire', 'scoreVersions', 'works'])
     database.close()
+  })
+
+  it('clears a rejected open promise so Retry can reopen, then caches the successful connection', async () => {
+    let openCount = 0
+    const repo = new IndexedDbPianoProgressRepository({
+      databaseName: 'open-retry-db',
+      openDatabaseRequest: (name, version) => {
+        openCount += 1
+        if (openCount === 1) throw new Error('simulated transient open failure')
+        return indexedDB.open(name, version)
+      },
+    })
+    await expect(repo.initialize()).rejects.toMatchObject({ code: 'DATABASE_OPEN_FAILED' })
+    await expect(repo.initialize()).resolves.toBeUndefined()
+    await expect(repo.initialize()).resolves.toBeUndefined()
+    expect(openCount).toBe(2)
+  })
+
+  it('reopens after a successful database connection is closed', async () => {
+    let openCount = 0
+    const repo = new IndexedDbPianoProgressRepository({
+      databaseName: 'closed-reopen-db',
+      openDatabaseRequest: (name, version) => {
+        openCount += 1
+        return indexedDB.open(name, version)
+      },
+    })
+    await repo.initialize()
+    repo.close()
+    await repo.initialize()
+    expect(openCount).toBe(2)
   })
 
   it('migrates v1 ScoreVersions to preserve their arrangement part selection', async () => {
@@ -135,6 +166,50 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(second.duplicate).toBe(true)
     expect(second.scoreVersion.id).toBe(first.scoreVersion.id)
     await expect(repo.getCounts()).resolves.toMatchObject({ works: 1, arrangements: 1, scoreVersions: 1, repertoireEntries: 1 })
+  })
+
+  it('does not merge exact score files that are explicitly named as different arrangements', async () => {
+    const repo = repository('distinct-arrangements-db')
+    const source = await repo.importScore(importInput())
+    const alternate = await repo.importScore({
+      ...importInput(),
+      relationship: 'existing-work-arrangement',
+      existingWorkId: source.work.id,
+      arrangement: { ...importInput().arrangement, name: 'Concert arrangement' },
+    })
+    expect(alternate.duplicate).toBe(false)
+    expect(alternate.arrangement.id).not.toBe(source.arrangement.id)
+    await expect(repo.getCounts()).resolves.toMatchObject({ works: 1, arrangements: 2, scoreVersions: 2, repertoireEntries: 2 })
+  })
+
+  it('re-adds removed exact imports without recreating preserved entities in every relationship context', async () => {
+    for (const relationship of ['new-work', 'existing-work-arrangement', 'derived-work'] as const) {
+      const repo = repository(`readd-${relationship}-db`)
+      const source = relationship === 'new-work' ? null : await repo.importScore(importInput('<score-partwise version="4.0"><part-list/><credit/></score-partwise>'))
+      const targetInput = relationship === 'new-work'
+        ? importInput()
+        : relationship === 'existing-work-arrangement'
+          ? { ...importInput(), relationship, existingWorkId: source!.work.id, arrangement: { ...importInput().arrangement, name: 'Existing Work arrangement' } }
+          : { ...importInput(), relationship, sourceWorkId: source!.work.id, work: { title: 'Derived Test', composer: 'Test Composer' }, arrangement: { ...importInput().arrangement, name: 'Derived arrangement' } }
+      const imported = await repo.importScore(targetInput)
+      const fixture = attemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+      await repo.saveAttempt(fixture)
+      const before = await repo.getCounts()
+      await repo.removeFromRepertoire(imported.arrangement.id)
+      const restored = await repo.importScore(targetInput)
+      expect(restored).toMatchObject({ duplicate: true, work: { id: imported.work.id }, arrangement: { id: imported.arrangement.id }, scoreVersion: { id: imported.scoreVersion.id } })
+      expect(restored.repertoire.id).not.toBe(imported.repertoire.id)
+      expect(await repo.getCounts()).toEqual(before)
+      expect(await repo.getAttempt(fixture.attempt.id)).not.toBeNull()
+      expect(await repo.listSessions(imported.arrangement.id)).toHaveLength(1)
+    }
+  })
+
+  it('persists the user-selected arrangement difficulty', async () => {
+    const repo = repository('difficulty-db')
+    const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, difficulty: 'Advanced' } })
+    expect(imported.arrangement.difficulty).toBe('Advanced')
+    expect((await repo.listRepertoire())[0]?.arrangement.difficulty).toBe('Advanced')
   })
 
   it('supports arrangements of existing Works and separate derived Works', async () => {
@@ -172,6 +247,7 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect((await repo.listRepertoire())[0]?.scoreVersion.id).toBe(second.scoreVersion.id)
     expect((await repo.getAttempt(oldAttempt.attempt.id))?.scoreVersionId).toBe(imported.scoreVersion.id)
     expect((await repo.getScoreVersion(imported.scoreVersion.id))?.canonicalMusicXml).toBe(imported.scoreVersion.canonicalMusicXml)
+    expect((await repo.listScoreVersions(imported.arrangement.id)).map((version) => version.version)).toEqual([1, 2])
   })
 
   it('saves raw MIDI and every analysis snapshot transactionally and idempotently', async () => {
@@ -188,6 +264,9 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(loaded?.timingAnalysis).toEqual(fixture.attempt.timingAnalysis)
     expect(loaded?.performanceResults).toEqual(fixture.attempt.performanceResults)
     expect((await repo.listSessions())[0]?.attemptIds).toEqual([fixture.attempt.id])
+    const extendedRetry = { ...fixture, session: { ...fixture.session, endedAt: '2026-08-01T12:00:00.000Z', durationMs: 7_200_000 } }
+    await expect(repo.saveAttempt(extendedRetry)).resolves.toMatchObject({ created: false })
+    expect((await repo.listSessions())[0]).toMatchObject({ endedAt: fixture.session.endedAt, durationMs: 60_000 })
     await expect(repo.getCounts()).resolves.toMatchObject({ practiceSessions: 1, performanceAttempts: 1 })
   })
 
@@ -205,6 +284,34 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(progress.attemptCount).toBe(2)
     expect(progress.sessionCount).toBe(1)
     expect(progress.practiceTimeMs).toBe(new Date(second.session.endedAt).getTime() - new Date(first.session.startedAt).getTime())
+  })
+
+  it('counts active days in the requested local calendar and uses indexed date-range boundaries', async () => {
+    const repo = repository('local-progress-db')
+    const imported = await repo.importScore(importInput())
+    const first = attemptFixture(imported.arrangement.id, imported.scoreVersion.id, 'session-local-1', '1')
+    const second = attemptFixture(imported.arrangement.id, imported.scoreVersion.id, 'session-local-2', '2')
+    const at = (fixture: ReturnType<typeof attemptFixture>, startedAt: string) => ({
+      attempt: { ...fixture.attempt, performedAt: startedAt },
+      session: { ...fixture.session, startedAt, endedAt: new Date(new Date(startedAt).getTime() + 60_000).toISOString() },
+    })
+    await repo.saveAttempt(at(first, '2026-01-01T00:30:00.000Z'))
+    await repo.saveAttempt(at(second, '2026-01-01T23:30:00.000Z'))
+    expect((await repo.getProgress('all', new Date('2026-01-02T00:00:00.000Z'), 'UTC')).activeDays).toBe(1)
+    expect((await repo.getProgress('all', new Date('2026-01-02T00:00:00.000Z'), 'America/Los_Angeles')).activeDays).toBe(2)
+    expect((await repo.getProgress('7d', new Date('2026-01-02T00:00:00.000Z'), 'UTC')).attemptCount).toBe(2)
+    const database = await openDatabase('local-progress-db')
+    const transaction = database.transaction('practiceSessions', 'readonly')
+    expect(transaction.objectStore('practiceSessions').indexNames.contains('endedAt')).toBe(true)
+    database.close()
+  })
+
+  it('rejects invalid session spans before writing any attempt data', async () => {
+    const repo = repository('invalid-session-db')
+    const imported = await repo.importScore(importInput())
+    const fixture = attemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    await expect(repo.saveAttempt({ ...fixture, session: { ...fixture.session, endedAt: '2026-07-31T10:00:00.000Z', durationMs: -1 } })).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    expect(await repo.getAttempt(fixture.attempt.id)).toBeNull()
   })
 
   it('aborts all attempt writes when a transaction fails, then allows a safe retry', async () => {
@@ -246,5 +353,24 @@ describe('IndexedDbPianoProgressRepository', () => {
     })
     database.close()
     await expect(repo.listWorks()).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it('rejects historical attempts whose snapshot provenance does not match', async () => {
+    const name = 'corrupt-attempt-db'
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = attemptFixture('arrangement', 'score')
+    const database = await openDatabase(name)
+    const transaction = database.transaction('performanceAttempts', 'readwrite')
+    transaction.objectStore('performanceAttempts').add({
+      ...fixture.attempt,
+      performanceResults: { ...fixture.attempt.performanceResults, timingAnalysisId: 'wrong-timing-snapshot' },
+    })
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+    database.close()
+    await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
   })
 })

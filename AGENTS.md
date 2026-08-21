@@ -124,6 +124,10 @@ This repository builds a serious piano progress and performance-analysis applica
 - Historical result views are read-only. Never silently regrade an old attempt with current engines.
 - Removing Repertoire membership preserves Work, Arrangement, ScoreVersions, sessions, and attempts. Full local deletion requires explicit confirmation.
 - Treat local storage failures and corrupt records as typed, recoverable UI states. Never replace missing evidence with mock data or fake zeroes.
+- Clear cached IndexedDB opens after failure, close, or version change so Retry performs a real reopen; keep healthy opens cached.
+- Exact re-import after Repertoire removal restores only membership. Never recreate preserved Work, Arrangement, ScoreVersion, session, or attempt identity.
+- Date-range progress queries use indexes, active days use the user's local calendar, and summary views never load raw MIDI snapshots.
+- Headline context requires `isHeadlineComparable`; unavailable metrics remain null and must not be plotted as zero.
 
 ## Commands
 

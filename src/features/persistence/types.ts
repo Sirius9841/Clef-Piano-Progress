@@ -7,7 +7,7 @@ import type { PerformanceRecording } from '../performance/types'
 import type { PerformanceResults } from '../performance-results/types'
 import type { TimingAnalysisResult } from '../timing-analysis/types'
 
-export const PERSISTENCE_SCHEMA_VERSION = 2
+export const PERSISTENCE_SCHEMA_VERSION = 3
 export const PIANO_PROGRESS_DB_NAME = 'clef-piano-progress'
 
 export interface PersistedWork extends Work {

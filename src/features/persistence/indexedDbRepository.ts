@@ -1,5 +1,6 @@
 import { PianoStorageError, asPianoStorageError } from './errors'
 import { sha256Hex } from './hash'
+import { localCalendarDateKey } from './localCalendar'
 import type { PianoProgressRepository } from './repository'
 import {
   PERSISTENCE_SCHEMA_VERSION,
@@ -44,6 +45,7 @@ export interface IndexedDbRepositoryOptions {
   readonly now?: () => Date
   readonly createId?: () => string
   readonly faultInjector?: (stage: PersistenceFaultStage) => void
+  readonly openDatabaseRequest?: (name: string, version: number) => IDBOpenDBRequest
 }
 
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
@@ -65,6 +67,12 @@ function idbRangeFor(value: string): IDBKeyRange {
   return IDBKeyRange.only(value)
 }
 
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) && date.toISOString() === value
+}
+
 function assertRecord(value: unknown, label: string): asserts value is { id: string } {
   if (!value || typeof value !== 'object' || typeof (value as { id?: unknown }).id !== 'string') {
     throw new PianoStorageError('CORRUPT_RECORD', `A stored ${label} record is invalid.`)
@@ -74,7 +82,7 @@ function assertRecord(value: unknown, label: string): asserts value is { id: str
 function assertWork(value: unknown): asserts value is PersistedWork {
   assertRecord(value, 'Work')
   const work = value as Partial<PersistedWork>
-  if (typeof work.title !== 'string' || typeof work.composer !== 'string' || typeof work.createdAt !== 'string') {
+  if (typeof work.title !== 'string' || typeof work.composer !== 'string' || !isCanonicalIsoTimestamp(work.createdAt) || !isCanonicalIsoTimestamp(work.updatedAt)) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored Work ${work.id} is missing required fields.`)
   }
 }
@@ -82,7 +90,7 @@ function assertWork(value: unknown): asserts value is PersistedWork {
 function assertScoreVersion(value: unknown): asserts value is PersistedScoreVersion {
   assertRecord(value, 'ScoreVersion')
   const version = value as Partial<PersistedScoreVersion>
-  if (typeof version.arrangementId !== 'string' || typeof version.canonicalMusicXml !== 'string' || typeof version.contentHash !== 'string' || !Array.isArray(version.includedPartIds)) {
+  if (typeof version.arrangementId !== 'string' || !Number.isInteger(version.version) || (version.version ?? 0) < 1 || !isCanonicalIsoTimestamp(version.createdAt) || typeof version.canonicalMusicXml !== 'string' || typeof version.contentHash !== 'string' || typeof version.normalizedScoreId !== 'string' || typeof version.parserVersion !== 'string' || !Array.isArray(version.includedPartIds)) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored ScoreVersion ${version.id} is missing required fields.`)
   }
 }
@@ -90,8 +98,77 @@ function assertScoreVersion(value: unknown): asserts value is PersistedScoreVers
 function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecord {
   assertRecord(value, 'PerformanceAttempt')
   const attempt = value as Partial<PerformanceAttemptRecord>
-  if (attempt.schemaVersion !== 1 || typeof attempt.arrangementId !== 'string' || typeof attempt.scoreVersionId !== 'string' || !attempt.recording || !attempt.performanceResults) {
+  if (
+    attempt.schemaVersion !== 1
+    || typeof attempt.arrangementId !== 'string'
+    || typeof attempt.scoreVersionId !== 'string'
+    || typeof attempt.practiceSessionId !== 'string'
+    || !isCanonicalIsoTimestamp(attempt.performedAt)
+    || typeof attempt.practiceSpeedMultiplier !== 'number'
+    || attempt.practiceSpeedMultiplier <= 0
+    || !Array.isArray(attempt.includedPartIds)
+    || !attempt.engineVersions
+    || !attempt.expectedPerformancePlan
+    || !attempt.recording
+    || !attempt.alignment
+    || !attempt.noteGrading
+    || !attempt.timingAnalysis
+    || !attempt.performanceResults
+  ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} is missing required snapshots.`)
+  }
+  const versions = attempt.engineVersions
+  const plan = attempt.expectedPerformancePlan
+  const recording = attempt.recording
+  const alignment = attempt.alignment
+  const noteGrading = attempt.noteGrading
+  const timing = attempt.timingAnalysis
+  const results = attempt.performanceResults
+  if (
+    !isCanonicalIsoTimestamp(recording.startedAt)
+    || !Number.isFinite(recording.durationMs)
+    || recording.durationMs < 0
+    || alignment.expectedPlanId !== plan.id
+    || alignment.recordingId !== recording.id
+    || noteGrading.expectedPlanId !== plan.id
+    || noteGrading.recordingId !== recording.id
+    || noteGrading.alignmentId !== alignment.id
+    || timing.expectedPlanId !== plan.id
+    || timing.recordingId !== recording.id
+    || timing.alignmentId !== alignment.id
+    || timing.noteGradingId !== noteGrading.id
+    || results.normalizedScoreId !== plan.scoreId
+    || results.expectedPlanId !== plan.id
+    || results.alignmentId !== alignment.id
+    || results.noteGradingId !== noteGrading.id
+    || results.timingAnalysisId !== timing.id
+    || results.scope !== attempt.gradingScope
+    || noteGrading.scope.type !== attempt.gradingScope
+    || versions.alignment !== alignment.diagnostics.alignmentEngineVersion
+    || versions.noteGrading !== noteGrading.diagnostics.noteGradingEngineVersion
+    || versions.timingAnalysis !== timing.diagnostics.timingAnalysisEngineVersion
+    || versions.resultAggregation !== results.diagnostics.resultAggregationVersion
+  ) {
+    throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has inconsistent snapshot provenance.`)
+  }
+}
+
+function assertAttemptSummary(value: unknown): asserts value is AttemptSummary {
+  assertRecord(value, 'AttemptSummary')
+  const summary = value as Partial<AttemptSummary>
+  const metricIsValid = (metric: unknown) => metric === null || (typeof metric === 'number' && Number.isFinite(metric))
+  if (typeof summary.arrangementId !== 'string' || typeof summary.scoreVersionId !== 'string' || typeof summary.practiceSessionId !== 'string' || !isCanonicalIsoTimestamp(summary.performedAt) || typeof summary.durationMs !== 'number' || summary.durationMs < 0 || typeof summary.practiceSpeedMultiplier !== 'number' || summary.practiceSpeedMultiplier <= 0 || (summary.gradingScope !== 'full-plan' && summary.gradingScope !== 'aligned-span') || !['reliable', 'limited', 'provisional', 'unavailable'].includes(summary.reliability ?? '') || !metricIsValid(summary.notes) || !metricIsValid(summary.rhythm) || !metricIsValid(summary.tempo)) {
+    throw new PianoStorageError('CORRUPT_RECORD', `Stored AttemptSummary ${summary.id} is invalid.`)
+  }
+}
+
+function assertPracticeSession(value: unknown): asserts value is PracticeSessionRecord {
+  assertRecord(value, 'PracticeSession')
+  const session = value as Partial<PracticeSessionRecord>
+  const startedAt = isCanonicalIsoTimestamp(session.startedAt) ? new Date(session.startedAt).getTime() : Number.NaN
+  const endedAt = isCanonicalIsoTimestamp(session.endedAt) ? new Date(session.endedAt).getTime() : Number.NaN
+  if (typeof session.arrangementId !== 'string' || typeof session.scoreVersionId !== 'string' || !Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt || typeof session.durationMs !== 'number' || !Number.isFinite(session.durationMs) || session.durationMs < 0 || !Array.isArray(session.attemptIds) || !session.attemptIds.every((id) => typeof id === 'string')) {
+    throw new PianoStorageError('CORRUPT_RECORD', `Stored PracticeSession ${session.id} is invalid.`)
   }
 }
 
@@ -119,6 +196,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
   private readonly now: () => Date
   private readonly createId: () => string
   private readonly faultInjector?: (stage: PersistenceFaultStage) => void
+  private readonly openDatabaseRequest: (name: string, version: number) => IDBOpenDBRequest
   private databasePromise: Promise<IDBDatabase> | null = null
   private readonly listeners = new Set<() => void>()
 
@@ -130,10 +208,17 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     this.now = options.now ?? (() => new Date())
     this.createId = options.createId ?? (() => globalThis.crypto.randomUUID())
     this.faultInjector = options.faultInjector
+    this.openDatabaseRequest = options.openDatabaseRequest ?? ((name, version) => this.indexedDb.open(name, version))
   }
 
   async initialize(): Promise<void> {
     await this.openDatabase()
+  }
+
+  close(): void {
+    const connection = this.databasePromise
+    this.databasePromise = null
+    void connection?.then((database) => database.close()).catch(() => { /* a failed open is already cleared */ })
   }
 
   subscribe(listener: () => void): () => void {
@@ -147,24 +232,45 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
 
   private openDatabase(): Promise<IDBDatabase> {
     if (this.databasePromise) return this.databasePromise
-    this.databasePromise = new Promise((resolve, reject) => {
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
       let request: IDBOpenDBRequest
+      let settled = false
+      const fail = (error: PianoStorageError) => {
+        if (settled) return
+        settled = true
+        reject(error)
+      }
       try {
-        request = this.indexedDb.open(this.databaseName, PERSISTENCE_SCHEMA_VERSION)
+        request = this.openDatabaseRequest(this.databaseName, PERSISTENCE_SCHEMA_VERSION)
       } catch (cause) {
-        reject(new PianoStorageError('DATABASE_OPEN_FAILED', 'The local piano database could not be opened.', cause))
+        fail(new PianoStorageError('DATABASE_OPEN_FAILED', 'The local piano database could not be opened.', cause))
         return
       }
       request.onupgradeneeded = (event) => this.migrate(request.result, request.transaction, event.oldVersion)
       request.onsuccess = () => {
         const database = request.result
-        database.onversionchange = () => database.close()
+        if (settled) {
+          database.close()
+          return
+        }
+        settled = true
+        database.onversionchange = () => {
+          if (this.databasePromise === opening) this.databasePromise = null
+          database.close()
+        }
+        database.addEventListener('close', () => {
+          if (this.databasePromise === opening) this.databasePromise = null
+        })
         resolve(database)
       }
-      request.onerror = () => reject(new PianoStorageError('DATABASE_OPEN_FAILED', 'The local piano database could not be opened.', request.error))
-      request.onblocked = () => reject(new PianoStorageError('DATABASE_OPEN_FAILED', 'Close other Clef tabs so the local database can be upgraded.'))
+      request.onerror = () => fail(new PianoStorageError('DATABASE_OPEN_FAILED', 'The local piano database could not be opened.', request.error))
+      request.onblocked = () => fail(new PianoStorageError('DATABASE_OPEN_FAILED', 'Close other Clef tabs so the local database can be upgraded.'))
     })
-    return this.databasePromise
+    this.databasePromise = opening
+    void opening.catch(() => {
+      if (this.databasePromise === opening) this.databasePromise = null
+    })
+    return opening
   }
 
   private migrate(database: IDBDatabase, transaction: IDBTransaction | null, oldVersion: number): void {
@@ -213,6 +319,10 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         }
       }
     }
+    if (oldVersion < 3) {
+      const sessions = transaction.objectStore(STORE.sessions)
+      if (!sessions.indexNames.contains('endedAt')) sessions.createIndex('endedAt', 'endedAt')
+    }
   }
 
   private async getAll<T>(storeName: StoreName): Promise<T[]> {
@@ -241,6 +351,36 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     return records
   }
 
+  private async getAllByIndexRange<T>(storeName: StoreName, indexName: string, range: IDBKeyRange): Promise<T[]> {
+    const database = await this.openDatabase()
+    const transaction = database.transaction(storeName, 'readonly')
+    const records = await requestValue(transaction.objectStore(storeName).index(indexName).getAll(range)) as T[]
+    await transactionComplete(transaction)
+    return records
+  }
+
+  private async getManyById<T>(storeName: StoreName, ids: readonly string[]): Promise<T[]> {
+    if (ids.length === 0) return []
+    const database = await this.openDatabase()
+    const transaction = database.transaction(storeName, 'readonly')
+    const store = transaction.objectStore(storeName)
+    const requests = [...new Set(ids)].map((id) => requestValue(store.get(id)))
+    const values = await Promise.all(requests)
+    await transactionComplete(transaction)
+    return values.filter((value): value is T => value !== undefined) as T[]
+  }
+
+  private async getAllForIndexKeys<T>(storeName: StoreName, indexName: string, keys: readonly string[]): Promise<T[]> {
+    if (keys.length === 0) return []
+    const database = await this.openDatabase()
+    const transaction = database.transaction(storeName, 'readonly')
+    const index = transaction.objectStore(storeName).index(indexName)
+    const requests = [...new Set(keys)].map((key) => requestValue(index.getAll(idbRangeFor(key))))
+    const groups = await Promise.all(requests) as T[][]
+    await transactionComplete(transaction)
+    return groups.flat()
+  }
+
   async importScore(input: ImportScoreInput): Promise<ImportScoreResult> {
     const contentHash = await sha256Hex(input.loaded.musicXmlText)
     const database = await this.openDatabase()
@@ -254,6 +394,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       const existingWorks = await requestValue(workStore.getAll()) as PersistedWork[]
       const existingArrangements = await requestValue(arrangementStore.getAll()) as PersistedArrangement[]
       const matchingVersions = await requestValue(versionStore.index('contentHash').getAll(contentHash)) as PersistedScoreVersion[]
+      const requestedArrangementName = input.arrangement.name.trim() || 'Imported arrangement'
 
       const requestedWorkId = input.relationship === 'existing-work-arrangement' ? input.existingWorkId : undefined
       if (input.relationship === 'existing-work-arrangement' && !requestedWorkId) {
@@ -267,7 +408,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
 
       const duplicate = matchingVersions.find((version) => {
         const arrangement = existingArrangements.find((candidate) => candidate.id === version.arrangementId)
-        if (!arrangement) return false
+        if (!arrangement || arrangement.name !== requestedArrangementName) return false
         if (requestedWorkId) return arrangement.workId === requestedWorkId
         const work = existingWorks.find((candidate) => candidate.id === arrangement.workId)
         if (input.relationship === 'derived-work') return work?.derivedFromWorkId === input.sourceWorkId && work?.title === input.work.title && work?.composer === input.work.composer
@@ -276,10 +417,15 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       if (duplicate) {
         const arrangement = existingArrangements.find((candidate) => candidate.id === duplicate.arrangementId)
         const work = arrangement ? existingWorks.find((candidate) => candidate.id === arrangement.workId) : undefined
-        const repertoire = arrangement ? await requestValue(repertoireStore.index('arrangementId').get(arrangement.id)) as RepertoireEntry | undefined : undefined
-        if (work && arrangement && repertoire) {
-          transaction.abort()
-          try { await completion } catch { /* expected duplicate short-circuit */ }
+        const existingRepertoire = arrangement ? await requestValue(repertoireStore.index('arrangementId').get(arrangement.id)) as RepertoireEntry | undefined : undefined
+        if (work && arrangement) {
+          const timestamp = this.now().toISOString()
+          const repertoire = existingRepertoire ?? {
+            id: this.createId(), arrangementId: arrangement.id, status: input.status, addedAt: timestamp, updatedAt: timestamp,
+          }
+          if (!existingRepertoire) repertoireStore.add(repertoire)
+          await completion
+          if (!existingRepertoire) this.notify()
           return { work, arrangement, scoreVersion: duplicate, repertoire, duplicate: true }
         }
       }
@@ -295,7 +441,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         updatedAt: timestamp,
       }
       const arrangement: PersistedArrangement = {
-        id: this.createId(), workId: work.id, name: input.arrangement.name.trim() || 'Imported arrangement',
+        id: this.createId(), workId: work.id, name: requestedArrangementName,
         difficulty: input.arrangement.difficulty, source: 'user-imported',
         includedPartIds: [...input.arrangement.includedPartIds],
         ...(input.arrangement.targetTempoBpm ? { targetTempoBpm: input.arrangement.targetTempoBpm } : {}),
@@ -374,11 +520,24 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
   }
 
   async listRepertoire(): Promise<readonly RepertoireListItem[]> {
-    const [entries, works, arrangements, versions, summaries, sessions] = await Promise.all([
-      this.getAll<RepertoireEntry>(STORE.repertoire), this.getAll<PersistedWork>(STORE.works),
-      this.getAll<PersistedArrangement>(STORE.arrangements), this.getAll<PersistedScoreVersion>(STORE.scoreVersions),
-      this.getAll<AttemptSummary>(STORE.summaries), this.getAll<PracticeSessionRecord>(STORE.sessions),
+    const entries = await this.getAll<RepertoireEntry>(STORE.repertoire)
+    entries.forEach((entry) => {
+      assertRecord(entry, 'RepertoireEntry')
+      if (typeof entry.arrangementId !== 'string' || typeof entry.addedAt !== 'string') throw new PianoStorageError('CORRUPT_RECORD', `Repertoire entry ${entry.id} is invalid.`)
+    })
+    const arrangementIds = entries.map((entry) => entry.arrangementId)
+    const arrangements = await this.getManyById<PersistedArrangement>(STORE.arrangements, arrangementIds)
+    arrangements.forEach((arrangement) => assertRecord(arrangement, 'Arrangement'))
+    const [works, versions, summaries, sessions] = await Promise.all([
+      this.getManyById<PersistedWork>(STORE.works, arrangements.map((arrangement) => arrangement.workId)),
+      this.getAllForIndexKeys<PersistedScoreVersion>(STORE.scoreVersions, 'arrangementId', arrangementIds),
+      this.getAllForIndexKeys<AttemptSummary>(STORE.summaries, 'arrangementId', arrangementIds),
+      this.getAllForIndexKeys<PracticeSessionRecord>(STORE.sessions, 'arrangementId', arrangementIds),
     ])
+    works.forEach(assertWork)
+    versions.forEach(assertScoreVersion)
+    summaries.forEach(assertAttemptSummary)
+    sessions.forEach(assertPracticeSession)
     return entries.map((entry) => {
       const arrangement = arrangements.find((value) => value.id === entry.arrangementId)
       const work = arrangement ? works.find((value) => value.id === arrangement.workId) : undefined
@@ -403,6 +562,12 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     return value
   }
 
+  async listScoreVersions(arrangementId: string): Promise<readonly PersistedScoreVersion[]> {
+    const values = await this.getAllByIndex<unknown>(STORE.scoreVersions, 'arrangementId', arrangementId)
+    const versions = values.map((value) => { assertScoreVersion(value); return value })
+    return versions.sort((left, right) => left.version - right.version || left.id.localeCompare(right.id))
+  }
+
   async getAttempt(id: string): Promise<PerformanceAttemptRecord | null> {
     const value = await this.getById<unknown>(STORE.attempts, id)
     if (value === null) return null
@@ -411,21 +576,29 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
   }
 
   async listAttemptSummaries(arrangementId?: string): Promise<readonly AttemptSummary[]> {
-    const values = arrangementId
-      ? await this.getAllByIndex<AttemptSummary>(STORE.summaries, 'arrangementId', arrangementId)
-      : await this.getAll<AttemptSummary>(STORE.summaries)
+    const raw = arrangementId
+      ? await this.getAllByIndex<unknown>(STORE.summaries, 'arrangementId', arrangementId)
+      : await this.getAll<unknown>(STORE.summaries)
+    const values = raw.map((value) => { assertAttemptSummary(value); return value })
     return values.sort(compareIsoDescending)
   }
 
   async listSessions(arrangementId?: string): Promise<readonly PracticeSessionRecord[]> {
-    const values = arrangementId
-      ? await this.getAllByIndex<PracticeSessionRecord>(STORE.sessions, 'arrangementId', arrangementId)
-      : await this.getAll<PracticeSessionRecord>(STORE.sessions)
+    const raw = arrangementId
+      ? await this.getAllByIndex<unknown>(STORE.sessions, 'arrangementId', arrangementId)
+      : await this.getAll<unknown>(STORE.sessions)
+    const values = raw.map((value) => { assertPracticeSession(value); return value })
     return values.sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id))
   }
 
   async saveAttempt(input: AttemptSaveInput): Promise<AttemptSaveResult> {
     const { attempt, session } = input
+    try {
+      assertAttempt(attempt)
+      assertPracticeSession(session)
+    } catch (cause) {
+      throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt or practice session contains invalid identity, snapshot, or timing data.', cause)
+    }
     if (attempt.practiceSessionId !== session.id || attempt.arrangementId !== session.arrangementId || attempt.scoreVersionId !== session.scoreVersionId) {
       throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt and practice session identities do not match.')
     }
@@ -487,17 +660,22 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     this.notify()
   }
 
-  async getProgress(range: ProgressRange, now = this.now()): Promise<ProgressSnapshot> {
-    const [attempts, sessions] = await Promise.all([this.listAttemptSummaries(), this.listSessions()])
+  async getProgress(range: ProgressRange, now = this.now(), timeZone?: string): Promise<ProgressSnapshot> {
     const cutoff = cutoffForRange(range, now)
-    const includedAttempts = cutoff === null ? attempts : attempts.filter((value) => new Date(value.performedAt).getTime() >= cutoff)
-    const includedSessions = cutoff === null ? sessions : sessions.filter((value) => new Date(value.endedAt).getTime() >= cutoff)
+    const [attemptValues, sessionValues] = cutoff === null
+      ? await Promise.all([this.getAll<unknown>(STORE.summaries), this.getAll<unknown>(STORE.sessions)])
+      : await Promise.all([
+        this.getAllByIndexRange<unknown>(STORE.summaries, 'performedAt', IDBKeyRange.lowerBound(new Date(cutoff).toISOString())),
+        this.getAllByIndexRange<unknown>(STORE.sessions, 'endedAt', IDBKeyRange.lowerBound(new Date(cutoff).toISOString())),
+      ])
+    const includedAttempts = attemptValues.map((value) => { assertAttemptSummary(value); return value }).sort(compareIsoDescending)
+    const includedSessions = sessionValues.map((value) => { assertPracticeSession(value); return value }).sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id))
     return {
       range,
       practiceTimeMs: includedSessions.reduce((total, session) => total + session.durationMs, 0),
       sessionCount: includedSessions.length,
       attemptCount: includedAttempts.length,
-      activeDays: new Set(includedSessions.map((session) => session.startedAt.slice(0, 10))).size,
+      activeDays: new Set(includedSessions.map((session) => localCalendarDateKey(session.startedAt, timeZone))).size,
       attempts: includedAttempts,
       sessions: includedSessions,
     }

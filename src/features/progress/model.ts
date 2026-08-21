@@ -16,6 +16,11 @@ export interface PersonalBestEvent {
   readonly previousValue: number | null
 }
 
+export interface PersonalBestHistoryEvent extends PersonalBestEvent {
+  readonly attemptId: string
+  readonly performedAt: string
+}
+
 export interface RollingMetric {
   readonly metric: ProgressMetric
   readonly currentAverage: number | null
@@ -23,7 +28,12 @@ export interface RollingMetric {
   readonly change: number | null
   readonly currentCount: number
   readonly previousCount: number
-  readonly windowSize: 5
+  readonly windowSize: number
+}
+
+export interface MetricSeriesPoint {
+  readonly index: number
+  readonly value: number
 }
 
 const METRICS: readonly ProgressMetric[] = ['notes', 'rhythm', 'tempo']
@@ -45,6 +55,10 @@ export function comparableAttempts(attempt: AttemptSummary, history: readonly At
   return history.filter((candidate) => isHeadlineComparable(candidate) && comparableAttemptKey(candidate) === key)
 }
 
+export function selectLatestHeadlineAttempt(attempts: readonly AttemptSummary[]): AttemptSummary | null {
+  return [...attempts].filter(isHeadlineComparable).sort((left, right) => right.performedAt.localeCompare(left.performedAt) || left.id.localeCompare(right.id))[0] ?? null
+}
+
 export function detectPersonalBestEvents(next: AttemptSummary, history: readonly AttemptSummary[]): readonly PersonalBestEvent[] {
   if (!isHeadlineComparable(next)) return []
   const prior = comparableAttempts(next, history).filter((candidate) => candidate.id !== next.id)
@@ -56,6 +70,34 @@ export function detectPersonalBestEvents(next: AttemptSummary, history: readonly
     const previousValue = Math.max(...previousValues)
     return value > previousValue ? [{ metric, kind: 'new-personal-best', value, previousValue }] : []
   })
+}
+
+export function derivePersonalBestHistory(attempts: readonly AttemptSummary[]): readonly PersonalBestHistoryEvent[] {
+  const ordered = [...attempts].filter(isHeadlineComparable).sort((left, right) => left.performedAt.localeCompare(right.performedAt) || left.id.localeCompare(right.id))
+  const bestByContext = new Map<string, Partial<Record<ProgressMetric, number>>>()
+  const events: PersonalBestHistoryEvent[] = []
+  ordered.forEach((attempt) => {
+    const key = comparableAttemptKey(attempt)
+    const best = bestByContext.get(key) ?? {}
+    METRICS.forEach((metric) => {
+      const value = attempt[metric]
+      if (value === null) return
+      const previousValue = best[metric]
+      if (previousValue === undefined || value > previousValue) {
+        events.push({
+          attemptId: attempt.id,
+          performedAt: attempt.performedAt,
+          metric,
+          kind: previousValue === undefined ? 'first-full-result' : 'new-personal-best',
+          value,
+          previousValue: previousValue ?? null,
+        })
+        best[metric] = value
+      }
+    })
+    bestByContext.set(key, best)
+  })
+  return events
 }
 
 export function derivePersonalBests(attempts: readonly AttemptSummary[]): readonly PersonalBest[] {
@@ -82,9 +124,25 @@ export function deriveRollingMetrics(attempts: readonly AttemptSummary[], window
       change: currentAverage === null || previousAverage === null ? null : currentAverage - previousAverage,
       currentCount: current.length,
       previousCount: previous.length,
-      windowSize: 5,
+      windowSize,
     }
   })
+}
+
+export function metricSeriesSegments(attempts: readonly AttemptSummary[], metric: ProgressMetric): readonly (readonly MetricSeriesPoint[])[] {
+  const segments: MetricSeriesPoint[][] = []
+  let current: MetricSeriesPoint[] = []
+  attempts.forEach((attempt, index) => {
+    const value = attempt[metric]
+    if (value === null) {
+      if (current.length > 0) segments.push(current)
+      current = []
+      return
+    }
+    current.push({ index, value })
+  })
+  if (current.length > 0) segments.push(current)
+  return segments
 }
 
 export function formatPercent(value: number | null): string {

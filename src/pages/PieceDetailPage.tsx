@@ -6,13 +6,15 @@ import { buildExpectedPerformancePlan } from '../features/expected-performance/b
 import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
-import type { AttemptSummary, RepertoireListItem } from '../features/persistence/types'
-import { derivePersonalBests, formatPercent } from '../features/progress/model'
+import { scoreVersionNumberForAttempt } from '../features/persistence/history'
+import type { AttemptSummary, PersistedScoreVersion, RepertoireListItem } from '../features/persistence/types'
+import { comparableAttemptKey, derivePersonalBests, formatPercent, selectLatestHeadlineAttempt } from '../features/progress/model'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 
 interface PieceData {
   readonly item: RepertoireListItem | null
   readonly attempts: readonly AttemptSummary[]
+  readonly scoreVersions: readonly PersistedScoreVersion[]
 }
 
 function formatPracticeTime(milliseconds: number): string {
@@ -31,15 +33,15 @@ export function PieceDetailPage() {
   const practice = usePracticeSession()
   const [actionError, setActionError] = useState<string | null>(null)
   const state = useRepositoryQuery<PieceData>(async (repository) => {
-    const [items, attempts] = await Promise.all([repository.listRepertoire(), repository.listAttemptSummaries(arrangementId)])
-    return { item: items.find((candidate) => candidate.arrangement.id === arrangementId) ?? null, attempts }
+    const [items, attempts, scoreVersions] = await Promise.all([repository.listRepertoire(), repository.listAttemptSummaries(arrangementId), repository.listScoreVersions(arrangementId)])
+    return { item: items.find((candidate) => candidate.arrangement.id === arrangementId) ?? null, attempts, scoreVersions }
   }, `piece:${arrangementId}`)
   const data = state.status === 'ready' ? state.data : null
   const item = data?.item ?? null
   const attempts = data?.attempts ?? []
-  const latestFull = attempts.find((attempt) => attempt.gradingScope === 'full-plan')
+  const latestFull = selectLatestHeadlineAttempt(attempts)
   const comparable = latestFull
-    ? attempts.filter((attempt) => attempt.scoreVersionId === latestFull.scoreVersionId && attempt.practiceSpeedMultiplier === latestFull.practiceSpeedMultiplier)
+    ? attempts.filter((attempt) => comparableAttemptKey(attempt) === comparableAttemptKey(latestFull))
     : []
   const personalBests = derivePersonalBests(comparable)
 
@@ -99,7 +101,7 @@ export function PieceDetailPage() {
 
       <section className="panel history-panel reveal delay-2">
         <SectionHeading title="Performance history" subtitle="Saved attempts retain the exact score, MIDI recording, and analysis snapshots" />
-        {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <div className="attempt-history-list">{attempts.map((attempt) => <Link key={attempt.id} to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>Score v{item.scoreVersion.version} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link>)}</div>}
+        {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <div className="attempt-history-list">{attempts.map((attempt) => { const version = scoreVersionNumberForAttempt(attempt, data?.scoreVersions ?? []); return <Link key={attempt.id} to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>{version === null ? 'Score version unavailable' : `Score v${version}`} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link> })}</div>}
       </section>
 
       <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire membership</strong><p>Removing this arrangement hides it from active repertoire while preserving its immutable score and history.</p></div><Button variant="ghost" icon={Trash2} onClick={() => void remove()}>Remove from repertoire</Button></section>

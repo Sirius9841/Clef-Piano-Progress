@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AttemptSummary } from '../../persistence/types'
-import { detectPersonalBestEvents, derivePersonalBests, deriveRollingMetrics } from '../model'
+import { detectPersonalBestEvents, derivePersonalBestHistory, derivePersonalBests, deriveRollingMetrics, metricSeriesSegments, selectLatestHeadlineAttempt } from '../model'
 
 function summary(id: string, notes: number | null, overrides: Partial<AttemptSummary> = {}): AttemptSummary {
   return {
@@ -48,6 +48,31 @@ describe('progress model', () => {
     expect(derivePersonalBests(attempts)[0]).toMatchObject({ metric: 'notes', value: 1, attemptId: '10' })
     expect(deriveRollingMetrics(attempts)[0]).toMatchObject({ currentAverage: 0.8, previousAverage: 0.3, change: 0.5, currentCount: 5, previousCount: 5 })
     expect(deriveRollingMetrics([...attempts].reverse())).toEqual(deriveRollingMetrics(attempts))
+    expect(deriveRollingMetrics(attempts, 3)[0]).toMatchObject({ windowSize: 3, currentCount: 3, previousCount: 3 })
+  })
+
+  it('selects the newest reliable full-plan context, not a newer unavailable or partial attempt', () => {
+    const reliable = summary('1', 0.8)
+    const unavailable = summary('2', null, { reliability: 'unavailable' })
+    const partial = summary('3', 1, { gradingScope: 'aligned-span' })
+    expect(selectLatestHeadlineAttempt([partial, unavailable, reliable])?.id).toBe('1')
+  })
+
+  it('breaks chart series at null metrics instead of plotting fake zeroes', () => {
+    const attempts = [summary('1', 0.7), summary('2', null), summary('3', 0.9)]
+    expect(metricSeriesSegments(attempts, 'notes')).toEqual([
+      [{ index: 0, value: 0.7 }],
+      [{ index: 2, value: 0.9 }],
+    ])
+  })
+
+  it('derives chronological personal-best history in one deterministic pass', () => {
+    const attempts = [summary('3', 0.9), summary('1', 0.7), summary('2', 0.7)]
+    const notes = derivePersonalBestHistory(attempts).filter((event) => event.metric === 'notes')
+    expect(notes).toEqual([
+      { attemptId: '1', performedAt: summary('1', 0.7).performedAt, metric: 'notes', kind: 'first-full-result', value: 0.7, previousValue: null },
+      { attemptId: '3', performedAt: summary('3', 0.9).performedAt, metric: 'notes', kind: 'new-personal-best', value: 0.9, previousValue: 0.7 },
+    ])
   })
 
   it('remains deterministic across a realistic 50-arrangement, 2,000-attempt fixture', () => {
@@ -61,5 +86,6 @@ describe('progress model', () => {
     expect(selected).toHaveLength(40)
     expect(derivePersonalBests(selected)).toEqual(derivePersonalBests([...selected].reverse()))
     expect(deriveRollingMetrics(selected)).toEqual(deriveRollingMetrics([...selected].reverse()))
+    expect(derivePersonalBestHistory(attempts)).toEqual(derivePersonalBestHistory([...attempts].reverse()))
   })
 })

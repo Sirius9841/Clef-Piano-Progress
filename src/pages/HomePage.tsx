@@ -4,7 +4,7 @@ import { PageHeader, SectionHeading, Stat, StatusPill } from '../components/ui'
 import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
 import type { AttemptSummary, ProgressSnapshot, RepertoireListItem } from '../features/persistence/types'
-import { detectPersonalBestEvents, formatPercent, type PersonalBestEvent } from '../features/progress/model'
+import { derivePersonalBestHistory, formatPercent, type PersonalBestEvent } from '../features/progress/model'
 
 interface HomeData {
   readonly repertoire: readonly RepertoireListItem[]
@@ -31,10 +31,11 @@ export function HomePage() {
   const featured = data?.repertoire.slice(0, 3) ?? []
   const latest = data?.week.attempts[0] ?? null
   const recentImprovements: readonly RecentImprovement[] = data ? (() => {
-    const ordered = [...data.allAttempts].sort((left, right) => left.performedAt.localeCompare(right.performedAt) || left.id.localeCompare(right.id))
-    return ordered.flatMap((attempt, index) => detectPersonalBestEvents(attempt, ordered.slice(0, index))
-      .filter((event) => event.kind === 'new-personal-best')
-      .map((event) => ({ attempt, event }))).reverse().slice(0, 3)
+    const attemptsById = new Map(data.allAttempts.map((attempt) => [attempt.id, attempt]))
+    return derivePersonalBestHistory(data.allAttempts).filter((event) => event.kind === 'new-personal-best').reverse().flatMap((event) => {
+      const attempt = attemptsById.get(event.attemptId)
+      return attempt ? [{ attempt, event }] : []
+    }).slice(0, 3)
   })() : []
 
   return (

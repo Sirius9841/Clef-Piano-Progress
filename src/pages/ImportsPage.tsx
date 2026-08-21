@@ -15,6 +15,7 @@ import { parseMusicXml } from '../features/musicxml/parser'
 import type { LoadedMusicXml, NormalizedScore, ScoreFileLike, ScoreWarning } from '../features/musicxml/types'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import type { PersistedWork } from '../features/persistence/types'
+import type { Difficulty } from '../domain/music'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { OsmdScoreRenderer, type ScoreRenderState } from '../features/score-renderer/OsmdScoreRenderer'
 
@@ -73,7 +74,7 @@ function WarningList({ warnings }: { warnings: ScoreWarning[] }) {
   )
 }
 
-function RelationshipPanel({ relationship, onChange, works, existingWorkId, sourceWorkId, onExistingWorkChange, onSourceWorkChange, arrangementName, onArrangementNameChange }: {
+function RelationshipPanel({ relationship, onChange, works, existingWorkId, sourceWorkId, onExistingWorkChange, onSourceWorkChange, arrangementName, onArrangementNameChange, difficulty, onDifficultyChange }: {
   relationship: Relationship
   onChange: (relationship: Relationship) => void
   works: readonly PersistedWork[]
@@ -83,6 +84,8 @@ function RelationshipPanel({ relationship, onChange, works, existingWorkId, sour
   onSourceWorkChange: (id: string) => void
   arrangementName: string
   onArrangementNameChange: (value: string) => void
+  difficulty: Difficulty
+  onDifficultyChange: (value: Difficulty) => void
 }) {
   return (
     <section className="panel score-relationship">
@@ -90,6 +93,7 @@ function RelationshipPanel({ relationship, onChange, works, existingWorkId, sour
       <div className="relationship-options score-options">{relationships.map(({ id, title, description, icon: Icon }) => <button className={relationship === id ? 'selected' : ''} onClick={() => onChange(id)} key={id}><span className="radio-dot">{relationship === id && <i />}</span><Icon /><span><strong>{title}</strong><small>{description}</small></span></button>)}</div>
       <div className="persistence-form">
         <label><span>Arrangement name</span><input value={arrangementName} onChange={(event) => onArrangementNameChange(event.target.value)} /></label>
+        <label><span>Difficulty</span><select value={difficulty} onChange={(event) => onDifficultyChange(event.target.value as Difficulty)}>{(['Foundation', 'Intermediate', 'Advanced'] as const).map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
         {relationship === 'arrangement' && <label><span>Existing Work</span><select value={existingWorkId} onChange={(event) => onExistingWorkChange(event.target.value)}><option value="">Choose a Work</option>{works.map((work) => <option key={work.id} value={work.id}>{work.title} — {work.composer}</option>)}</select></label>}
         {relationship === 'derived' && <label><span>Source Work</span><select value={sourceWorkId} onChange={(event) => onSourceWorkChange(event.target.value)}><option value="">Choose the source Work</option>{works.map((work) => <option key={work.id} value={work.id}>{work.title} — {work.composer}</option>)}</select></label>}
       </div>
@@ -119,6 +123,7 @@ export function ImportsPage() {
   const [existingWorkId, setExistingWorkId] = useState('')
   const [sourceWorkId, setSourceWorkId] = useState('')
   const [arrangementName, setArrangementName] = useState('Imported arrangement')
+  const [difficulty, setDifficulty] = useState<Difficulty>('Intermediate')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const persistedWorks = worksQuery.status === 'ready' ? worksQuery.data : []
@@ -130,7 +135,7 @@ export function ImportsPage() {
 
   const reset = useCallback(() => {
     operationRef.current += 1
-    setStage('idle'); setLoaded(null); setScore(null); setError(null); setRendererError(null); setProcessingFileName('Selected score'); setZoom(0.82); setSelectedPartIds([]); setPracticeError(null); setSaveState('idle')
+    setStage('idle'); setLoaded(null); setScore(null); setError(null); setRendererError(null); setProcessingFileName('Selected score'); setZoom(0.82); setSelectedPartIds([]); setPracticeError(null); setSaveState('idle'); setDifficulty('Intermediate')
     if (inputRef.current) inputRef.current.value = ''
   }, [])
 
@@ -171,7 +176,7 @@ export function ImportsPage() {
         ...(relationship === 'arrangement' ? { existingWorkId } : {}),
         ...(relationship === 'derived' ? { sourceWorkId } : {}),
         work: { title: score.metadata.title ?? 'Untitled Work', composer: score.metadata.composer ?? 'Unknown composer' },
-        arrangement: { name: arrangementName, difficulty: 'Intermediate', includedPartIds: selectedPartIds },
+        arrangement: { name: arrangementName, difficulty, includedPartIds: selectedPartIds },
         loaded,
         normalizedScoreId: score.id,
         parserVersion: 'musicxml-parser-1.0.0',
@@ -184,7 +189,7 @@ export function ImportsPage() {
       setSaveState('idle')
       setPracticeError(cause instanceof ExpectedPerformanceBuildError || cause instanceof Error ? cause.message : 'This score could not be saved and prepared for practice.')
     }
-  }, [arrangementName, existingWorkId, loaded, navigate, persistence.repository, practice, relationship, score, selectedPartIds, sourceWorkId])
+  }, [arrangementName, difficulty, existingWorkId, loaded, navigate, persistence.repository, practice, relationship, score, selectedPartIds, sourceWorkId])
 
   return (
     <div className="page imports-page phase-two-imports">
@@ -213,7 +218,7 @@ export function ImportsPage() {
           <div className="practice-prep-action">{practiceError && <span className="practice-build-error"><AlertCircle />{practiceError}</span>}<Button icon={saveState === 'saving' ? LoaderCircle : Play} disabled={stage !== 'ready' || selectedPartIds.length === 0 || saveState === 'saving' || persistence.status !== 'ready'} onClick={() => void beginPractice()}>{saveState === 'saving' ? 'Saving locally…' : 'Add to repertoire & practice'}</Button></div>
         </section>
         <section className="panel notation-panel"><div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Sheet music preview</h2><p>Rendered from the same canonical XML used by the normalized model</p></div></div><div className="notation-controls"><button onClick={() => setZoom((value) => Math.max(0.5, Number((value - 0.08).toFixed(2))))} aria-label="Zoom out"><Minus /></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom((value) => Math.min(1.5, Number((value + 0.08).toFixed(2))))} aria-label="Zoom in"><Plus /></button><button onClick={() => setZoom(0.82)} aria-label="Reset zoom"><Maximize2 /></button></div></div>{rendererError && <div className="renderer-inline-error"><AlertCircle /><span>{rendererError}</span></div>}<div className="notation-paper"><OsmdScoreRenderer musicXmlText={loaded.musicXmlText} zoom={zoom} onStateChange={handleRendererState} /></div><div className="notation-foot"><span><Info /> OSMD renders notation only; application-owned normalized events remain the score truth.</span><span><ChevronDown /> Scroll to inspect</span></div></section>
-        <div className="score-lower-grid"><RelationshipPanel relationship={relationship} onChange={setRelationship} works={persistedWorks} existingWorkId={existingWorkId} sourceWorkId={sourceWorkId} onExistingWorkChange={setExistingWorkId} onSourceWorkChange={setSourceWorkId} arrangementName={arrangementName} onArrangementNameChange={setArrangementName} /><WarningList warnings={score.warnings} /></div>
+        <div className="score-lower-grid"><RelationshipPanel relationship={relationship} onChange={setRelationship} works={persistedWorks} existingWorkId={existingWorkId} sourceWorkId={sourceWorkId} onExistingWorkChange={setExistingWorkId} onSourceWorkChange={setSourceWorkId} arrangementName={arrangementName} onArrangementNameChange={setArrangementName} difficulty={difficulty} onDifficultyChange={setDifficulty} /><WarningList warnings={score.warnings} /></div>
       </div>}
     </div>
   )

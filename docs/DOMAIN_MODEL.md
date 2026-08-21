@@ -89,7 +89,7 @@ Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rh
 
 ## PracticeSession and RepertoireEntry
 
-A PracticeSession represents one continuous practice visit and may own multiple PerformanceAttempts. Practice time is the completed session duration, so recording several takes does not multiply minutes. A RepertoireEntry is removable membership/status for an Arrangement; removing it preserves the underlying Work, Arrangement, ScoreVersions, sessions, and attempt history.
+A PracticeSession represents one mounted practice visit and may own multiple PerformanceAttempts. Its persisted span runs from the first saved take's recording start through the latest saved take's end, intentionally including time between takes in that visit. Practice time is that completed session span, so recording several takes does not multiply minutes and an idempotent retry cannot extend it. A RepertoireEntry is removable membership/status for an Arrangement; removing it preserves the underlying Work, Arrangement, ScoreVersions, sessions, and attempt history, and an exact re-import recreates only membership.
 
 ## Personal bests and progress
 
