@@ -13,9 +13,11 @@ import type {
   PracticeSessionRecord,
   ProgressRange,
   ProgressSnapshot,
+  RepertoireEntry,
   RepertoireListItem,
   StorageCounts,
 } from './types'
+import type { RepertoireStatus } from '../../domain/music'
 
 export interface PianoProgressRepository {
   initialize(): Promise<void>
@@ -30,6 +32,7 @@ export interface PianoProgressRepository {
   listAttemptSummaries(arrangementId?: string): Promise<readonly AttemptSummary[]>
   listSessions(arrangementId?: string): Promise<readonly PracticeSessionRecord[]>
   saveAttempt(input: AttemptSaveInput): Promise<AttemptSaveResult>
+  updateRepertoireStatus(arrangementId: string, status: RepertoireStatus): Promise<RepertoireEntry>
   removeFromRepertoire(arrangementId: string): Promise<void>
   getProgress(range: ProgressRange, now?: Date, timeZone?: string): Promise<ProgressSnapshot>
   getCounts(): Promise<StorageCounts>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AttemptSummary } from '../../persistence/types'
-import { detectPersonalBestEvents, derivePersonalBestHistory, derivePersonalBests, deriveRollingMetrics, metricSeriesSegments, selectLatestHeadlineAttempt } from '../model'
+import { detectPersonalBestEvents, derivePersonalBestHistory, derivePersonalBests, deriveRollingMetrics, isHeadlineComparable, metricSeriesSegments, selectLatestHeadlineAttempt } from '../model'
 
 function summary(id: string, notes: number | null, overrides: Partial<AttemptSummary> = {}): AttemptSummary {
   return {
@@ -43,6 +43,21 @@ describe('progress model', () => {
     expect(derivePersonalBests([partial])).toEqual([])
   })
 
+  it('allows reliable and limited aggregates but excludes provisional and unavailable headline claims', () => {
+    expect(isHeadlineComparable(summary('1', 0.8, { reliability: 'reliable' }))).toBe(true)
+    expect(isHeadlineComparable(summary('1', 0.8, { reliability: 'limited' }))).toBe(true)
+    expect(isHeadlineComparable(summary('1', 0.8, { reliability: 'provisional' }))).toBe(false)
+    expect(isHeadlineComparable(summary('1', 0.8, { reliability: 'unavailable' }))).toBe(false)
+  })
+
+  it('never lets a numerically higher provisional result create a PB or replace the valid headline context', () => {
+    const reliable = summary('1', 0.7)
+    const provisional = summary('2', 1, { reliability: 'provisional' })
+    expect(detectPersonalBestEvents(provisional, [reliable])).toEqual([])
+    expect(derivePersonalBestHistory([reliable, provisional]).filter((event) => event.attemptId === provisional.id)).toEqual([])
+    expect(selectLatestHeadlineAttempt([provisional, reliable])?.id).toBe(reliable.id)
+  })
+
   it('derives deterministic personal bests and rolling last-five windows', () => {
     const attempts = Array.from({ length: 10 }, (_, index) => summary(String(index + 1), (index + 1) / 10))
     expect(derivePersonalBests(attempts)[0]).toMatchObject({ metric: 'notes', value: 1, attemptId: '10' })
@@ -51,7 +66,7 @@ describe('progress model', () => {
     expect(deriveRollingMetrics(attempts, 3)[0]).toMatchObject({ windowSize: 3, currentCount: 3, previousCount: 3 })
   })
 
-  it('selects the newest reliable full-plan context, not a newer unavailable or partial attempt', () => {
+  it('selects the newest headline-comparable full-plan context, not a newer unavailable or partial attempt', () => {
     const reliable = summary('1', 0.8)
     const unavailable = summary('2', null, { reliability: 'unavailable' })
     const partial = summary('3', 1, { gradingScope: 'aligned-span' })

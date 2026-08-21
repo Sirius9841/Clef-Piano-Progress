@@ -39,6 +39,8 @@ import {
   type XmlElement,
 } from './xml'
 
+export const MUSICXML_PARSER_VERSION = 'musicxml-parser-1.0.0'
+
 interface ParserCollections {
   warnings: ScoreWarning[]
   tempoEvents: TempoEvent[]

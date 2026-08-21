@@ -26,7 +26,7 @@ export function MidiControls({ compact = false }: { compact?: boolean }) {
           <span>Input device</span>
           <select value={midi.selectedDeviceId ?? ''} onChange={(event) => void midi.selectDevice(event.target.value || null)}>
             <option value="">Select a MIDI input</option>
-            {midi.devices.map((device) => <option key={device.id} value={device.id}>{device.name} · {device.manufacturer}</option>)}
+            {midi.devices.map((device) => <option key={device.id} value={device.id} disabled={device.state !== 'connected'}>{device.name} · {device.manufacturer}{device.state !== 'connected' ? ' · disconnected' : ''}</option>)}
           </select>
         </label>
       )}

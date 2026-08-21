@@ -34,8 +34,12 @@ Imports support a new Work, another Arrangement of an existing Work, or a separa
 
 An existing attempt ID is a successful idempotent retry and creates no duplicate. Any intermediate failure aborts every write. Typed errors distinguish unavailable storage, corrupt records, broken references, immutable-identity conflicts, and transaction failures.
 
+Historical attempt reads defensively validate each nested snapshot object and its diagnostics before checking provenance. Missing or malformed alignment, note-grading, timing, or result structures therefore surface as a typed `CORRUPT_RECORD`, never as a leaked JavaScript property-access error.
+
 A PracticeSession spans the first saved take's recording start through the latest saved take's end within one mounted Practice visit. Time between those takes is intentionally part of that visit; attempts do not multiply the span. Retries return before session merging, and invalid or negative spans are rejected before writes.
 
 ## Privacy and limitations
 
-Data stays on the current browser profile and device. There is no account, server, upload, cloud sync, or remote backup. Browser or operating-system storage controls can erase the database. Settings reports record counts and offers one explicit destructive clear-all confirmation. Removing an Arrangement from active Repertoire preserves its history.
+Data stays on the current browser profile and device. There is no account, server, upload, cloud sync, or remote backup. Browser or operating-system storage controls can erase the database. Settings reports record counts and offers one explicit destructive clear-all confirmation. User-triggered clear and remove actions surface typed failures without claiming success or navigating away. Removing an Arrangement from active Repertoire preserves its history.
+
+Repertoire status is user-controlled metadata. Updating it validates the allowed status, changes only the active RepertoireEntry and its `updatedAt`, notifies repository subscribers, and preserves the Work, Arrangement, immutable ScoreVersions, sessions, and attempts.

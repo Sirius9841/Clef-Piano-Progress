@@ -73,6 +73,17 @@ function openDatabase(name: string): Promise<IDBDatabase> {
   })
 }
 
+async function putRawAttempt(name: string, value: unknown): Promise<void> {
+  const database = await openDatabase(name)
+  const transaction = database.transaction('performanceAttempts', 'readwrite')
+  transaction.objectStore('performanceAttempts').add(value)
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+  })
+  database.close()
+}
+
 function createLegacyV1Database(name: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(name, 1)
@@ -210,6 +221,45 @@ describe('IndexedDbPianoProgressRepository', () => {
     const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, difficulty: 'Advanced' } })
     expect(imported.arrangement.difficulty).toBe('Advanced')
     expect((await repo.listRepertoire())[0]?.arrangement.difficulty).toBe('Advanced')
+  })
+
+  it('updates only Repertoire status and preserves the changed filter state after reopening', async () => {
+    const name = 'status-update-db'
+    const repo = repository(name)
+    const imported = await repo.importScore(importInput())
+    const fixture = attemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    await repo.saveAttempt(fixture)
+    const beforeCounts = await repo.getCounts()
+    expect((await repo.listRepertoire())[0]?.repertoire.status).toBe('Learning')
+
+    let notifications = 0
+    const unsubscribe = repo.subscribe(() => { notifications += 1 })
+    await expect(repo.updateRepertoireStatus(imported.arrangement.id, 'Practicing')).resolves.toMatchObject({
+      id: imported.repertoire.id,
+      arrangementId: imported.arrangement.id,
+      status: 'Practicing',
+      updatedAt: '2026-08-21T12:00:00.000Z',
+    })
+    unsubscribe()
+    expect(notifications).toBe(1)
+    const reopened = repository(name)
+    const items = await reopened.listRepertoire()
+    expect(items.filter((item) => item.repertoire.status === 'Practicing')).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      work: { id: imported.work.id },
+      arrangement: { id: imported.arrangement.id },
+      scoreVersion: { id: imported.scoreVersion.id },
+      repertoire: { id: imported.repertoire.id, status: 'Practicing' },
+    })
+    expect(await reopened.getCounts()).toEqual(beforeCounts)
+    expect(await reopened.getAttempt(fixture.attempt.id)).not.toBeNull()
+  })
+
+  it('rejects an invalid Repertoire status without changing the entry', async () => {
+    const repo = repository('invalid-status-db')
+    const imported = await repo.importScore(importInput())
+    await expect(repo.updateRepertoireStatus(imported.arrangement.id, 'Archived' as never)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    expect((await repo.listRepertoire())[0]?.repertoire.status).toBe('Learning')
   })
 
   it('supports arrangements of existing Works and separate derived Works', async () => {
@@ -371,6 +421,20 @@ describe('IndexedDbPianoProgressRepository', () => {
       transaction.onerror = () => reject(transaction.error)
     })
     database.close()
+    await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it.each([
+    ['missing alignment diagnostics', (attempt: PerformanceAttemptRecord) => ({ ...attempt, alignment: { ...attempt.alignment, diagnostics: undefined } })],
+    ['malformed note-grading scope', (attempt: PerformanceAttemptRecord) => ({ ...attempt, noteGrading: { ...attempt.noteGrading, scope: null } })],
+    ['malformed timing diagnostics', (attempt: PerformanceAttemptRecord) => ({ ...attempt, timingAnalysis: { ...attempt.timingAnalysis, diagnostics: 'invalid' } })],
+    ['malformed result diagnostics', (attempt: PerformanceAttemptRecord) => ({ ...attempt, performanceResults: { ...attempt.performanceResults, diagnostics: 42 } })],
+  ])('returns a typed corruption error for %s', async (_label, corrupt) => {
+    const name = `malformed-nested-${_label}`
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = attemptFixture('arrangement', 'score')
+    await putRawAttempt(name, corrupt(fixture.attempt))
     await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
   })
 })

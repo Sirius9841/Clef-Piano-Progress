@@ -6,6 +6,7 @@ import type { RepertoireStatus } from '../domain/music'
 import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
 import { formatPercent } from '../features/progress/model'
+import { sortRepertoireItems, type RepertoireSort } from '../features/repertoire/sort'
 
 const filters: Array<'All' | RepertoireStatus> = ['All', 'Learning', 'Practicing', 'Performance Ready', 'Completed']
 
@@ -19,11 +20,12 @@ export function RepertoirePage() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<(typeof filters)[number]>('All')
   const [view, setView] = useState<'grid' | 'list'>('grid')
+  const [sort, setSort] = useState<RepertoireSort>('recently-practiced')
   const items = queryState.status === 'ready' ? queryState.data : []
-  const filtered = items.filter((item) => {
+  const filtered = sortRepertoireItems(items.filter((item) => {
     const matchesText = `${item.work.title} ${item.work.composer} ${item.arrangement.name}`.toLowerCase().includes(query.toLowerCase())
     return matchesText && (filter === 'All' || item.repertoire.status === filter)
-  })
+  }), sort)
 
   return (
     <div className="page">
@@ -35,7 +37,7 @@ export function RepertoirePage() {
         <div className="toolbar reveal delay-1">
           <label className="search-field"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, composer or arrangement" /></label>
           <div className="filter-tabs">{filters.map((item) => <button className={filter === item ? 'active' : ''} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div>
-          <button className="icon-button" aria-label="Sort repertoire"><ArrowDownUp size={17} /></button>
+          <label className="filter-select"><ArrowDownUp size={17} /><span>Sort</span><select aria-label="Sort repertoire" value={sort} onChange={(event) => setSort(event.target.value as RepertoireSort)}><option value="recently-practiced">Recently practiced</option><option value="date-added">Date added</option><option value="title">Title A–Z</option><option value="status">Status</option></select></label>
           <div className="view-toggle"><button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')} aria-label="Grid view"><Grid2X2 size={16} /></button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')} aria-label="List view"><List size={17} /></button></div>
         </div>
         <div className={`repertoire-grid ${view} reveal delay-2`}>

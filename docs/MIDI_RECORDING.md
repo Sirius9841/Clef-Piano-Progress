@@ -16,6 +16,19 @@ Sustain changes are preserved and counted, but they do not extend the physical k
 
 ## Disconnects and statistics
 
-A selected-device disconnect stops capture with `device-disconnected`, retaining all data collected so far. Diagnostics include event, attack, release, unique-pitch, sustain-change, open-note, and orphan-release counts plus attack-velocity minimum, maximum, and average. They are capture facts, not performance-quality scores.
+A selected-device disconnect stops capture with `device-disconnected`, retaining all data collected so far. A disconnect means either that the selected ID disappears or that the same ID remains present with a state other than `connected`. The provider clears selection, active keys, and sustain; its recording lifecycle then finalizes the active take. Reconnecting only makes the input available for explicit reselection. It never appends to or resumes the frozen take, and a subsequent Start creates a fresh recording ID and buffer.
+
+The exact lifecycle is:
+
+```text
+connected and selected
+→ removed or same-ID disconnected
+→ provider clears input/keys/sustain
+→ recorder stops with device-disconnected
+→ reconnect remains unselected and does not resume
+→ explicit reselect + Start creates a new take
+```
+
+Diagnostics include event, attack, release, unique-pitch, sustain-change, open-note, and orphan-release counts plus attack-velocity minimum, maximum, and average. They are capture facts, not performance-quality scores.
 
 React controls Start, Stop, Record Again, and Discard, but the authoritative event buffer and all semantics remain in the domain service. Visual updates are animation-frame batched without dropping recorder events.

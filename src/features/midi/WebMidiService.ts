@@ -3,6 +3,13 @@ import type { MidiDevice, MidiEvent } from './types'
 
 type DeviceListener = (devices: MidiDevice[]) => void
 type EventListener = (event: MidiEvent) => void
+export type MidiAccessRequester = (options: MIDIOptions) => Promise<MIDIAccess>
+
+function defaultMidiAccessRequester(): MidiAccessRequester | null {
+  if (typeof navigator === 'undefined' || typeof navigator.requestMIDIAccess !== 'function') return null
+  const request = navigator.requestMIDIAccess.bind(navigator)
+  return (options) => request(options)
+}
 
 export class WebMidiService {
   private access: MIDIAccess | null = null
@@ -10,17 +17,19 @@ export class WebMidiService {
   private deviceListeners = new Set<DeviceListener>()
   private eventListeners = new Set<EventListener>()
 
+  constructor(private readonly requestMidiAccess: MidiAccessRequester | null = defaultMidiAccessRequester()) {}
+
   get isSupported(): boolean {
-    return typeof navigator !== 'undefined' && typeof navigator.requestMIDIAccess === 'function'
+    return this.requestMidiAccess !== null
   }
 
   async requestAccess(): Promise<MidiDevice[]> {
-    if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not supported in this browser.')
-    this.access = await navigator.requestMIDIAccess({ sysex: false })
+    if (!this.requestMidiAccess) throw new Error('Web MIDI is not supported in this browser.')
+    this.access = await this.requestMidiAccess({ sysex: false })
     this.access.onstatechange = () => {
       const devices = this.getDevices()
       if (this.selectedInput && !devices.some((device) => device.id === this.selectedInput?.id && device.state === 'connected')) {
-        void this.selectInput(null)
+        void this.selectInput(null).catch(() => { /* state change still clears the unavailable selection */ })
       }
       this.emitDevices(devices)
     }
@@ -48,7 +57,7 @@ export class WebMidiService {
 
     if (!deviceId || !this.access) return
     const input = this.access.inputs.get(deviceId)
-    if (!input) throw new Error('The selected MIDI input is no longer available.')
+    if (!input || input.state !== 'connected') throw new Error('The selected MIDI input is no longer available.')
 
     await input.open()
     input.onmidimessage = (message) => {

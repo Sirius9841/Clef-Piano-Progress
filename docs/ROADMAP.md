@@ -41,3 +41,5 @@ Dynamics and articulation analysis.
 Pedal analysis, reference-performance expression, Technique Lab exercises, and transferable skill measurement.
 
 Phase 8 keeps Notes, Rhythm, and Tempo separate while deriving context-safe personal bests and trends. It does not calculate dynamics, articulation, pedal quality, an overall Performance Score, Mastery, cloud sync, or accounts.
+
+The pre-Phase-9 hardening pass adds same-ID MIDI disconnect safety, truthful Library and Technique previews, conservative PB reliability eligibility, captured-speed locking, user-controlled Repertoire status and sorting, defensive persistence mutation/corruption handling, and validation CI. It does not add expressive grading.

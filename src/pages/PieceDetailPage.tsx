@@ -2,11 +2,13 @@ import { ArrowLeft, CalendarDays, FileMusic, History, Play, Trash2 } from 'lucid
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, PageHeader, SectionHeading, Stat } from '../components/ui'
+import { REPERTOIRE_STATUSES, type RepertoireStatus } from '../domain/music'
 import { buildExpectedPerformancePlan } from '../features/expected-performance/builder'
 import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
 import { scoreVersionNumberForAttempt } from '../features/persistence/history'
+import { removeRepertoireSafely, updateRepertoireStatusSafely } from '../features/persistence/mutations'
 import type { AttemptSummary, PersistedScoreVersion, RepertoireListItem } from '../features/persistence/types'
 import { comparableAttemptKey, derivePersonalBests, formatPercent, selectLatestHeadlineAttempt } from '../features/progress/model'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
@@ -32,6 +34,7 @@ export function PieceDetailPage() {
   const persistence = usePersistence()
   const practice = usePracticeSession()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [mutationState, setMutationState] = useState<'idle' | 'saving'>('idle')
   const state = useRepositoryQuery<PieceData>(async (repository) => {
     const [items, attempts, scoreVersions] = await Promise.all([repository.listRepertoire(), repository.listAttemptSummaries(arrangementId), repository.listScoreVersions(arrangementId)])
     return { item: items.find((candidate) => candidate.arrangement.id === arrangementId) ?? null, attempts, scoreVersions }
@@ -47,6 +50,7 @@ export function PieceDetailPage() {
 
   const startPractice = () => {
     if (!item) return
+    setActionError(null)
     try {
       const score = parseMusicXml(item.scoreVersion.canonicalMusicXml)
       const plan = buildExpectedPerformancePlan(score, { includedPartIds: [...item.scoreVersion.includedPartIds], fallbackQuarterBpm: 120 })
@@ -76,8 +80,24 @@ export function PieceDetailPage() {
     if (!item || !persistence.repository) return
     const confirmed = window.confirm(`Remove “${item.work.title}” from Repertoire? Its score versions, sessions, and performance history will be preserved.`)
     if (!confirmed) return
-    await persistence.repository.removeFromRepertoire(item.arrangement.id)
+    setActionError(null)
+    setMutationState('saving')
+    const result = await removeRepertoireSafely(persistence.repository, item.arrangement.id)
+    setMutationState('idle')
+    if (!result.ok) {
+      setActionError(`Repertoire removal failed: ${result.error.message} You can retry safely.`)
+      return
+    }
     navigate('/repertoire')
+  }
+
+  const updateStatus = async (status: RepertoireStatus) => {
+    if (!item || !persistence.repository || status === item.repertoire.status) return
+    setActionError(null)
+    setMutationState('saving')
+    const result = await updateRepertoireStatusSafely(persistence.repository, item.arrangement.id, status)
+    setMutationState('idle')
+    if (!result.ok) setActionError(`Status update failed: ${result.error.message} Your existing status was preserved.`)
   }
 
   if (state.status === 'loading') return <div className="page"><div className="route-loader"><strong>Opening arrangement history…</strong></div></div>
@@ -104,7 +124,8 @@ export function PieceDetailPage() {
         {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <div className="attempt-history-list">{attempts.map((attempt) => { const version = scoreVersionNumberForAttempt(attempt, data?.scoreVersions ?? []); return <Link key={attempt.id} to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>{version === null ? 'Score version unavailable' : `Score v${version}`} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link> })}</div>}
       </section>
 
-      <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire membership</strong><p>Removing this arrangement hides it from active repertoire while preserving its immutable score and history.</p></div><Button variant="ghost" icon={Trash2} onClick={() => void remove()}>Remove from repertoire</Button></section>
+      <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire status</strong><p>This user-controlled status changes only active Repertoire membership metadata; score versions and history remain immutable.</p></div><label className="select-field"><span>Current status</span><select value={item.repertoire.status} disabled={mutationState === 'saving'} onChange={(event) => void updateStatus(event.target.value as RepertoireStatus)}>{REPERTOIRE_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label></section>
+      <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire membership</strong><p>Removing this arrangement hides it from active repertoire while preserving its immutable score and history.</p></div><Button variant="ghost" icon={Trash2} disabled={mutationState === 'saving'} onClick={() => void remove()}>{mutationState === 'saving' ? 'Saving…' : 'Remove from repertoire'}</Button></section>
     </div>
   )
 }

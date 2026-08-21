@@ -1,19 +1,33 @@
 import { Cable, ChevronRight, Database, Eye, Gauge, Info, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { PageHeader, SectionHeading, StatusPill } from '../components/ui'
 import { MidiControls } from '../features/midi/MidiControls'
 import { MidiDiagnostics } from '../features/midi/MidiDiagnostics'
 import { useMidi } from '../features/midi/MidiContext'
 import { PianoKeyboard } from '../features/midi/PianoKeyboard'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
+import { clearLocalDataSafely } from '../features/persistence/mutations'
 
 export function SettingsPage() {
   const midi = useMidi()
   const persistence = usePersistence()
   const counts = useRepositoryQuery((repository) => repository.getCounts(), 'storage-counts')
+  const [clearState, setClearState] = useState<'idle' | 'clearing' | 'cleared' | 'error'>('idle')
+  const [clearMessage, setClearMessage] = useState<string | null>(null)
   const clearAll = async () => {
     if (!persistence.repository) return
     const confirmed = window.confirm('Clear all local Clef data? This permanently deletes Works, Arrangements, ScoreVersions, raw MIDI recordings, sessions, and every saved result from this browser. This cannot be undone.')
-    if (confirmed) await persistence.repository.clearAll()
+    if (!confirmed) return
+    setClearState('clearing')
+    setClearMessage(null)
+    const result = await clearLocalDataSafely(persistence.repository)
+    if (!result.ok) {
+      setClearState('error')
+      setClearMessage(`Local data was not cleared: ${result.error.message} You can retry safely.`)
+      return
+    }
+    setClearState('cleared')
+    setClearMessage('All local Clef records were cleared from this browser.')
   }
   return (
     <div className="page settings-page">
@@ -29,7 +43,8 @@ export function SettingsPage() {
           {counts.status === 'loading' && <p>Counting local records…</p>}
           {counts.status === 'error' && <p>{counts.error.message}</p>}
           {counts.status === 'ready' && <div className="storage-counts"><span><strong>{counts.data.works}</strong> Works</span><span><strong>{counts.data.arrangements}</strong> Arrangements</span><span><strong>{counts.data.scoreVersions}</strong> ScoreVersions</span><span><strong>{counts.data.practiceSessions}</strong> Sessions</span><span><strong>{counts.data.performanceAttempts}</strong> Attempts</span></div>}
-          <div className="local-data-actions"><div><strong>Clear all local data</strong><p>Browser storage can also be cleared by browser or operating-system controls. Clef has no remote copy.</p></div><button className="button ghost danger" onClick={() => void clearAll()}><Trash2 size={16} /> Clear all data</button></div>
+          {clearMessage && <div className={clearState === 'error' ? 'renderer-inline-error' : 'save-confirmation'}>{clearMessage}</div>}
+          <div className="local-data-actions"><div><strong>Clear all local data</strong><p>Browser storage can also be cleared by browser or operating-system controls. Clef has no remote copy.</p></div><button className="button ghost danger" disabled={clearState === 'clearing'} onClick={() => void clearAll()}><Trash2 size={16} /> {clearState === 'clearing' ? 'Clearing…' : 'Clear all data'}</button></div>
         </div>
       </section>
       <section className="future-settings reveal delay-2">

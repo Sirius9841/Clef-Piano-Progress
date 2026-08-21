@@ -22,6 +22,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - ScoreVersions are historically immutable. A changed import creates a new version.
 - Future performances reference the exact ScoreVersion and grading-engine version used.
 - Preserve historical performance semantics so results remain reproducible.
+- Headline progress comparisons accept reliable and limited full-plan results only; provisional or unavailable results never create personal-best or trend claims.
 
 ## Engineering rules
 
@@ -56,6 +57,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - React controls the recorder but never owns its authoritative event buffer or note-pairing semantics.
 - Sustain events are preserved, but Phase 3 sustain does not extend physical key-release spans.
 - Recording tests use injected clocks and IDs, never real sleeps.
+- Treat a selected device whose ID remains present but whose state is no longer `connected` exactly like a removed device: clear selection, keys, and sustain, stop the recorder, and never resume the stopped take after reconnect.
 - Do not infer correctness, alignment, timing quality, or grading inside recorder services or React components.
 
 ## Alignment rules

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ScoreImportError } from '../errors'
 import { musicalTime } from '../musicalTime'
-import { parseMusicXml } from '../parser'
+import { MUSICXML_PARSER_VERSION, parseMusicXml } from '../parser'
 import {
   accidentalsFixture,
   basicMelodyFixture,
@@ -16,6 +16,10 @@ import {
 } from './fixtures'
 
 describe('MusicXML normalized parser', () => {
+  it('owns one explicit parser version for persisted ScoreVersion provenance', () => {
+    expect(MUSICXML_PARSER_VERSION).toMatch(/^musicxml-parser-\d+\.\d+\.\d+$/)
+  })
+
   it('parses metadata, melody, rests, context, and basic measure timing', () => {
     const score = parseMusicXml(basicMelodyFixture)
     const measure = score.parts[0]?.measures[0]

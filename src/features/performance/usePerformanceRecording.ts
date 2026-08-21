@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMidi } from '../midi/MidiContext'
 import { PerformanceRecorder } from './recorder'
+import { RecordingDeviceLifecycle } from './recordingDeviceLifecycle'
 import type { PerformanceRecording, RecorderState, RecordingPracticeContext } from './types'
 
 export function usePerformanceRecording(practiceContext: RecordingPracticeContext) {
@@ -9,7 +10,7 @@ export function usePerformanceRecording(practiceContext: RecordingPracticeContex
   const [recorder] = useState(() => new PerformanceRecorder())
   const [state, setState] = useState<RecorderState>({ status: 'idle' })
   const [elapsedMs, setElapsedMs] = useState(0)
-  const recordingDeviceId = useRef<string | null>(null)
+  const recordingDeviceLifecycle = useRef(new RecordingDeviceLifecycle())
   const presentationFrame = useRef<number | null>(null)
   const recordingStartedAt = state.status === 'recording' ? state.startedAtMonotonicMs : null
 
@@ -37,16 +38,16 @@ export function usePerformanceRecording(practiceContext: RecordingPracticeContex
   }, [recordingStartedAt])
 
   useEffect(() => {
-    if (state.status !== 'recording' || recordingDeviceId.current === midi.selectedDeviceId) return
-    const recording = recorder.handleDeviceDisconnect()
-    recordingDeviceId.current = null
+    if (state.status !== 'recording') return
+    const recording = recordingDeviceLifecycle.current.reconcile(midi.selectedDeviceId, recorder)
+    if (!recording) return
     setElapsedMs(recording?.durationMs ?? 0)
     setState(recorder.state)
   }, [midi.selectedDeviceId, recorder, state.status])
 
   const start = useCallback(() => {
     if (!midi.selectedDevice) return false
-    recordingDeviceId.current = midi.selectedDevice.id
+    recordingDeviceLifecycle.current.attach(midi.selectedDevice.id)
     const next = recorder.start({
       device: { id: midi.selectedDevice.id, name: midi.selectedDevice.name, manufacturer: midi.selectedDevice.manufacturer },
       practiceContext,
@@ -58,7 +59,7 @@ export function usePerformanceRecording(practiceContext: RecordingPracticeContex
 
   const stop = useCallback(() => {
     const recording = recorder.stop('user')
-    recordingDeviceId.current = null
+    recordingDeviceLifecycle.current.clear()
     setElapsedMs(recording?.durationMs ?? 0)
     setState(recorder.state)
     return recording
@@ -66,7 +67,7 @@ export function usePerformanceRecording(practiceContext: RecordingPracticeContex
 
   const discard = useCallback(() => {
     recorder.discard()
-    recordingDeviceId.current = null
+    recordingDeviceLifecycle.current.clear()
     setElapsedMs(0)
     setState(recorder.state)
   }, [recorder])

@@ -1,42 +1,25 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
 import { MidiContext, type MidiContextValue } from './MidiContext'
 import { WebMidiService } from './WebMidiService'
-import type { ActiveNote, MidiAccessState, MidiDevice, MidiEvent } from './types'
+import { INITIAL_MIDI_RUNTIME_STATE, reduceMidiRuntimeState } from './runtimeState'
+import type { MidiAccessState, MidiEvent } from './types'
 const MAX_RECENT_EVENTS = 12
 
 export function MidiProvider({ children }: { children: ReactNode }) {
   const [service] = useState(() => new WebMidiService())
 
   const [accessState, setAccessState] = useState<MidiAccessState>('idle')
-  const [devices, setDevices] = useState<MidiDevice[]>([])
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
-  const [activeNotes, setActiveNotes] = useState<ActiveNote[]>([])
-  const [sustainDown, setSustainDown] = useState(false)
+  const [runtime, dispatchRuntime] = useReducer(reduceMidiRuntimeState, INITIAL_MIDI_RUNTIME_STATE)
   const [recentEvents, setRecentEvents] = useState<MidiEvent[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const unsubscribeDevices = service.subscribeToDevices((nextDevices) => {
-      setDevices(nextDevices)
-      setSelectedDeviceId((current) => {
-        if (current && !nextDevices.some((device) => device.id === current)) {
-          setError('The selected MIDI input was disconnected.')
-          setActiveNotes([])
-          setSustainDown(false)
-          return null
-        }
-        return current
-      })
+      dispatchRuntime({ type: 'devices-changed', devices: nextDevices })
     })
     const unsubscribeEvents = service.subscribeToEvents((event) => {
       setRecentEvents((current) => [event, ...current].slice(0, MAX_RECENT_EVENTS))
-      if (event.type === 'note-on') {
-        setActiveNotes((current) => [...current.filter((note) => note.note !== event.note), { note: event.note, velocity: event.velocity }])
-      } else if (event.type === 'note-off') {
-        setActiveNotes((current) => current.filter((note) => note.note !== event.note))
-      } else {
-        setSustainDown(event.down)
-      }
+      dispatchRuntime({ type: 'event-received', event })
     })
 
     return () => {
@@ -57,7 +40,7 @@ export function MidiProvider({ children }: { children: ReactNode }) {
     setError(null)
     try {
       const nextDevices = await service.requestAccess()
-      setDevices(nextDevices)
+      dispatchRuntime({ type: 'devices-changed', devices: nextDevices })
       setAccessState('granted')
       if (nextDevices.length === 0) setError('MIDI access is ready, but no input devices were detected.')
     } catch (cause) {
@@ -70,35 +53,35 @@ export function MidiProvider({ children }: { children: ReactNode }) {
 
   const selectDevice = useCallback(async (id: string | null) => {
     setError(null)
-    setActiveNotes([])
-    setSustainDown(false)
+    dispatchRuntime({ type: 'selection-changed', deviceId: null })
     try {
       await service.selectInput(id)
-      setSelectedDeviceId(id)
+      dispatchRuntime({ type: 'selection-changed', deviceId: id })
     } catch (cause) {
-      setSelectedDeviceId(null)
+      dispatchRuntime({ type: 'selection-changed', deviceId: null })
       setError(cause instanceof Error ? cause.message : 'Could not connect to the selected MIDI input.')
     }
   }, [service])
 
   const subscribeToEvents = useCallback((listener: (event: MidiEvent) => void) => service.subscribeToEvents(listener), [service])
 
-  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? null
+  const selectedDevice = runtime.devices.find((device) => device.id === runtime.selectedDeviceId && device.state === 'connected') ?? null
+  const presentedError = error ?? runtime.disconnectError
   const value = useMemo<MidiContextValue>(() => ({
     supported: service.isSupported,
     accessState,
-    devices,
-    selectedDeviceId,
+    devices: [...runtime.devices],
+    selectedDeviceId: runtime.selectedDeviceId,
     selectedDevice,
-    activeNotes,
-    sustainDown,
+    activeNotes: [...runtime.activeNotes],
+    sustainDown: runtime.sustainDown,
     recentEvents,
-    error,
+    error: presentedError,
     requestAccess,
     selectDevice,
     subscribeToEvents,
     clearEvents: () => setRecentEvents([]),
-  }), [accessState, activeNotes, devices, error, recentEvents, requestAccess, selectDevice, selectedDevice, selectedDeviceId, service.isSupported, subscribeToEvents, sustainDown])
+  }), [accessState, presentedError, recentEvents, requestAccess, runtime.activeNotes, runtime.devices, runtime.selectedDeviceId, runtime.sustainDown, selectDevice, selectedDevice, service.isSupported, subscribeToEvents])
 
   return <MidiContext.Provider value={value}>{children}</MidiContext.Provider>
 }

@@ -43,7 +43,7 @@ function average(values: readonly number[]): number | null {
 }
 
 export function isHeadlineComparable(attempt: AttemptSummary): boolean {
-  return attempt.gradingScope === 'full-plan' && attempt.reliability !== 'unavailable'
+  return attempt.gradingScope === 'full-plan' && (attempt.reliability === 'reliable' || attempt.reliability === 'limited')
 }
 
 export function comparableAttemptKey(attempt: AttemptSummary): string {

@@ -1,6 +1,7 @@
 import { PianoStorageError, asPianoStorageError } from './errors'
 import { sha256Hex } from './hash'
 import { localCalendarDateKey } from './localCalendar'
+import { isRepertoireStatus, type RepertoireStatus } from '../../domain/music'
 import type { PianoProgressRepository } from './repository'
 import {
   PERSISTENCE_SCHEMA_VERSION,
@@ -79,6 +80,10 @@ function assertRecord(value: unknown, label: string): asserts value is { id: str
   }
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
 function assertWork(value: unknown): asserts value is PersistedWork {
   assertRecord(value, 'Work')
   const work = value as Partial<PersistedWork>
@@ -124,6 +129,16 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   const noteGrading = attempt.noteGrading
   const timing = attempt.timingAnalysis
   const results = attempt.performanceResults
+  if (
+    ![versions, plan, recording, alignment, noteGrading, timing, results].every(isObjectRecord)
+    || !isObjectRecord(noteGrading.scope)
+    || !isObjectRecord(alignment.diagnostics)
+    || !isObjectRecord(noteGrading.diagnostics)
+    || !isObjectRecord(timing.diagnostics)
+    || !isObjectRecord(results.diagnostics)
+  ) {
+    throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed nested snapshots.`)
+  }
   if (
     !isCanonicalIsoTimestamp(recording.startedAt)
     || !Number.isFinite(recording.durationMs)
@@ -658,6 +673,27 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     if (entry) store.delete(entry.id)
     await transactionComplete(transaction)
     this.notify()
+  }
+
+  async updateRepertoireStatus(arrangementId: string, status: RepertoireStatus): Promise<RepertoireEntry> {
+    if (!isRepertoireStatus(status)) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'Choose a valid Repertoire status.')
+    const database = await this.openDatabase()
+    const transaction = database.transaction(STORE.repertoire, 'readwrite')
+    const completion = transactionComplete(transaction)
+    try {
+      const store = transaction.objectStore(STORE.repertoire)
+      const entry = await requestValue(store.index('arrangementId').get(arrangementId)) as RepertoireEntry | undefined
+      if (!entry) throw new PianoStorageError('NOT_FOUND', 'This Arrangement is not in active Repertoire.')
+      const updated: RepertoireEntry = { ...entry, status, updatedAt: this.now().toISOString() }
+      store.put(updated)
+      await completion
+      this.notify()
+      return updated
+    } catch (cause) {
+      try { transaction.abort() } catch { /* already completed or aborted */ }
+      try { await completion } catch { /* preserve original error */ }
+      throw asPianoStorageError(cause, 'The Repertoire status could not be updated.')
+    }
   }
 
   async getProgress(range: ProgressRange, now = this.now(), timeZone?: string): Promise<ProgressSnapshot> {

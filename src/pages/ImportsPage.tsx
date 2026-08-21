@@ -11,7 +11,7 @@ import demoScoreXml from '../features/musicxml/demo-score.musicxml?raw'
 import { asScoreImportError, type ScoreImportError } from '../features/musicxml/errors'
 import { loadMusicXmlFile } from '../features/musicxml/fileLoader'
 import { formatMusicalTime } from '../features/musicxml/musicalTime'
-import { parseMusicXml } from '../features/musicxml/parser'
+import { MUSICXML_PARSER_VERSION, parseMusicXml } from '../features/musicxml/parser'
 import type { LoadedMusicXml, NormalizedScore, ScoreFileLike, ScoreWarning } from '../features/musicxml/types'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import type { PersistedWork } from '../features/persistence/types'
@@ -179,7 +179,7 @@ export function ImportsPage() {
         arrangement: { name: arrangementName, difficulty, includedPartIds: selectedPartIds },
         loaded,
         normalizedScoreId: score.id,
-        parserVersion: 'musicxml-parser-1.0.0',
+        parserVersion: MUSICXML_PARSER_VERSION,
         status: 'Learning',
       })
       setSaveState('saved')
