@@ -1,22 +1,27 @@
 import { AlertTriangle, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay'
+import type { ScoreHighlightModel } from '../performance-results/highlightModel'
+import { ScoreResultOverlay } from './ScoreResultOverlay'
 
 export type ScoreRenderState = 'loading' | 'ready' | 'error'
 
 export interface OsmdScoreRendererProps {
   musicXmlText: string
   zoom: number
+  highlights?: ScoreHighlightModel | null
   onStateChange?: (state: ScoreRenderState, message?: string) => void
 }
 
-export function OsmdScoreRenderer({ musicXmlText, zoom, onStateChange }: OsmdScoreRendererProps) {
+export function OsmdScoreRenderer({ musicXmlText, zoom, highlights = null, onStateChange }: OsmdScoreRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<OpenSheetMusicDisplay | null>(null)
   const generationRef = useRef(0)
   const zoomRef = useRef(zoom)
   const [state, setState] = useState<ScoreRenderState>('loading')
   const [message, setMessage] = useState<string | null>(null)
+  const highlightFocusKey = highlights?.focusKey ?? null
+  const hasSelectedHighlights = (highlights?.selectedMeasureResultIds.length ?? 0) > 0
 
   useEffect(() => {
     zoomRef.current = zoom
@@ -72,8 +77,14 @@ export function OsmdScoreRenderer({ musicXmlText, zoom, onStateChange }: OsmdSco
     instance.render()
   }, [state, zoom])
 
+  useEffect(() => {
+    if (!hasSelectedHighlights) return
+    containerRef.current?.closest('.notation-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [hasSelectedHighlights, highlightFocusKey])
+
   return (
     <div className={`osmd-renderer ${state}`}>
+      {highlights && <ScoreResultOverlay model={highlights} />}
       {state === 'loading' && <div className="osmd-loading"><LoaderCircle className="spin" /><strong>Engraving notation</strong><span>Loading the isolated score renderer…</span></div>}
       {state === 'error' && <div className="osmd-error"><AlertTriangle /><strong>Notation preview unavailable</strong><span>{message}</span></div>}
       <div ref={containerRef} className="osmd-container" aria-label="Rendered sheet music" />

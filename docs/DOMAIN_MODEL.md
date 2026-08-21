@@ -80,3 +80,9 @@ Every result records aligned-span or full-plan scope and reliable, provisional, 
 `TimingAnalysisResult` is the immutable, versioned Phase 6 interpretation of the existing alignment clock and the selected Phase 5 scope. Its `RhythmAnalysis` records matched-onset provenance, local interval ratios, tempo-normalized error, human-timing tolerance, robust rhythm score, chord-spread diagnostics, and measure foundations. Its separate `TempoAnalysis` records effective target tempo, global tempo ratio, local tempo samples, stability, trend, numeric tempo regions, and qualitative direction observations.
 
 The global affine `timeScale` describes performed duration per unit of effective reference duration; the musically presented `tempoRatio` is its inverse. A 1.25× time scale therefore means approximately 80% of target tempo. Neither result uses pitch correctness as partial timing credit, and neither uses velocity, release duration, articulation, or pedal data. Notes, Rhythm, and Tempo are not combined into an overall Performance Score yet.
+
+## Performance results
+
+`PerformanceResults` is the immutable, versioned Phase 7 aggregation snapshot for one exact normalized score, expected plan, alignment, note grade, timing analysis, and grading scope. It contains measure results, sliding section results, weak and strong section recommendations, a deterministic musical-order mistake index, accessible heatmap data, and mappings back to expected attacks and normalized source IDs.
+
+Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rhythm, and 20% Tempo, renormalizes missing dimensions, and adjusts the ranking by evidence confidence. It answers “where should this take be reviewed first?” It is explicitly not the attempt's overall Performance Score, arrangement Mastery, a personal best, or a transferable SkillRating. Phase 7 results remain session-only and do not create a persisted PerformanceAttempt.

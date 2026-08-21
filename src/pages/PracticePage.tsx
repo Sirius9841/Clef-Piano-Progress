@@ -1,5 +1,5 @@
 import { Activity, AlertCircle, ArrowLeft, Cable, CircleStop, Clock3, FileMusic, Gauge, Music2, Play, RotateCcw, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, StatusPill } from '../components/ui'
 import { repertoire } from '../data/mockData'
@@ -14,6 +14,9 @@ import { NoteGradingPanel } from '../features/note-grading/NoteGradingPanel'
 import { useNoteGradingAnalysis } from '../features/note-grading/useNoteGradingAnalysis'
 import type { GradingScopeType } from '../features/note-grading/types'
 import { usePerformanceRecording } from '../features/performance/usePerformanceRecording'
+import { PerformanceResultsPanel } from '../features/performance-results/PerformanceResultsPanel'
+import type { ScoreHighlightModel } from '../features/performance-results/highlightModel'
+import { usePerformanceResults } from '../features/performance-results/usePerformanceResults'
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
@@ -42,6 +45,7 @@ export function PracticePage() {
   const practice = usePracticeSession()
   const midi = useMidi()
   const [zoom, setZoom] = useState(0.72)
+  const [scoreHighlights, setScoreHighlights] = useState<ScoreHighlightModel | null>(null)
   const item = repertoire.find((candidate) => candidate.arrangement.id === arrangementId)
   const session = arrangementId === 'session' ? practice.session : null
 
@@ -58,11 +62,21 @@ export function PracticePage() {
   const noteGrading = useNoteGradingAnalysis(session?.plan ?? null, capture.recording, alignmentResult)
   const noteGradingResult = noteGrading.state.status === 'ready' || noteGrading.state.status === 'unavailable' ? noteGrading.state.result ?? null : null
   const timing = useTimingAnalysis(session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
+  const timingResult = timing.state.status === 'ready' || timing.state.status === 'unavailable' ? timing.state.result ?? null : null
+  const performanceResults = usePerformanceResults(session?.score ?? null, session?.plan ?? null, alignmentResult, noteGradingResult, timingResult)
 
   const analyzeTiming = async (scope: GradingScopeType) => {
     const grading = noteGradingResult?.scope.type === scope ? noteGradingResult : await noteGrading.analyze(scope)
     if (grading) await timing.analyze(grading)
   }
+
+  const analyzeResults = async (scope: GradingScopeType) => {
+    const grading = noteGradingResult?.scope.type === scope ? noteGradingResult : await noteGrading.analyze(scope)
+    if (!grading) return
+    const nextTiming = timingResult?.noteGradingId === grading.id ? timingResult : await timing.analyze(grading)
+    if (nextTiming) await performanceResults.analyze(grading, nextTiming)
+  }
+  const updateScoreHighlights = useCallback((model: ScoreHighlightModel | null) => setScoreHighlights(model), [])
 
   if (!session) {
     const title = item?.work.title ?? 'No practice score loaded'
@@ -87,7 +101,7 @@ export function PracticePage() {
   const activeAttackCount = capture.recording?.statistics.noteAttackCount ?? midi.activeNotes.length
 
   return (
-    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice ${capture.state.status}`}>
+    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice phase-seven-practice ${capture.state.status}`}>
       <Link to="/imports" className="back-link"><ArrowLeft size={15} /> Back to score import</Link>
       <header className="practice-header">
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
@@ -96,8 +110,8 @@ export function PracticePage() {
 
       <div className="practice-workspace">
         <section className="panel notation-panel practice-notation">
-          <div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Sheet music</h2><p>Reference notation only — no correctness highlighting</p></div></div><div className="notation-controls"><button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.5, value - 0.08))}>−</button><span>{Math.round(zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.2, value + 0.08))}>+</button></div></div>
-          <div className="notation-paper"><OsmdScoreRenderer musicXmlText={session.source.musicXmlText} zoom={zoom} /></div>
+          <div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Sheet music</h2><p>{scoreHighlights ? 'Result focus uses application-owned score mapping' : 'Reference notation — result issues appear after analysis'}</p></div></div><div className="notation-controls"><button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.5, value - 0.08))}>−</button><span>{Math.round(zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.2, value + 0.08))}>+</button></div></div>
+          <div className="notation-paper"><OsmdScoreRenderer musicXmlText={session.source.musicXmlText} zoom={zoom} highlights={scoreHighlights} /></div>
         </section>
 
         <aside className="practice-sidebar">
@@ -123,9 +137,15 @@ export function PracticePage() {
         <section className="panel expected-summary"><div className="section-heading"><div><h2><Music2 /> Expected score</h2><p>Plan data, not a performance grade</p></div></div><div className="summary-metrics"><div><span>Required attacks</span><strong>{plan.statistics.requiredAttackCount}</strong></div><div><span>Onset groups</span><strong>{plan.statistics.onsetGroupCount}</strong></div><div><span>Multi-note groups</span><strong>{plan.statistics.multiNoteGroupCount}</strong></div><div><span>Score span</span><strong>{formatMusicalTime(plan.statistics.totalScoreDuration)}</strong><small>quarter units</small></div></div><div className="timeline-preview"><Clock3 /><span>Reference at 100% <strong>{formatDuration(referenceMs)}</strong></span><span>At {Math.round(session.speedMultiplier * 100)}% <strong>{formatDuration(practiceMs)}</strong></span>{plan.tempoTimeline.usesFallback && <em>120 BPM fallback before authored tempo</em>}</div></section>
         <section className="panel take-summary"><div className="section-heading"><div><h2><Activity /> Captured take</h2><p>Objective MIDI diagnostics only</p></div></div>{capture.recording ? <><div className="summary-metrics"><div><span>MIDI events</span><strong>{capture.recording.statistics.eventCount}</strong></div><div><span>Note attacks</span><strong>{capture.recording.statistics.noteAttackCount}</strong></div><div><span>Unique pitches</span><strong>{capture.recording.statistics.uniquePitchCount}</strong></div><div><span>Open notes</span><strong>{capture.recording.statistics.openNoteCount}</strong></div></div><div className="take-foot"><span>{capture.recording.statistics.sustainChangeCount} pedal changes</span><span>{capture.recording.statistics.orphanReleaseCount} orphan releases</span><span>{formatDuration(capture.recording.durationMs)} duration</span></div></> : <div className="take-empty">Record a take to inspect event, pitch, velocity, pedal, and key-release statistics. No grading occurs in this view.</div>}</section>
       </div>
-      {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}
-      {capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}
-      {capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}
+      {performanceResults.state.status === 'ready' ? <>
+        <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />
+        <details className="technical-analysis-stack"><summary>Technical analysis</summary><div>{capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}{capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}{capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}</div></details>
+      </> : <>
+        {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}
+        {capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}
+        {capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}
+        {capture.recording && alignmentResult && noteGradingResult && timingResult && <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />}
+      </>}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 6 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score, capture, alignment, and grading workflows remain outside the initial Home route chunk.
+Phase 7 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score, capture, alignment, grading, and result workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -22,10 +22,12 @@ browser MIDI boundary       score import boundary
                      ↙                      ↘
               RhythmAnalysis          TempoAnalysis
                                 ↓
-                       future results layers
+                      PerformanceResults
+                     ↙          ↓          ↘
+              measure map   sections   mistake index
 ```
 
-The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 produces neutral correspondence and its canonical affine clock. Phase 5 interprets pitch-only semantics. Phase 6 consumes the same alignment plus Phase 5 scope/provenance and produces separate rhythm and tempo analyses. It does not realign MIDI or combine the dimensions into an overall score. OSMD remains a sibling renderer and is not an engine input.
+The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 produces neutral correspondence and its canonical affine clock. Phase 5 interprets pitch-only semantics. Phase 6 consumes the same alignment plus Phase 5 scope/provenance and produces separate rhythm and tempo analyses. Phase 7 aggregates those immutable snapshots into measure and section evidence without realignment or a composite overall score. OSMD remains a sibling renderer and is not an engine input.
 
 ## Source organization
 
@@ -41,6 +43,7 @@ The expected and observed Phase 3 outputs remain independent truth layers. Phase
 - `src/features/alignment`: performed-onset derivation, multiset pitch costs, monotonic sequence alignment, robust time fitting, immutable results, diagnostics, and neutral presentation.
 - `src/features/note-grading`: physical expected-key targets, conservative wrong-pitch assignment, explicit grading scopes, note-result semantics, F1 metrics, immutable results, and pitch-only presentation.
 - `src/features/timing-analysis`: anchor policy, robust tempo-normalized rhythm intervals, local tempo windows, speed/stability/trend metrics, qualitative tempo-direction observations, immutable results, and timing presentation.
+- `src/features/performance-results`: pure measure/section aggregation, evidence and confidence, Practice Priority ranking, deterministic mistake and notation mapping, application-owned highlight models, result view state, and presentation.
 - `src/features/score-renderer`: the isolated OSMD adapter. This is the only feature that imports OSMD.
 - `src/pages`: route-level compositions.
 - `src/styles`: the design system and responsive layout.
@@ -66,3 +69,5 @@ After a take stops, Practice can dynamically load the pure alignment engine. The
 Once an alignment snapshot exists, Practice can dynamically load the note-grading engine. The safe default grades only the credible aligned span; users can explicitly choose full-plan intent. Changing scope reinterprets the same alignment without reparsing MusicXML, rerecording MIDI, or rerunning alignment. The neutral Phase 4 view remains available beneath the capture, and the grading result remains session-only.
 
 After note scope is established, Practice can dynamically load timing analysis. Rhythm uses structurally continuous matched-onset intervals normalized by a robust local scale, while Tempo compares the alignment/global and local speed ratios with the effective practice timeline. Numeric tempo changes remain authoritative; preserved qualitative words produce directional observations without fabricated targets. Notes, Rhythm, and Tempo remain separate session-only metrics.
+
+Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute the downstream note/timing/result snapshots but reuse the score, recording, and alignment. The results UI owns only selection/filter state; aggregation and notation mapping remain pure. `ScoreHighlightModel` forms the application boundary to the OSMD adapter, which displays measure/problem focus without becoming a source of grading truth. See `PERFORMANCE_RESULTS.md`.

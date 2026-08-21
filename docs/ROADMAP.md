@@ -24,9 +24,9 @@ Physical expected-key targets, correct/wrong-pitch/missed/additional semantics, 
 
 Tempo-normalized rhythm observations, robust rhythm scoring, effective practice-tempo targets, local tempo estimation, speed/stability/trend analysis, numeric tempo changes, qualitative direction context, and Practice timing results.
 
-## Phase 7 — next
+## Phase 7 — complete
 
-Full results experience: measure aggregation, weak-section detection, notation-result mapping, mistake navigation, and performance heatmaps.
+Evidence-aware measure aggregation, underlying-data section metrics, confidence-adjusted weak/strong section ranking, deterministic notation-result mapping, musical-order mistake navigation, accessible performance heatmaps, and Practice result integration.
 
 ## Phase 8
 
@@ -40,4 +40,4 @@ Dynamics and articulation analysis.
 
 Pedal analysis, reference-performance expression, Technique Lab exercises, and transferable skill measurement.
 
-Phase 6 exposes separate Notes, Rhythm, and Tempo metrics. It does not calculate dynamics, articulation, pedal quality, an overall performance score, mastery, personal bests, or persistence.
+Phase 7 keeps Notes, Rhythm, and Tempo separate while adding a confidence-adjusted Practice Priority ranking. It does not calculate dynamics, articulation, pedal quality, an overall Performance Score, Mastery, personal bests, or persistence.

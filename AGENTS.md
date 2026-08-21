@@ -99,6 +99,19 @@ This repository builds a serious piano progress and performance-analysis applica
 - Timing-analysis code remains React- and OSMD-independent, deterministic, immutable, versioned, and provenance-rich for future measure aggregation.
 - Score-only expressive timing and future reference-performance timing remain conceptually distinct.
 
+## Performance-results rules
+
+- Phase 7 consumes existing normalized-score, plan, alignment, note-grading, and timing-analysis snapshots. It never reparses, realigns, or changes Phase 5/6 semantics.
+- Aggregate Notes from physical-target counts, Rhythm from underlying interval losses, and Tempo from underlying local samples. Never average displayed percentages.
+- Cross-measure rhythm intervals belong to the destination-onset measure and must be counted once.
+- Preserve exact `MusicalTime`, grading scope, and all deterministic source IDs through measure, section, mistake, and renderer mapping.
+- Sparse or unavailable evidence is `null`/insufficient, never a fake zero. Confidence must affect recommendations.
+- Practice Priority uses 45% Notes, 35% Rhythm, and 20% Tempo across available dimensions, then confidence adjustment. It is not an overall Performance Score, Mastery, or Skill Rating.
+- Section metrics are rebuilt from underlying evidence. Weak/strong ranking and overlap suppression remain deterministic and centralized.
+- Additional attacks receive score provenance only from safe correspondence or two-sided contextual attribution; never invent notation IDs.
+- Renderer highlighting consumes an application-owned mapping model. OSMD remains isolated and is never analysis truth.
+- Performance-result logic remains React- and OSMD-independent, immutable, versioned, serializable, and tested for scopes, evidence, boundaries, duplicates, mapping, determinism, and long scores.
+
 ## Commands
 
 - Install: `npm install`

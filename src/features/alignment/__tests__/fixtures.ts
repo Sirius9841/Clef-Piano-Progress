@@ -9,17 +9,18 @@ function pitch(midi: number): ScorePitch {
 
 export function makePlan(
   pitchGroups: readonly (readonly number[])[],
-  options: { id?: string; positions?: readonly number[]; tempoPoints?: readonly { position: number; bpm: number }[]; tempoDirections?: readonly { position: number; kind: TempoDirectionEvent['kind']; text: string }[] } = {},
+  options: { id?: string; positions?: readonly number[]; measureIndices?: readonly number[]; sourceNoteIds?: readonly (readonly string[])[]; tempoPoints?: readonly { position: number; bpm: number }[]; tempoDirections?: readonly { position: number; kind: TempoDirectionEvent['kind']; text: string }[] } = {},
 ): ExpectedPerformancePlan {
   const attacks: ExpectedNoteAttack[] = []
   const onsetGroups = pitchGroups.map((pitches, groupIndex) => {
     const position = musicalTime(options.positions?.[groupIndex] ?? groupIndex)
+    const measureIndex = options.measureIndices?.[groupIndex] ?? groupIndex
     const groupAttacks = pitches.map((midi, attackIndex): ExpectedNoteAttack => ({
       id: `expected-attack:${groupIndex}:${attackIndex}`,
-      sourceNoteIds: [`source-note:${groupIndex}:${attackIndex}`],
+      sourceNoteIds: options.sourceNoteIds?.[groupIndex]?.[attackIndex] ? [options.sourceNoteIds[groupIndex]![attackIndex]!] : [`source-note:${groupIndex}:${attackIndex}`],
       partId: 'P1',
-      measureIndex: groupIndex,
-      measureNumber: String(groupIndex + 1),
+      measureIndex,
+      measureNumber: String(measureIndex + 1),
       staff: attackIndex % 2 + 1,
       voice: String(attackIndex + 1),
       pitch: pitch(midi),
@@ -35,8 +36,8 @@ export function makePlan(
       position,
       attackIds: groupAttacks.map((attack) => attack.id),
       midiNotes: [...pitches],
-      measureIndices: [groupIndex],
-      measureNumbers: [String(groupIndex + 1)],
+      measureIndices: [measureIndex],
+      measureNumbers: [String(measureIndex + 1)],
       isMultiNote: pitches.length > 1,
     }
   })
