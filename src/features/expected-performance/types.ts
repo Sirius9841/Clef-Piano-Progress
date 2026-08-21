@@ -1,5 +1,5 @@
 import type { MusicalTime } from '../musicxml/musicalTime'
-import type { ScorePitch } from '../musicxml/types'
+import type { ScorePitch, TempoDirectionEvent } from '../musicxml/types'
 
 export type ExpectedPerformanceWarningCode =
   | 'AMBIGUOUS_TIE_CHAIN'
@@ -120,6 +120,7 @@ export interface ExpectedPerformancePlan {
   onsetGroups: ExpectedOnsetGroup[]
   flexibleEvents: ExpectedFlexibleEvent[]
   tempoTimeline: TempoTimeline
+  tempoDirections: TempoDirectionEvent[]
   warnings: ExpectedPerformanceWarning[]
   statistics: ExpectedPerformanceStatistics
 }

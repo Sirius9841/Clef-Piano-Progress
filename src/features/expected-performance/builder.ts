@@ -288,6 +288,7 @@ export function buildExpectedPerformancePlan(score: NormalizedScore, options: Ex
   attachFlexibleAnchors(flexibleEvents, attacks)
   const onsetGroups = buildOnsetGroups(attacks)
   const selectedTempoEvents = score.tempoEvents.filter((event) => partIds.includes(event.partId))
+  const tempoDirections = score.tempoDirectionEvents.filter((event) => partIds.includes(event.partId))
   const { timeline, warnings: tempoWarnings } = buildTempoTimeline(selectedTempoEvents, options.fallbackQuarterBpm)
   warnings.push(...tempoWarnings)
   const totalScoreDuration = scoreDuration(parts)
@@ -302,6 +303,7 @@ export function buildExpectedPerformancePlan(score: NormalizedScore, options: Ex
     onsetGroups,
     flexibleEvents,
     tempoTimeline: timeline,
+    tempoDirections,
     warnings,
     statistics,
   }

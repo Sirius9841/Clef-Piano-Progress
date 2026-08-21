@@ -1,5 +1,5 @@
 import { musicalTime } from '../../musicxml/musicalTime'
-import type { ScorePitch } from '../../musicxml/types'
+import type { ScorePitch, TempoDirectionEvent } from '../../musicxml/types'
 import type { ExpectedNoteAttack, ExpectedPerformancePlan, TempoTimelinePoint } from '../../expected-performance/types'
 import type { PerformanceRecording, RecordedKeyPress } from '../../performance/types'
 
@@ -9,7 +9,7 @@ function pitch(midi: number): ScorePitch {
 
 export function makePlan(
   pitchGroups: readonly (readonly number[])[],
-  options: { id?: string; positions?: readonly number[]; tempoPoints?: readonly { position: number; bpm: number }[] } = {},
+  options: { id?: string; positions?: readonly number[]; tempoPoints?: readonly { position: number; bpm: number }[]; tempoDirections?: readonly { position: number; kind: TempoDirectionEvent['kind']; text: string }[] } = {},
 ): ExpectedPerformancePlan {
   const attacks: ExpectedNoteAttack[] = []
   const onsetGroups = pitchGroups.map((pitches, groupIndex) => {
@@ -59,6 +59,18 @@ export function makePlan(
     onsetGroups,
     flexibleEvents: [],
     tempoTimeline: { fallbackQuarterBpm: 120, points: tempoPoints, usesFallback: false },
+    tempoDirections: (options.tempoDirections ?? []).map((direction, index) => ({
+      id: `tempo-direction:${index}`,
+      position: musicalTime(direction.position),
+      measureOnset: musicalTime(0),
+      partId: 'P1',
+      measureIndex: Math.max(0, Math.floor(direction.position)),
+      measureNumber: String(Math.max(0, Math.floor(direction.position)) + 1),
+      staff: 1,
+      voice: null,
+      kind: direction.kind,
+      text: direction.text,
+    })),
     warnings: [],
     statistics: {
       requiredAttackCount: attacks.length,

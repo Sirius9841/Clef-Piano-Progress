@@ -69,12 +69,12 @@ export const fractionalFixture = scoreFixture(`
 export const contextAndDirectionsFixture = scoreFixture(`
   <measure number="1">
     <attributes><divisions>2</divisions><key><fifths>0</fifths><mode>major</mode></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
-    <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>100</per-minute></metronome><dynamics><p/></dynamics><wedge type="crescendo" number="1"/></direction-type><sound tempo="100"/><staff>1</staff></direction>
+    <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>100</per-minute></metronome><words>rit.</words><dynamics><p/></dynamics><wedge type="crescendo" number="1"/></direction-type><sound tempo="100"/><staff>1</staff></direction>
     <note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><staff>1</staff><notations><articulations><staccato/><accent/></articulations><slur type="start" number="1"/></notations></note>
   </measure>
   <measure number="2">
     <attributes><key><fifths>2</fifths><mode>major</mode></key><time><beats>3+2</beats><beat-type>8</beat-type></time></attributes>
-    <direction><offset>2</offset><direction-type><metronome><beat-unit>half</beat-unit><per-minute>60</per-minute></metronome><dynamics><mf/></dynamics><wedge type="stop" number="1"/><pedal type="start"/></direction-type><staff>2</staff></direction>
+    <direction><offset>2</offset><direction-type><metronome><beat-unit>half</beat-unit><per-minute>60</per-minute></metronome><words>a tempo, dim.</words><dynamics><mf/></dynamics><wedge type="stop" number="1"/><pedal type="start"/></direction-type><staff>2</staff></direction>
     <note><rest/><duration>5</duration><voice>1</voice><staff>1</staff></note>
   </measure>`)
 

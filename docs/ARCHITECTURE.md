@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 5 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score, capture, alignment, and grading workflows remain outside the initial Home route chunk.
+Phase 6 is a React, strict TypeScript, Vite, and Tailwind frontend with no backend. React Router provides the application shell and routes. Imports and Practice are lazy-loaded so score, capture, alignment, and grading workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -18,10 +18,14 @@ browser MIDI boundary       score import boundary
                                 ↓
                         NoteGradingResult
                                 ↓
-                    future timing / results layers
+                       TimingAnalysisResult
+                     ↙                      ↘
+              RhythmAnalysis          TempoAnalysis
+                                ↓
+                       future results layers
 ```
 
-The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 consumes immutable snapshots of both and produces a neutral `AlignmentResult`. Phase 5 interprets that correspondence as pitch-only `NoteGradingResult` semantics without changing or bypassing alignment. Persistence and all non-pitch grading still do not exist. OSMD remains a sibling renderer and is not an input to either engine.
+The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 produces neutral correspondence and its canonical affine clock. Phase 5 interprets pitch-only semantics. Phase 6 consumes the same alignment plus Phase 5 scope/provenance and produces separate rhythm and tempo analyses. It does not realign MIDI or combine the dimensions into an overall score. OSMD remains a sibling renderer and is not an engine input.
 
 ## Source organization
 
@@ -36,6 +40,7 @@ The expected and observed Phase 3 outputs remain independent truth layers. Phase
 - `src/features/practice`: session-local transport of the imported score, plan, included parts, and practice speed.
 - `src/features/alignment`: performed-onset derivation, multiset pitch costs, monotonic sequence alignment, robust time fitting, immutable results, diagnostics, and neutral presentation.
 - `src/features/note-grading`: physical expected-key targets, conservative wrong-pitch assignment, explicit grading scopes, note-result semantics, F1 metrics, immutable results, and pitch-only presentation.
+- `src/features/timing-analysis`: anchor policy, robust tempo-normalized rhythm intervals, local tempo windows, speed/stability/trend metrics, qualitative tempo-direction observations, immutable results, and timing presentation.
 - `src/features/score-renderer`: the isolated OSMD adapter. This is the only feature that imports OSMD.
 - `src/pages`: route-level compositions.
 - `src/styles`: the design system and responsive layout.
@@ -59,3 +64,5 @@ Imports requires an explicit part choice for multi-part scores, builds an `Expec
 After a take stops, Practice can dynamically load the pure alignment engine. The UI first exposes an explicit processing state, then presents correspondence counts, the affine time transform, a monotonic path, exact pitch pairings, and neutral unpaired groups. The engine never updates recording state or score state, and the analysis remains session-only.
 
 Once an alignment snapshot exists, Practice can dynamically load the note-grading engine. The safe default grades only the credible aligned span; users can explicitly choose full-plan intent. Changing scope reinterprets the same alignment without reparsing MusicXML, rerecording MIDI, or rerunning alignment. The neutral Phase 4 view remains available beneath the capture, and the grading result remains session-only.
+
+After note scope is established, Practice can dynamically load timing analysis. Rhythm uses structurally continuous matched-onset intervals normalized by a robust local scale, while Tempo compares the alignment/global and local speed ratios with the effective practice timeline. Numeric tempo changes remain authoritative; preserved qualitative words produce directional observations without fabricated targets. Notes, Rhythm, and Tempo remain separate session-only metrics.

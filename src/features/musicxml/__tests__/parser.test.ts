@@ -87,6 +87,10 @@ describe('MusicXML normalized parser', () => {
   it('normalizes tempo forms and positions directions exactly', () => {
     const score = parseMusicXml(contextAndDirectionsFixture)
     expect(score.tempoEvents.map((event) => event.quarterBpm)).toEqual([100, 100, 120])
+    expect(score.tempoDirectionEvents.map((event) => [event.kind, event.text, event.position])).toEqual([
+      ['ritardando', 'rit.', musicalTime(0)],
+      ['a-tempo', 'a tempo, dim.', musicalTime(5)],
+    ])
     expect(score.tempoEvents[2]?.position).toEqual(musicalTime(5))
     expect(score.dynamicEvents.map((event) => [event.marking, event.position])).toEqual([['p', musicalTime(0)], ['mf', musicalTime(5)]])
     expect(score.wedgeEvents.map((event) => event.type)).toEqual(['crescendo', 'stop'])

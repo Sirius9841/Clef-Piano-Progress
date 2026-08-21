@@ -26,4 +26,6 @@ Onsets, ends, durations, and group positions remain exact rational quarter-note 
 
 The derived tempo timeline distinguishes authored events from an explicit fallback. When no authored tempo begins at zero, the caller-provided fallback is inserted and reported. Same-position authored conflicts use last source order deterministically and emit a warning. Practice speed scales real duration without mutating the reference timeline: duration is divided by `0.5`, `0.75`, `1`, or `1.25`.
 
-The model contains no note matching, timing tolerance, correctness, or grade. Phase 4 consumes it through the isolated alignment layer without changing those score-side semantics.
+Recognized textual tempo directions (`rit.`, `rall.`, `accelerando`, and `a tempo`) are preserved separately with exact score position and source text. They do not add numeric points to the tempo timeline because the words alone do not define an exact BPM curve.
+
+The model contains no note matching, timing tolerance, correctness, or grade. Phase 4 and later analysis consume it without changing those score-side semantics.

@@ -154,6 +154,21 @@ export interface TempoEvent {
   display: string | null
 }
 
+export type TempoDirectionKind = 'ritardando' | 'accelerando' | 'a-tempo'
+
+export interface TempoDirectionEvent {
+  id: string
+  position: MusicalTime
+  measureOnset: MusicalTime
+  partId: string
+  measureIndex: number
+  measureNumber: string
+  staff: number | null
+  voice: string | null
+  kind: TempoDirectionKind
+  text: string
+}
+
 export type DynamicMarking = 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff'
 
 export interface DynamicEvent {
@@ -207,6 +222,7 @@ export interface NormalizedScore {
   metadata: ScoreMetadata
   parts: NormalizedPart[]
   tempoEvents: TempoEvent[]
+  tempoDirectionEvents: TempoDirectionEvent[]
   dynamicEvents: DynamicEvent[]
   wedgeEvents: WedgeEvent[]
   pedalEvents: PedalEvent[]

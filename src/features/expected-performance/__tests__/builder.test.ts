@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseMusicXml } from '../../musicxml/parser'
-import { chordFixture, fractionalFixture, graceAndRangeFixture, pianoVoicesFixture, scoreFixture, tiesFixture } from '../../musicxml/__tests__/fixtures'
+import { chordFixture, contextAndDirectionsFixture, fractionalFixture, graceAndRangeFixture, pianoVoicesFixture, scoreFixture, tiesFixture } from '../../musicxml/__tests__/fixtures'
 import { buildExpectedPerformancePlan } from '../builder'
 import { ExpectedPerformanceBuildError } from '../types'
 
@@ -120,6 +120,16 @@ describe('expected performance builder', () => {
       { numerator: 2, denominator: 3 },
     ])
     expect(first).toEqual(second)
+  })
+
+  it('preserves qualitative tempo directions as non-numeric plan context', () => {
+    const plan = buildExpectedPerformancePlan(parseMusicXml(contextAndDirectionsFixture), options)
+
+    expect(plan.tempoDirections.map((direction) => [direction.kind, direction.text, direction.position])).toEqual([
+      ['ritardando', 'rit.', { numerator: 0, denominator: 1 }],
+      ['a-tempo', 'a tempo, dim.', { numerator: 5, denominator: 1 }],
+    ])
+    expect(plan.tempoTimeline.points.every((point) => Number.isFinite(point.quarterBpm))).toBe(true)
   })
 
   it('groups mathematically equal 1/3 and 2/6 onsets without epsilon comparison', () => {

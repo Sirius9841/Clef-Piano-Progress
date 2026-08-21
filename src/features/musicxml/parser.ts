@@ -21,6 +21,7 @@ import type {
   ScoreWarning,
   SlurMark,
   TempoEvent,
+  TempoDirectionEvent,
   TimeSignature,
   TupletRatio,
   WedgeEvent,
@@ -41,6 +42,7 @@ import {
 interface ParserCollections {
   warnings: ScoreWarning[]
   tempoEvents: TempoEvent[]
+  tempoDirectionEvents: TempoDirectionEvent[]
   dynamicEvents: DynamicEvent[]
   wedgeEvents: WedgeEvent[]
   pedalEvents: PedalEvent[]
@@ -65,6 +67,14 @@ const BEAT_UNIT_QUARTERS: Record<string, MusicalTime> = {
   eighth: musicalTime(1, 2),
   '16th': musicalTime(1, 4),
   '32nd': musicalTime(1, 8),
+}
+
+function tempoDirectionKind(text: string): TempoDirectionEvent['kind'] | null {
+  const normalized = text.toLocaleLowerCase().replace(/\s+/g, ' ').trim()
+  if (/\ba\s+tempo\b/.test(normalized)) return 'a-tempo'
+  if (/\b(?:rit(?:ardando)?|rall(?:entando)?)\b/.test(normalized)) return 'ritardando'
+  if (/\b(?:accel(?:erando)?|accelerando)\b/.test(normalized)) return 'accelerando'
+  return null
 }
 
 function stableHash(value: string): string {
@@ -252,6 +262,21 @@ function parseDirection(
         } else {
           collections.warnings.push({ ...context, code: 'UNSUPPORTED_TEMPO_MARK', severity: 'warning', message: `Measure ${measureNumber} contains a metronome marking that could not be normalized to quarter-note BPM.` })
         }
+      } else if (name === 'words') {
+        const text = textContent(child)
+        const kind = text ? tempoDirectionKind(text) : null
+        if (text && kind) collections.tempoDirectionEvents.push({
+          id: `${baseId}:tempo-direction:${eventOffset}`,
+          position,
+          measureOnset,
+          partId,
+          measureIndex,
+          measureNumber,
+          staff,
+          voice,
+          kind,
+          text,
+        })
       } else if (name === 'dynamics') {
         for (const [markingIndex, markingElement] of childElements(child).entries()) {
           const marking = nodeName(markingElement) as DynamicMarking
@@ -460,7 +485,7 @@ export function parseMusicXml(xmlText: string): NormalizedScore {
   const root = document.documentElement
   if (!root) throw new ScoreImportError('INVALID_XML', 'The MusicXML document has no root element.')
   const definitions = partDefinitions(root)
-  const collections: ParserCollections = { warnings: [], tempoEvents: [], dynamicEvents: [], wedgeEvents: [], pedalEvents: [] }
+  const collections: ParserCollections = { warnings: [], tempoEvents: [], tempoDirectionEvents: [], dynamicEvents: [], wedgeEvents: [], pedalEvents: [] }
   const parts: NormalizedPart[] = []
 
   for (const [partIndex, partElement] of childrenNamed(root, 'part').entries()) {
@@ -473,6 +498,7 @@ export function parseMusicXml(xmlText: string): NormalizedScore {
 
   if (parts.length === 0) throw new ScoreImportError('NOT_MUSICXML', 'The MusicXML score does not contain any parts.')
   sortPositionedEvents(collections.tempoEvents)
+  sortPositionedEvents(collections.tempoDirectionEvents)
   sortPositionedEvents(collections.dynamicEvents)
   sortPositionedEvents(collections.wedgeEvents)
   sortPositionedEvents(collections.pedalEvents)
@@ -482,6 +508,7 @@ export function parseMusicXml(xmlText: string): NormalizedScore {
     metadata: parseMetadata(root),
     parts,
     tempoEvents: collections.tempoEvents,
+    tempoDirectionEvents: collections.tempoDirectionEvents,
     dynamicEvents: collections.dynamicEvents,
     wedgeEvents: collections.wedgeEvents,
     pedalEvents: collections.pedalEvents,

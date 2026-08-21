@@ -12,10 +12,13 @@ import { PianoKeyboard } from '../features/midi/PianoKeyboard'
 import { formatMusicalTime } from '../features/musicxml/musicalTime'
 import { NoteGradingPanel } from '../features/note-grading/NoteGradingPanel'
 import { useNoteGradingAnalysis } from '../features/note-grading/useNoteGradingAnalysis'
+import type { GradingScopeType } from '../features/note-grading/types'
 import { usePerformanceRecording } from '../features/performance/usePerformanceRecording'
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
+import { TimingAnalysisPanel } from '../features/timing-analysis/TimingAnalysisPanel'
+import { useTimingAnalysis } from '../features/timing-analysis/useTimingAnalysis'
 
 const speeds = [0.5, 0.75, 1, 1.25]
 
@@ -53,6 +56,13 @@ export function PracticePage() {
   const alignment = useAlignmentAnalysis(session?.plan ?? null, capture.recording, alignmentSpeed)
   const alignmentResult = alignment.state.status === 'ready' || alignment.state.status === 'unavailable' ? alignment.state.result ?? null : null
   const noteGrading = useNoteGradingAnalysis(session?.plan ?? null, capture.recording, alignmentResult)
+  const noteGradingResult = noteGrading.state.status === 'ready' || noteGrading.state.status === 'unavailable' ? noteGrading.state.result ?? null : null
+  const timing = useTimingAnalysis(session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
+
+  const analyzeTiming = async (scope: GradingScopeType) => {
+    const grading = noteGradingResult?.scope.type === scope ? noteGradingResult : await noteGrading.analyze(scope)
+    if (grading) await timing.analyze(grading)
+  }
 
   if (!session) {
     const title = item?.work.title ?? 'No practice score loaded'
@@ -77,7 +87,7 @@ export function PracticePage() {
   const activeAttackCount = capture.recording?.statistics.noteAttackCount ?? midi.activeNotes.length
 
   return (
-    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice ${capture.state.status}`}>
+    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice ${capture.state.status}`}>
       <Link to="/imports" className="back-link"><ArrowLeft size={15} /> Back to score import</Link>
       <header className="practice-header">
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
@@ -115,6 +125,7 @@ export function PracticePage() {
       </div>
       {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}
       {capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}
+      {capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}
     </div>
   )
 }

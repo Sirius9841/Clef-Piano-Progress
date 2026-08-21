@@ -74,3 +74,9 @@ Alignment facts are deliberately neutral. An unpaired expected attack is not yet
 `NoteGradingResult` is the immutable, versioned Phase 5 interpretation of an `AlignmentResult`. It first collapses simultaneous notation attacks with the same MIDI pitch into a single physically observable `ExpectedKeyTarget`, retaining all attack, source-note, measure, part, staff, and voice provenance. It then classifies in-scope targets and observed attacks as correct, wrong-pitch, missed, additional, excluded, or outside scope.
 
 Every result records aligned-span or full-plan scope and reliable, provisional, or unavailable status. Its dedicated note score is pitch-only precision/recall F1. It is not an overall `Performance Score`; timing, tempo, velocity, duration, articulation, chord spread, and pedal data remain uninterpreted by this layer.
+
+## Timing analysis result
+
+`TimingAnalysisResult` is the immutable, versioned Phase 6 interpretation of the existing alignment clock and the selected Phase 5 scope. Its `RhythmAnalysis` records matched-onset provenance, local interval ratios, tempo-normalized error, human-timing tolerance, robust rhythm score, chord-spread diagnostics, and measure foundations. Its separate `TempoAnalysis` records effective target tempo, global tempo ratio, local tempo samples, stability, trend, numeric tempo regions, and qualitative direction observations.
+
+The global affine `timeScale` describes performed duration per unit of effective reference duration; the musically presented `tempoRatio` is its inverse. A 1.25× time scale therefore means approximately 80% of target tempo. Neither result uses pitch correctness as partial timing credit, and neither uses velocity, release duration, articulation, or pedal data. Notes, Rhythm, and Tempo are not combined into an overall Performance Score yet.

@@ -20,13 +20,13 @@ Robust score ↔ MIDI performance alignment: deterministic performed-onset clust
 
 Physical expected-key targets, correct/wrong-pitch/missed/additional semantics, conservative substitution assignment, explicit grading scopes, precision/recall/F1 note scoring, and Practice note results.
 
-## Phase 6 — next
+## Phase 6 — complete
 
-Rhythm and tempo grading.
+Tempo-normalized rhythm observations, robust rhythm scoring, effective practice-tempo targets, local tempo estimation, speed/stability/trend analysis, numeric tempo changes, qualitative direction context, and Practice timing results.
 
-## Phase 7
+## Phase 7 — next
 
-Full results experience and measure-level heatmap.
+Full results experience: measure aggregation, weak-section detection, notation-result mapping, mistake navigation, and performance heatmaps.
 
 ## Phase 8
 
@@ -36,8 +36,8 @@ Persistent repertoire and performance history.
 
 Dynamics and articulation analysis.
 
-## Phase 10
+## Phase 10+
 
-Technique Lab exercises and transferable skill measurement.
+Pedal analysis, reference-performance expression, Technique Lab exercises, and transferable skill measurement.
 
-Future non-pitch grading phases do not exist in the current application. Phase 5 calculates a dedicated correct-note score only; it does not calculate rhythm, tempo, dynamics, articulation, pedal quality, an overall performance score, mastery, or persistence.
+Phase 6 exposes separate Notes, Rhythm, and Tempo metrics. It does not calculate dynamics, articulation, pedal quality, an overall performance score, mastery, personal bests, or persistence.

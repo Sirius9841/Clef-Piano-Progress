@@ -84,6 +84,21 @@ This repository builds a serious piano progress and performance-analysis applica
 - Timing residuals, velocity, note duration, chord spread, and sustain never affect Phase 5 pitch correctness.
 - Note-grading code remains framework- and renderer-independent, immutable, versioned, and provenance-rich for future measure results.
 
+## Timing-analysis rules
+
+- Rhythm and tempo are separate metrics. Global speed deviation must never become rhythm error automatically.
+- Phase 6 consumes `AlignmentResult` and `NoteGradingResult`; it never realigns MIDI, reparses MusicXML, or changes Phase 5 pitch semantics.
+- Practice-speed selection defines the effective numeric tempo target. Never apply the multiplier twice or compare practice directly with the original authored BPM.
+- Phase 4 alignment offset removes recording-start silence from musical timing, and its affine transform remains the canonical coarse clock.
+- Rhythm grading uses relative local intervals after robust tempo normalization, with tempo-scaled human tolerance and bounded robust aggregation.
+- Tempo analysis compares local and global performance speed against the effective authored/fallback timeline. `timeScale` and `tempoRatio` are inverses.
+- Numeric authored tempo changes are authoritative. Qualitative directions such as `rit.`, `rall.`, `accelerando`, and `a tempo` must never become invented exact BPM curves.
+- Wrong-pitch aligned groups may still supply timing observations. Missing and additional notes reduce evidence but are not double-penalized by rhythm.
+- Expected chords contribute one onset position; internal chord spread remains a separate conservative diagnostic.
+- Grace events remain outside fixed timing grading. Velocity, releases, duration, articulation, and sustain never affect Phase 6 scores.
+- Timing-analysis code remains React- and OSMD-independent, deterministic, immutable, versioned, and provenance-rich for future measure aggregation.
+- Score-only expressive timing and future reference-performance timing remain conceptually distinct.
+
 ## Commands
 
 - Install: `npm install`
