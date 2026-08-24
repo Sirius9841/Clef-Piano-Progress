@@ -114,6 +114,17 @@ This repository builds a serious piano progress and performance-analysis applica
 - Renderer highlighting consumes an application-owned mapping model. OSMD remains isolated and is never analysis truth.
 - Performance-result logic remains React- and OSMD-independent, immutable, versioned, serializable, and tested for scopes, evidence, boundaries, duplicates, mapping, determinism, and long scores.
 
+## Expression-analysis rules
+
+- Dynamics and Articulation are separate dimensions. Never combine them into an Expression, Musicality, Performance, Mastery, or Skill score, and do not add them to Phase 7 Practice Priority or headline progress yet.
+- Phase 9 consumes `NormalizedScore`, `ExpectedPerformancePlan`, `PerformanceRecording`, `AlignmentResult`, and `NoteGradingResult`; it never reparses MusicXML, realigns MIDI, or depends on React or OSMD.
+- Only correctly matched, in-scope physical-key targets contribute expression observations. Wrong, missed, additional, excluded, and outside-scope notes reduce expression coverage and never receive a second grading penalty.
+- Normalize velocity once per attempt/scope from the full correct-match population with robust quantiles and explicit low-sample/distinct-value/range guardrails. Never map raw MIDI velocity to absolute `p`/`mf`/`f`, normalize lanes separately, or add manufacturer rules.
+- Dynamics targets are authored events: ordinal explicit changes, paired wedges, and local-lane accents. Suppress overlapping wedge/endpoint double-counting and bound chord weight by musical event rather than note count.
+- Articulation measures physical attack-to-key-release duration. Sustain is diagnostic only and never extends release; pedal-aware sounding duration and pedal grading remain future work.
+- Gate ratios use exact score duration through the existing tempo/practice-speed timeline and alignment scale. Slur transitions require an unambiguous part/staff/voice/number lane, with distinct repeated-pitch semantics.
+- Expression results keep independent status, reliability, coverage, exclusions, warnings, and evidence for Dynamics and Articulation. Unavailable evidence is null, deterministic, deeply immutable, versioned, and never a fake zero.
+
 ## Persistence and progression rules
 
 - Keep domain/services behind `PianoProgressRepository`; raw IndexedDB APIs belong only in the adapter.
@@ -121,6 +132,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - ScoreVersion duplicate identity includes the canonical deduplicated part-selection set. Changing that set creates a new immutable version, and Arrangement part metadata mirrors the latest active version.
 - PerformanceAttempt save, lightweight summary save, and PracticeSession linkage are one transaction and retries are idempotent by attempt ID.
 - Before attempt persistence writes, the ScoreVersion, PerformanceAttempt, and ExpectedPerformancePlan must have canonically equivalent included-part sets.
+- Preserve V1 attempts unchanged. New V2 attempts add an exact `ExpressionAnalysisResult` and expression engine version; validate score/plan/recording/alignment/note-grade/scope provenance and never reanalyze historical V1 records.
 - Keep raw MIDI lossless, including arrival order, velocities, releases, sustain, timestamps, device context, warnings, and statistics.
 - Summary projections may accelerate queries but are rebuildable and never replace the authoritative attempt snapshot.
 - Practice time sums completed PracticeSessions, not attempts. One session may contain multiple takes.

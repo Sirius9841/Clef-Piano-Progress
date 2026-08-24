@@ -30,8 +30,8 @@ Phase 2 intentionally targets realistic piano `score-partwise` files. Unsupporte
 | Clefs | Sign, line, octave change, and staff preserved |
 | `<sound tempo>` | Supported |
 | Metronome tempo | Common whole through 32nd beat units and dots normalized to quarter BPM |
-| Dynamics | `ppp`, `pp`, `p`, `mp`, `mf`, `f`, `ff`, `fff` supported symbolically |
-| Wedges | Crescendo, diminuendo, stop, and continue preserved |
+| Dynamics | `ppp`, `pp`, `p`, `mp`, `mf`, `f`, `ff`, `fff` supported symbolically with part/measure/staff/voice provenance |
+| Wedges | Crescendo, diminuendo, stop, and continue preserved with part/measure/staff/voice/number provenance |
 | Pedal directions | Start, stop, change, and continue preserved; no grading semantics yet |
 | Articulations | Staccato, staccatissimo, tenuto, accent, strong accent, and fermata preserved |
 | Slurs | Start, stop, continue, and number preserved |
@@ -45,3 +45,5 @@ Phase 2 intentionally targets realistic piano `score-partwise` files. Unsupporte
 Source files are limited to 15 MB and canonical uncompressed MusicXML to 20 MB. Empty sources, unreadable archives, unsafe archive paths, ambiguous MXL roots, malformed XML, non-MusicXML roots, invalid essential timing/pitch data, and negative cursor movement are hard errors.
 
 Warnings include microtonal or out-of-range pitch, unpitched notes, unsupported tempo/pedal forms, orphaned chord tones, and measure-duration mismatches. Every warning carries part, measure, and event context where practical.
+
+Parser version `musicxml-parser-1.1.0` adds the lane and measure provenance used by Phase 9 wedge ownership. Existing immutable ScoreVersions keep their original parser provenance and are never rewritten.

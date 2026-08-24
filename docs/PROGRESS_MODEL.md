@@ -30,4 +30,4 @@ The Progress view selects the latest headline-comparable full-plan context and r
 
 Practice time is the sum of completed PracticeSession durations in the selected 7-day, 30-day, or all-time range. Session count and attempt count are separate. Multiple takes inside one session therefore add analysis evidence without multiplying practice minutes. Active days are deduplicated from real timestamps in the user's local calendar rather than by their UTC ISO date.
 
-The current model deliberately excludes Mastery, clean playable tempo, dynamics, articulation, pedal quality, Technique Lab ratings, and an overall performance score.
+The current progress model deliberately excludes Mastery, clean playable tempo, Dynamics and Articulation personal bests/trends, pedal quality, Technique Lab ratings, and an overall performance score. Phase 9 expression snapshots remain visible per attempt but are not headline longitudinal metrics.

@@ -67,6 +67,6 @@ Practice builds results from existing snapshots without rerecording, reparsing M
 
 ## Phase 8 persistence
 
-An explicitly saved Phase 8 attempt persists this exact result with its plan, recording, alignment, note grading, timing analysis, ScoreVersion, and engine versions. Historical views consume the snapshot read-only. Context-safe personal bests and rolling trends are derived from lightweight attempt summaries without changing Phase 7 semantics.
+An explicitly saved Phase 8 V1 attempt persists this exact result with its plan, recording, alignment, note grading, timing analysis, ScoreVersion, and engine versions. Historical views consume the snapshot read-only. Context-safe personal bests and rolling trends are derived from lightweight attempt summaries without changing Phase 7 semantics.
 
-An overall Performance Score, Mastery changes, dynamics, articulation, pedal grading, and transferable Skill Ratings remain deferred.
+Phase 9 adds Dynamics and Articulation beside this Phase 7 result map. It does not add them to measure aggregation, the 45/35/20 Practice Priority, AttemptSummary, personal bests, or trends. An overall Performance Score, Mastery changes, pedal grading, and transferable Skill Ratings remain deferred.

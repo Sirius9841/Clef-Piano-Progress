@@ -98,6 +98,8 @@ describe('MusicXML normalized parser', () => {
     expect(score.tempoEvents[2]?.position).toEqual(musicalTime(5))
     expect(score.dynamicEvents.map((event) => [event.marking, event.position])).toEqual([['p', musicalTime(0)], ['mf', musicalTime(5)]])
     expect(score.wedgeEvents.map((event) => event.type)).toEqual(['crescendo', 'stop'])
+    expect(score.dynamicEvents[1]).toMatchObject({ position: musicalTime(5), measureNumber: '2', measureOnset: musicalTime(1), partId: 'P1', staff: 2, voice: '2' })
+    expect(score.wedgeEvents[1]).toMatchObject({ position: musicalTime(5), measureNumber: '2', measureOnset: musicalTime(1), partId: 'P1', staff: 2, voice: '2', number: '1' })
     expect(score.pedalEvents[0]).toMatchObject({ type: 'start', staff: 2 })
     const firstNote = score.parts[0]?.measures[0]?.events[0]
     expect(firstNote).toMatchObject({ type: 'note', articulations: ['staccato', 'accent'], slurs: [{ type: 'start', number: '1' }] })

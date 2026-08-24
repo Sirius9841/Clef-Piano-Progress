@@ -2,6 +2,7 @@ import { ArrowLeft, FileClock, FileMusic } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageHeader, StatusPill } from '../components/ui'
+import { HistoricalExpressionPanel } from '../features/expression-analysis/HistoricalExpressionPanel'
 import { PerformanceResultsPanel } from '../features/performance-results/PerformanceResultsPanel'
 import type { ScoreHighlightModel } from '../features/performance-results/highlightModel'
 import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
@@ -38,6 +39,7 @@ export function HistoricalResultPage() {
     <PageHeader eyebrow="Read-only history" title={work.title} description={`${new Intl.DateTimeFormat(undefined, { dateStyle: 'long', timeStyle: 'short' }).format(new Date(attempt.performedAt))} · ${Math.round(attempt.practiceSpeedMultiplier * 100)}% speed`} action={<StatusPill tone="violet"><FileClock size={12} /> Saved snapshot</StatusPill>} />
     <section className="panel notation-panel historical-notation"><div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Exact historical score</h2><p>{scoreVersion.sourceFileName} · ScoreVersion {scoreVersion.version} · parser {scoreVersion.parserVersion}</p></div></div></div><div className="notation-paper"><OsmdScoreRenderer musicXmlText={scoreVersion.canonicalMusicXml} zoom={0.7} highlights={highlights} /></div></section>
     <PerformanceResultsPanel analysis={{ status: 'ready', result: attempt.performanceResults }} scope={attempt.gradingScope} onAnalyze={() => undefined} onHighlightChange={setHighlights} readOnly />
-    <details className="panel results-diagnostics"><summary>Historical engine versions</summary><div><span>Alignment <strong>{attempt.engineVersions.alignment}</strong></span><span>Notes <strong>{attempt.engineVersions.noteGrading}</strong></span><span>Timing <strong>{attempt.engineVersions.timingAnalysis}</strong></span><span>Results <strong>{attempt.engineVersions.resultAggregation}</strong></span></div></details>
+    <HistoricalExpressionPanel result={attempt.schemaVersion === 2 ? attempt.expressionAnalysis : null} />
+    <details className="panel results-diagnostics"><summary>Historical engine versions</summary><div><span>Alignment <strong>{attempt.engineVersions.alignment}</strong></span><span>Notes <strong>{attempt.engineVersions.noteGrading}</strong></span><span>Timing <strong>{attempt.engineVersions.timingAnalysis}</strong></span><span>Results <strong>{attempt.engineVersions.resultAggregation}</strong></span>{attempt.schemaVersion === 2 && <span>Expression <strong>{attempt.engineVersions.expressionAnalysis}</strong></span>}</div></details>
   </div>
 }

@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 8 is a React, strict TypeScript, Vite, and Tailwind local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
+Phase 9 is a React, strict TypeScript, Vite, and Tailwind local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -25,6 +25,12 @@ browser MIDI boundary       score import boundary
                       PerformanceResults
                      ↙          ↓          ↘
               measure map   sections   mistake index
+
+ NormalizedScore + plan + recording + alignment + note grade
+                                ↓
+                    ExpressionAnalysisResult
+                     ↙                     ↘
+             relative Dynamics     key Articulation
 ```
 
 The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 produces neutral correspondence and its canonical affine clock. Phase 5 interprets pitch-only semantics. Phase 6 consumes the same alignment plus Phase 5 scope/provenance and produces separate rhythm and tempo analyses. Phase 7 aggregates those immutable snapshots into measure and section evidence without realignment or a composite overall score. OSMD remains a sibling renderer and is not an engine input.
@@ -43,6 +49,7 @@ The expected and observed Phase 3 outputs remain independent truth layers. Phase
 - `src/features/note-grading`: physical expected-key targets, conservative wrong-pitch assignment, explicit grading scopes, note-result semantics, F1 metrics, immutable results, and pitch-only presentation.
 - `src/features/timing-analysis`: anchor policy, robust tempo-normalized rhythm intervals, local tempo windows, speed/stability/trend metrics, qualitative tempo-direction observations, immutable results, and timing presentation.
 - `src/features/performance-results`: pure measure/section aggregation, evidence and confidence, Practice Priority ranking, deterministic mistake and notation mapping, application-owned highlight models, result view state, and presentation.
+- `src/features/expression-analysis`: correct-match observation mapping, robust performance-relative velocity normalization, authored dynamics targets, tempo-aware physical key articulation, independent evidence/reliability, and presentation.
 - `src/features/persistence`: repository contract, serializable records, typed storage errors, local-calendar keys, SHA-256 score fingerprinting, indexed range queries, and the isolated versioned IndexedDB adapter.
 - `src/features/progress`: pure personal-best, comparability, rolling-average, and trend derivations.
 - `src/features/repertoire`: deterministic presentation sorting for persisted Repertoire entries.
@@ -72,6 +79,6 @@ Once an alignment snapshot exists, Practice can dynamically load the note-gradin
 
 After note scope is established, Practice can dynamically load timing analysis. Rhythm uses structurally continuous matched-onset intervals normalized by a robust local scale, while Tempo compares the alignment/global and local speed ratios with the effective practice timeline. Numeric tempo changes remain authoritative; preserved qualitative words produce directional observations without fabricated targets. Notes, Rhythm, and Tempo remain separate session-only metrics.
 
-Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute downstream snapshots but reuse the score, recording, and alignment. An explicit Save action writes the raw recording, plan, every analysis snapshot, engine versions, and PracticeSession linkage in one IndexedDB transaction. Summary-driven pages never deserialize raw MIDI. Piece history batch-loads the Arrangement's ScoreVersions so every row names its attempt's actual version; Historical Results read that exact canonical ScoreVersion and snapshots without regrading. See `PERFORMANCE_RESULTS.md`, `PERSISTENCE.md`, and `PROGRESS_MODEL.md`.
+Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute downstream snapshots but reuse the score, recording, and alignment. Phase 9 independently analyzes authored Dynamics and Articulation from the same immutable truths. It uses correct-note coverage rather than double-penalizing pitch mistakes, and it never changes the Phase 7 measure map or Practice Priority. An explicit Save action writes the raw recording, plan, every analysis snapshot, engine versions, and PracticeSession linkage in one IndexedDB transaction. Summary-driven pages never deserialize raw MIDI. Piece history batch-loads the Arrangement's ScoreVersions so every row names its attempt's actual version; Historical Results read that exact canonical ScoreVersion and snapshots without regrading. See `PERFORMANCE_RESULTS.md`, `EXPRESSION_ANALYSIS.md`, `PERSISTENCE.md`, and `PROGRESS_MODEL.md`.
 
 Technique Lab and Library remain honest future-state previews. Technique exposes no fabricated personal ratings or history, and Library exposes metadata only with unavailable score actions plus a link to the real import flow. Validation-only GitHub Actions runs tests, strict type-checking, lint, build, and dependency audit with read-only repository permissions.

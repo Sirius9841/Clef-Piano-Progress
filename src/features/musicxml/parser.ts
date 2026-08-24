@@ -39,7 +39,7 @@ import {
   type XmlElement,
 } from './xml'
 
-export const MUSICXML_PARSER_VERSION = 'musicxml-parser-1.0.0'
+export const MUSICXML_PARSER_VERSION = 'musicxml-parser-1.1.0'
 
 interface ParserCollections {
   warnings: ScoreWarning[]
@@ -282,11 +282,11 @@ function parseDirection(
       } else if (name === 'dynamics') {
         for (const [markingIndex, markingElement] of childElements(child).entries()) {
           const marking = nodeName(markingElement) as DynamicMarking
-          if (DYNAMIC_MARKINGS.has(marking)) collections.dynamicEvents.push({ id: `${baseId}:dynamic:${eventOffset}:${markingIndex}`, position, measureOnset, partId, measureIndex, staff, voice, marking })
+          if (DYNAMIC_MARKINGS.has(marking)) collections.dynamicEvents.push({ id: `${baseId}:dynamic:${eventOffset}:${markingIndex}`, position, measureOnset, partId, measureIndex, measureNumber, staff, voice, marking })
         }
       } else if (name === 'wedge') {
         const type = child.getAttribute('type') as WedgeEvent['type'] | null
-        if (type && WEDGE_TYPES.has(type)) collections.wedgeEvents.push({ id: `${baseId}:wedge:${eventOffset}`, position, partId, measureIndex, type, number: child.getAttribute('number') })
+        if (type && WEDGE_TYPES.has(type)) collections.wedgeEvents.push({ id: `${baseId}:wedge:${eventOffset}`, position, measureOnset, partId, measureIndex, measureNumber, staff, voice, type, number: child.getAttribute('number') })
       } else if (name === 'pedal') {
         const type = child.getAttribute('type') as PedalEvent['type'] | null
         if (type && PEDAL_TYPES.has(type)) collections.pedalEvents.push({ id: `${baseId}:pedal:${eventOffset}`, position, partId, measureIndex, staff, type })

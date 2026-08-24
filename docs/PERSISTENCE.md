@@ -1,6 +1,6 @@
 # Local-first persistence
 
-Phase 8 stores musical history in browser IndexedDB behind `PianoProgressRepository`. Domain and React code never issue raw IndexedDB requests. The adapter uses schema version `3`: v2 preserved ScoreVersion part selection and v3 added the session `endedAt` range index. Migrations are ordered and never rewrite immutable historical identity.
+Phase 9 stores musical history in browser IndexedDB behind `PianoProgressRepository`. Domain and React code never issue raw IndexedDB requests. The adapter uses schema version `3`: v2 preserved ScoreVersion part selection and v3 added the session `endedAt` range index. Migrations are ordered and never rewrite immutable historical identity.
 
 Database-open promises are cached only while pending or successfully usable. A rejected, blocked, closed, or version-changed connection clears the cache so the UI Retry action performs a real new open; a healthy connection remains cached.
 
@@ -34,7 +34,9 @@ Imports support a new Work, another Arrangement of an existing Work, or a separa
 
 An existing attempt ID is a successful idempotent retry and creates no duplicate. Any intermediate failure aborts every write. Typed errors distinguish unavailable storage, corrupt records, broken references, immutable-identity conflicts, and transaction failures.
 
-Historical attempt reads defensively validate each nested snapshot object and its diagnostics before checking provenance. Missing or malformed alignment, note-grading, timing, or result structures therefore surface as a typed `CORRUPT_RECORD`, never as a leaked JavaScript property-access error.
+Historical attempt reads defensively validate each nested snapshot object and its diagnostics before checking provenance. Missing or malformed alignment, note-grading, timing, or result structures therefore surface as a typed `CORRUPT_RECORD`, never as a leaked JavaScript property-access error. V1 attempts preserve the Notes/Rhythm/Tempo-era shape. V2 attempts additionally require an exact `ExpressionAnalysisResult`, matching score/plan/recording/alignment/note-grade/scope identities, and `engineVersions.expressionAnalysis`. A malformed V2 snapshot is also `CORRUPT_RECORD`.
+
+Attempt schema V2 changes only the value stored in the existing `performanceAttempts` object store. It creates no store or index, so the IndexedDB schema remains version 3. V1 records are not rewritten or reanalyzed; historical UI reports that expression was not analyzed. Attempt summaries remain Notes/Rhythm/Tempo-only and are unchanged.
 
 A PracticeSession spans the first saved take's recording start through the latest saved take's end within one mounted Practice visit. Time between those takes is intentionally part of that visit; attempts do not multiply the span. Retries return before session merging, and invalid or negative spans are rejected before writes.
 

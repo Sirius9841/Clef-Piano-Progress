@@ -43,7 +43,7 @@ Phase 2 produces a `NormalizedScore` from validated canonical MusicXML. Phase 8 
 
 ## PerformanceAttempt and Performance Score
 
-A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. It retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Notes, Rhythm, and Tempo remain separate; no overall Performance Score is calculated in Phase 8.
+A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. V1 retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Phase 9 V2 additionally retains the exact ExpressionAnalysisResult. Notes, Rhythm, Tempo, Dynamics, and Articulation remain separate; no overall Performance Score is calculated.
 
 ## Mastery
 
@@ -86,6 +86,10 @@ The global affine `timeScale` describes performed duration per unit of effective
 `PerformanceResults` is the immutable, versioned Phase 7 aggregation snapshot for one exact normalized score, expected plan, alignment, note grade, timing analysis, and grading scope. It contains measure results, sliding section results, weak and strong section recommendations, a deterministic musical-order mistake index, accessible heatmap data, and mappings back to expected attacks and normalized source IDs.
 
 Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rhythm, and 20% Tempo, renormalizes missing dimensions, and adjusts the ranking by evidence confidence. It answers “where should this take be reviewed first?” It is explicitly not the attempt's overall Performance Score, arrangement Mastery, a personal best, or a transferable SkillRating. Phase 8 persists the result inside its exact PerformanceAttempt; historical views are read-only and do not silently rerun newer engines.
+
+## Expression analysis result
+
+`ExpressionAnalysisResult` is the immutable, versioned Phase 9 interpretation of authored expression for the same exact score, plan, recording, alignment, note grade, and grading scope. Its Dynamics result uses one performance-relative robust velocity context for explicit changes, wedges, and accents. Its separate Articulation result measures tempo-aware physical key duration and conservative slur transitions. Only correct note matches contribute; pitch mistakes reduce coverage rather than receiving another penalty. Both dimensions retain independent score, reliability, coverage, targets, exclusions, and diagnostics and never alter Phase 7 Practice Priority.
 
 ## PracticeSession and RepertoireEntry
 

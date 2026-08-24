@@ -1,6 +1,7 @@
 import type { Arrangement, Difficulty, RepertoireStatus, Work, WorkMetadata } from '../../domain/music'
 import type { AlignmentResult } from '../alignment/types'
 import type { ExpectedPerformancePlan } from '../expected-performance/types'
+import type { ExpressionAnalysisResult } from '../expression-analysis/types'
 import type { LoadedMusicXml } from '../musicxml/types'
 import type { GradingScopeType, NoteGradingResult } from '../note-grading/types'
 import type { PerformanceRecording } from '../performance/types'
@@ -55,16 +56,19 @@ export interface PracticeSessionRecord {
   readonly attemptIds: readonly string[]
 }
 
-export interface AnalysisEngineVersions {
+export interface AnalysisEngineVersionsV1 {
   readonly alignment: string
   readonly noteGrading: string
   readonly timingAnalysis: string
   readonly resultAggregation: string
 }
 
-export interface PerformanceAttemptRecord {
+export interface AnalysisEngineVersionsV2 extends AnalysisEngineVersionsV1 {
+  readonly expressionAnalysis: string
+}
+
+interface PerformanceAttemptRecordBase {
   readonly id: string
-  readonly schemaVersion: 1
   readonly arrangementId: string
   readonly scoreVersionId: string
   readonly practiceSessionId: string
@@ -72,7 +76,6 @@ export interface PerformanceAttemptRecord {
   readonly practiceSpeedMultiplier: number
   readonly gradingScope: GradingScopeType
   readonly includedPartIds: readonly string[]
-  readonly engineVersions: AnalysisEngineVersions
   readonly expectedPerformancePlan: ExpectedPerformancePlan
   readonly recording: PerformanceRecording
   readonly alignment: AlignmentResult
@@ -80,6 +83,19 @@ export interface PerformanceAttemptRecord {
   readonly timingAnalysis: TimingAnalysisResult
   readonly performanceResults: PerformanceResults
 }
+
+export interface PerformanceAttemptRecordV1 extends PerformanceAttemptRecordBase {
+  readonly schemaVersion: 1
+  readonly engineVersions: AnalysisEngineVersionsV1
+}
+
+export interface PerformanceAttemptRecordV2 extends PerformanceAttemptRecordBase {
+  readonly schemaVersion: 2
+  readonly engineVersions: AnalysisEngineVersionsV2
+  readonly expressionAnalysis: ExpressionAnalysisResult
+}
+
+export type PerformanceAttemptRecord = PerformanceAttemptRecordV1 | PerformanceAttemptRecordV2
 
 export interface AttemptSummary {
   readonly id: string

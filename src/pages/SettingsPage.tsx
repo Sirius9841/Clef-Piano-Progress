@@ -52,12 +52,12 @@ export function SettingsPage() {
       <section className="future-settings reveal delay-2">
         <SectionHeading title="Future configuration" subtitle="These controls will become available as their supporting systems are built" />
         <div className="future-setting-grid">
-          <button disabled><span><Gauge /></span><div><strong>Velocity calibration</strong><p>Map your instrument's touch response for reliable dynamics analysis.</p><StatusPill>Not configured</StatusPill></div><ChevronRight /></button>
+          <button disabled><span><Gauge /></span><div><strong>Optional velocity calibration</strong><p>Future calibration may improve cross-device and cross-session comparison. Current dynamics use performance-relative velocity.</p><StatusPill>Future option</StatusPill></div><ChevronRight /></button>
           <button disabled><span><SlidersHorizontal /></span><div><strong>Pedal configuration</strong><p>Configure polarity, thresholds and continuous pedal behavior.</p><StatusPill>Phase 10+</StatusPill></div><ChevronRight /></button>
           <button disabled><span><Eye /></span><div><strong>Visual preferences</strong><p>Keyboard labels, density and progress display preferences.</p><StatusPill>Coming later</StatusPill></div><ChevronRight /></button>
         </div>
       </section>
-      <div className="settings-note"><Info /><p>MIDI access and saved performance history stay on this device in browser-local storage. There is no cloud backup, account sync, or upload in Phase 8.</p></div>
+      <div className="settings-note"><Info /><p>MIDI access and saved performance history stay on this device in browser-local storage. There is no cloud backup, account sync, or upload in Phase 9.</p></div>
     </div>
   )
 }

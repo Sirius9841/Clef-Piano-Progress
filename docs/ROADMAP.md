@@ -32,14 +32,14 @@ Evidence-aware measure aggregation, underlying-data section metrics, confidence-
 
 Versioned IndexedDB persistence, real Work/Arrangement/ScoreVersion imports, repertoire reload, transactional PracticeSessions and PerformanceAttempts, lossless MIDI and analysis history, read-only historical results, context-safe personal bests, rolling trends, and real Home/Progress/Settings data.
 
-## Phase 9
+## Phase 9 — complete
 
-Dynamics and articulation analysis.
+Dynamics and articulation analysis: performance-relative normalization, explicit changes, hairpins, accents, physical key gate ratios, conservative slur transitions, independent coverage/reliability, V2 frozen attempt snapshots, and Practice/history presentation.
 
 ## Phase 10+
 
 Pedal analysis, reference-performance expression, Technique Lab exercises, and transferable skill measurement.
 
-Phase 8 keeps Notes, Rhythm, and Tempo separate while deriving context-safe personal bests and trends. It does not calculate dynamics, articulation, pedal quality, an overall Performance Score, Mastery, cloud sync, or accounts.
+Phase 9 keeps Notes, Rhythm, Tempo, Dynamics, and Articulation separate. Dynamics and Articulation do not enter personal bests, trends, or Practice Priority. Pedal quality, acoustic tone/loudness, voicing, an overall Performance Score, Mastery, cloud sync, and accounts remain unimplemented.
 
 The pre-Phase-9 hardening pass adds same-ID MIDI disconnect safety, truthful Library and Technique previews, conservative PB reliability eligibility, captured-speed locking, user-controlled Repertoire status and sorting, defensive persistence mutation/corruption handling, and validation CI. It does not add expressive grading.

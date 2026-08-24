@@ -74,7 +74,7 @@ export const contextAndDirectionsFixture = scoreFixture(`
   </measure>
   <measure number="2">
     <attributes><key><fifths>2</fifths><mode>major</mode></key><time><beats>3+2</beats><beat-type>8</beat-type></time></attributes>
-    <direction><offset>2</offset><direction-type><metronome><beat-unit>half</beat-unit><per-minute>60</per-minute></metronome><words>a tempo, dim.</words><dynamics><mf/></dynamics><wedge type="stop" number="1"/><pedal type="start"/></direction-type><staff>2</staff></direction>
+    <direction><offset>2</offset><direction-type><metronome><beat-unit>half</beat-unit><per-minute>60</per-minute></metronome><words>a tempo, dim.</words><dynamics><mf/></dynamics><wedge type="stop" number="1"/><pedal type="start"/></direction-type><voice>2</voice><staff>2</staff></direction>
     <note><rest/><duration>5</duration><voice>1</voice><staff>1</staff></note>
   </measure>`)
 

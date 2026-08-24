@@ -177,6 +177,7 @@ export interface DynamicEvent {
   measureOnset: MusicalTime
   partId: string
   measureIndex: number
+  measureNumber: string
   staff: number | null
   voice: string | null
   marking: DynamicMarking
@@ -185,8 +186,12 @@ export interface DynamicEvent {
 export interface WedgeEvent {
   id: string
   position: MusicalTime
+  measureOnset: MusicalTime
   partId: string
   measureIndex: number
+  measureNumber: string
+  staff: number | null
+  voice: string | null
   type: 'crescendo' | 'diminuendo' | 'stop' | 'continue'
   number: string | null
 }

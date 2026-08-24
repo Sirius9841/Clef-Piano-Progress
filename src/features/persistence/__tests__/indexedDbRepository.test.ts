@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { makeResultPlan, recordingForPlan, analyzeResult } from '../../performance-results/__tests__/fixtures'
+import { analyzeExpression } from '../../expression-analysis/analyzeExpression'
 import { clearCurrentTake } from '../../practice/takeWorkspace'
-import type { PerformanceAttemptRecord, PracticeSessionRecord } from '../types'
+import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PracticeSessionRecord } from '../types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
 
 function ids() {
@@ -59,7 +60,25 @@ function attemptFixture(arrangementId: string, scoreVersionId: string, sessionId
     durationMs: 60_000,
     attemptIds: [attempt.id],
   }
-  return { attempt, session }
+  return { attempt, session, score: analysis.score }
+}
+
+function v2AttemptFixture(arrangementId: string, scoreVersionId: string, sessionId = 'practice-v2') {
+  const fixture = attemptFixture(arrangementId, scoreVersionId, sessionId, '2')
+  const expressionAnalysis = analyzeExpression({
+    normalizedScore: fixture.score,
+    expectedPlan: fixture.attempt.expectedPerformancePlan,
+    recording: fixture.attempt.recording,
+    alignment: fixture.attempt.alignment,
+    noteGrading: fixture.attempt.noteGrading,
+  })
+  const attempt: PerformanceAttemptRecordV2 = {
+    ...fixture.attempt,
+    schemaVersion: 2,
+    engineVersions: { ...fixture.attempt.engineVersions, expressionAnalysis: expressionAnalysis.diagnostics.expressionAnalysisEngineVersion },
+    expressionAnalysis,
+  }
+  return { ...fixture, attempt }
 }
 
 function withPartSelections(
@@ -363,7 +382,10 @@ describe('IndexedDbPianoProgressRepository', () => {
     const repo = repository('attempt-db')
     const imported = await repo.importScore(importInput())
     const fixture = attemptFixture(imported.arrangement.id, imported.scoreVersion.id)
-    await expect(repo.saveAttempt(fixture)).resolves.toMatchObject({ created: true })
+    const saved = await repo.saveAttempt(fixture)
+    expect(saved).toMatchObject({ created: true })
+    expect(saved.summary).not.toHaveProperty('dynamics')
+    expect(saved.summary).not.toHaveProperty('articulation')
     await expect(repo.saveAttempt(fixture)).resolves.toMatchObject({ created: false })
     const loaded = await repo.getAttempt(fixture.attempt.id)
     expect(loaded?.recording.events).toEqual(fixture.attempt.recording.events)
@@ -377,6 +399,22 @@ describe('IndexedDbPianoProgressRepository', () => {
     await expect(repo.saveAttempt(extendedRetry)).resolves.toMatchObject({ created: false })
     expect((await repo.listSessions())[0]).toMatchObject({ endedAt: fixture.session.endedAt, durationMs: 60_000 })
     await expect(repo.getCounts()).resolves.toMatchObject({ practiceSessions: 1, performanceAttempts: 1 })
+  })
+
+  it('round-trips a V2 expression snapshot without changing the IndexedDB schema', async () => {
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+    const repo = repository('attempt-v2-db')
+    const imported = await repo.importScore(importInput())
+    const fixture = v2AttemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    const saved = await repo.saveAttempt(fixture)
+    expect(saved).toMatchObject({ created: true })
+    expect(saved.summary).not.toHaveProperty('dynamics')
+    expect(saved.summary).not.toHaveProperty('articulation')
+    await expect(repo.saveAttempt(fixture)).resolves.toMatchObject({ created: false })
+    const loaded = await repo.getAttempt(fixture.attempt.id)
+    expect(loaded).toEqual(fixture.attempt)
+    expect(loaded).toMatchObject({ schemaVersion: 2, engineVersions: { expressionAnalysis: fixture.attempt.expressionAnalysis.diagnostics.expressionAnalysisEngineVersion } })
+    if (loaded?.schemaVersion === 2) expect(loaded.expressionAnalysis).toEqual(fixture.attempt.expressionAnalysis)
   })
 
   it('accepts canonically equivalent reordered attempt and plan part selections', async () => {
@@ -539,6 +577,20 @@ describe('IndexedDbPianoProgressRepository', () => {
     const repo = repository(name)
     await repo.initialize()
     const fixture = attemptFixture('arrangement', 'score')
+    await putRawAttempt(name, corrupt(fixture.attempt))
+    await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it.each([
+    ['missing expression snapshot', (attempt: PerformanceAttemptRecordV2) => { const copy: Record<string, unknown> = { ...attempt }; delete copy.expressionAnalysis; return copy }],
+    ['wrong expression plan identity', (attempt: PerformanceAttemptRecordV2) => ({ ...attempt, expressionAnalysis: { ...attempt.expressionAnalysis, expectedPlanId: 'wrong-plan' } })],
+    ['wrong expression engine version', (attempt: PerformanceAttemptRecordV2) => ({ ...attempt, engineVersions: { ...attempt.engineVersions, expressionAnalysis: 'wrong-engine' } })],
+    ['malformed expression diagnostics', (attempt: PerformanceAttemptRecordV2) => ({ ...attempt, expressionAnalysis: { ...attempt.expressionAnalysis, diagnostics: null } })],
+  ])('returns a typed corruption error for V2 %s', async (_label, corrupt) => {
+    const name = `corrupt-v2-${_label}`
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v2AttemptFixture('arrangement', 'score')
     await putRawAttempt(name, corrupt(fixture.attempt))
     await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
   })

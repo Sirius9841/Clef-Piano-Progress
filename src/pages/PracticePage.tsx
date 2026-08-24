@@ -5,6 +5,8 @@ import { Button, StatusPill } from '../components/ui'
 import { AlignmentPanel } from '../features/alignment/AlignmentPanel'
 import { useAlignmentAnalysis } from '../features/alignment/useAlignmentAnalysis'
 import { scoreTimeToMilliseconds } from '../features/expected-performance/tempoTimeline'
+import { ExpressionAnalysisPanel } from '../features/expression-analysis/ExpressionAnalysisPanel'
+import { useExpressionAnalysis } from '../features/expression-analysis/useExpressionAnalysis'
 import { MidiControls } from '../features/midi/MidiControls'
 import { useMidi } from '../features/midi/MidiContext'
 import { PianoKeyboard } from '../features/midi/PianoKeyboard'
@@ -21,7 +23,7 @@ import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { capturedTakeSpeed, isPracticeSpeedLocked, resolvePracticeSpeedChange } from '../features/practice/speedPolicy'
 import { clearCurrentTake, takeClearActionCopy } from '../features/practice/takeWorkspace'
 import { usePersistence } from '../features/persistence/PersistenceContext'
-import type { PerformanceAttemptRecord, PracticeSessionRecord } from '../features/persistence/types'
+import type { PerformanceAttemptRecordV2, PracticeSessionRecord } from '../features/persistence/types'
 import { detectPersonalBestEvents, formatPercent, type PersonalBestEvent } from '../features/progress/model'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
 import { TimingAnalysisPanel } from '../features/timing-analysis/TimingAnalysisPanel'
@@ -74,6 +76,7 @@ export function PracticePage() {
   const timing = useTimingAnalysis(session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
   const timingResult = timing.state.status === 'ready' || timing.state.status === 'unavailable' ? timing.state.result ?? null : null
   const performanceResults = usePerformanceResults(session?.score ?? null, session?.plan ?? null, alignmentResult, noteGradingResult, timingResult)
+  const expression = useExpressionAnalysis(session?.score ?? null, session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
 
   const analyzeTiming = async (scope: GradingScopeType) => {
     const grading = noteGradingResult?.scope.type === scope ? noteGradingResult : await noteGrading.analyze(scope)
@@ -84,7 +87,7 @@ export function PracticePage() {
     const grading = noteGradingResult?.scope.type === scope ? noteGradingResult : await noteGrading.analyze(scope)
     if (!grading) return
     const nextTiming = timingResult?.noteGradingId === grading.id ? timingResult : await timing.analyze(grading)
-    if (nextTiming) await performanceResults.analyze(grading, nextTiming)
+    if (nextTiming) await Promise.all([performanceResults.analyze(grading, nextTiming), expression.analyze(grading)])
   }
   const updateScoreHighlights = useCallback((model: ScoreHighlightModel | null) => setScoreHighlights(model), [])
   const startCapture = () => {
@@ -105,7 +108,7 @@ export function PracticePage() {
   }
 
   const saveAttempt = async () => {
-    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult || !noteGradingResult || !timingResult || performanceResults.state.status !== 'ready' || !persistence.repository) return
+    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult || !noteGradingResult || !timingResult || performanceResults.state.status !== 'ready' || expression.state.status !== 'ready' || !persistence.repository) return
     setSaveStatus('saving'); setSaveMessage(null); setPersonalBestEvents([])
     const recording = capture.recording
     const result = performanceResults.state.result
@@ -113,9 +116,9 @@ export function PracticePage() {
     const startedAt = practiceSessionStartedAt.current ?? recording.startedAt
     practiceSessionStartedAt.current = startedAt
     const endedAt = new Date(new Date(recording.startedAt).getTime() + recording.durationMs).toISOString()
-    const attempt: PerformanceAttemptRecord = {
+    const attempt: PerformanceAttemptRecordV2 = {
       id: attemptId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       arrangementId: session.arrangementId,
       scoreVersionId: session.scoreVersionId,
       practiceSessionId: practiceSessionId.current,
@@ -128,6 +131,7 @@ export function PracticePage() {
         noteGrading: noteGradingResult.diagnostics.noteGradingEngineVersion,
         timingAnalysis: timingResult.diagnostics.timingAnalysisEngineVersion,
         resultAggregation: result.diagnostics.resultAggregationVersion,
+        expressionAnalysis: expression.state.result.diagnostics.expressionAnalysisEngineVersion,
       },
       expectedPerformancePlan: session.plan,
       recording,
@@ -135,6 +139,7 @@ export function PracticePage() {
       noteGrading: noteGradingResult,
       timingAnalysis: timingResult,
       performanceResults: result,
+      expressionAnalysis: expression.state.result,
     }
     const persistentSession: PracticeSessionRecord = {
       id: practiceSessionId.current,
@@ -224,7 +229,8 @@ export function PracticePage() {
       </div>
       {performanceResults.state.status === 'ready' ? <>
         <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />
-        <section className="panel save-attempt-panel"><div><span className="step-label">Local performance history</span><h2>{savedRecordingId === capture.recording?.id ? 'Take saved' : 'Keep this analysis'}</h2><p>{session.isDemo ? 'Demo takes remain temporary and are never mixed into your real progress.' : 'Saving preserves the raw MIDI recording, exact ScoreVersion, and every analysis snapshot in one transaction.'}</p>{saveMessage && <span className={saveStatus === 'error' ? 'practice-build-error' : 'save-confirmation'}>{saveStatus === 'saved' ? <CheckCircle2 /> : <AlertCircle />}{saveMessage}</span>}{personalBestEvents.length > 0 && <div className="personal-best-events">{personalBestEvents.map((event) => <span key={event.metric}><Sparkles /> {event.kind === 'first-full-result' ? `First full-score ${event.metric} result` : `New ${event.metric} personal best`}: {formatPercent(event.value)}</span>)}</div>}</div><Button icon={savedRecordingId === capture.recording?.id ? CheckCircle2 : Save} disabled={session.isDemo || saveStatus === 'saving' || savedRecordingId === capture.recording?.id} onClick={() => void saveAttempt()}>{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry save' : savedRecordingId === capture.recording?.id ? 'Saved' : 'Save attempt'}</Button></section>
+        <ExpressionAnalysisPanel analysis={expression.state} onAnalyze={() => void expression.analyze()} />
+        <section className="panel save-attempt-panel"><div><span className="step-label">Local performance history</span><h2>{savedRecordingId === capture.recording?.id ? 'Take saved' : 'Keep this analysis'}</h2><p>{session.isDemo ? 'Demo takes remain temporary and are never mixed into your real progress.' : expression.state.status !== 'ready' ? 'Complete expression analysis before saving this Phase 9 snapshot.' : 'Saving preserves the raw MIDI recording, exact ScoreVersion, and every analysis snapshot in one transaction.'}</p>{saveMessage && <span className={saveStatus === 'error' ? 'practice-build-error' : 'save-confirmation'}>{saveStatus === 'saved' ? <CheckCircle2 /> : <AlertCircle />}{saveMessage}</span>}{personalBestEvents.length > 0 && <div className="personal-best-events">{personalBestEvents.map((event) => <span key={event.metric}><Sparkles /> {event.kind === 'first-full-result' ? `First full-score ${event.metric} result` : `New ${event.metric} personal best`}: {formatPercent(event.value)}</span>)}</div>}</div><Button icon={savedRecordingId === capture.recording?.id ? CheckCircle2 : Save} disabled={session.isDemo || saveStatus === 'saving' || savedRecordingId === capture.recording?.id || expression.state.status !== 'ready'} onClick={() => void saveAttempt()}>{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry save' : savedRecordingId === capture.recording?.id ? 'Saved' : expression.state.status !== 'ready' ? 'Analyze expression first' : 'Save attempt'}</Button></section>
         <details className="technical-analysis-stack"><summary>Technical analysis</summary><div>{capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}{capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}{capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}</div></details>
       </> : <>
         {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}

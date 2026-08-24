@@ -103,9 +103,9 @@ function assertScoreVersion(value: unknown): asserts value is PersistedScoreVers
 
 function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecord {
   assertRecord(value, 'PerformanceAttempt')
-  const attempt = value as Partial<PerformanceAttemptRecord>
+  const attempt = value as Record<string, unknown>
   if (
-    attempt.schemaVersion !== 1
+    (attempt.schemaVersion !== 1 && attempt.schemaVersion !== 2)
     || typeof attempt.arrangementId !== 'string'
     || typeof attempt.scoreVersionId !== 'string'
     || typeof attempt.practiceSessionId !== 'string'
@@ -113,13 +113,13 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
     || typeof attempt.practiceSpeedMultiplier !== 'number'
     || attempt.practiceSpeedMultiplier <= 0
     || !Array.isArray(attempt.includedPartIds)
-    || !attempt.engineVersions
-    || !attempt.expectedPerformancePlan
-    || !attempt.recording
-    || !attempt.alignment
-    || !attempt.noteGrading
-    || !attempt.timingAnalysis
-    || !attempt.performanceResults
+    || !isObjectRecord(attempt.engineVersions)
+    || !isObjectRecord(attempt.expectedPerformancePlan)
+    || !isObjectRecord(attempt.recording)
+    || !isObjectRecord(attempt.alignment)
+    || !isObjectRecord(attempt.noteGrading)
+    || !isObjectRecord(attempt.timingAnalysis)
+    || !isObjectRecord(attempt.performanceResults)
   ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} is missing required snapshots.`)
   }
@@ -131,8 +131,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   const timing = attempt.timingAnalysis
   const results = attempt.performanceResults
   if (
-    ![versions, plan, recording, alignment, noteGrading, timing, results].every(isObjectRecord)
-    || !isObjectRecord(noteGrading.scope)
+    !isObjectRecord(noteGrading.scope)
     || !Array.isArray(plan.includedPartIds)
     || !isObjectRecord(alignment.diagnostics)
     || !isObjectRecord(noteGrading.diagnostics)
@@ -143,6 +142,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   }
   if (
     !isCanonicalIsoTimestamp(recording.startedAt)
+    || typeof recording.durationMs !== 'number'
     || !Number.isFinite(recording.durationMs)
     || recording.durationMs < 0
     || alignment.expectedPlanId !== plan.id
@@ -167,6 +167,57 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
     || versions.resultAggregation !== results.diagnostics.resultAggregationVersion
   ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has inconsistent snapshot provenance.`)
+  }
+  if (attempt.schemaVersion === 2) {
+    const expression = attempt.expressionAnalysis
+    const validExpressionMetric = (metric: Record<string, unknown>): boolean => {
+      const score = metric.score
+      const reliability = metric.reliability
+      const metricCoverage = metric.coverage
+      return (metric.status === 'ready' || metric.status === 'unavailable')
+        && ['reliable', 'limited', 'provisional', 'unavailable'].includes(typeof reliability === 'string' ? reliability : '')
+        && (score === null || (typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1))
+        && isObjectRecord(metricCoverage)
+        && Number.isInteger(metricCoverage.authoredTargetCount) && (metricCoverage.authoredTargetCount as number) >= 0
+        && Number.isInteger(metricCoverage.analyzedTargetCount) && (metricCoverage.analyzedTargetCount as number) >= 0
+        && (metricCoverage.ratio === null || (typeof metricCoverage.ratio === 'number' && Number.isFinite(metricCoverage.ratio) && metricCoverage.ratio >= 0 && metricCoverage.ratio <= 1))
+        && Array.isArray(metric.targets) && Array.isArray(metric.observations) && Array.isArray(metric.exclusions) && Array.isArray(metric.warnings)
+        && isObjectRecord(metric.diagnostics)
+    }
+    if (
+      !isObjectRecord(expression)
+      || !isObjectRecord(expression.scope)
+      || !isObjectRecord(expression.dynamics)
+      || !isObjectRecord(expression.articulation)
+      || !isObjectRecord(expression.diagnostics)
+      || !isObjectRecord(expression.dynamics.coverage)
+      || !isObjectRecord(expression.dynamics.diagnostics)
+      || !isObjectRecord(expression.articulation.coverage)
+      || !isObjectRecord(expression.articulation.diagnostics)
+      || !Array.isArray(expression.matchedObservations)
+      || !Array.isArray(expression.dynamics.targets)
+      || !Array.isArray(expression.dynamics.observations)
+      || !Array.isArray(expression.articulation.targets)
+      || !Array.isArray(expression.articulation.observations)
+      || (expression.status !== 'ready' && expression.status !== 'unavailable')
+      || !validExpressionMetric(expression.dynamics)
+      || !validExpressionMetric(expression.articulation)
+      || typeof expression.diagnostics.expressionAnalysisEngineVersion !== 'string'
+      || typeof expression.diagnostics.musicXmlParserVersion !== 'string'
+      || typeof expression.diagnostics.alignmentEngineVersion !== 'string'
+      || typeof expression.diagnostics.noteGradingEngineVersion !== 'string'
+      || !expression.matchedObservations.every(isObjectRecord)
+      || expression.scoreId !== plan.scoreId
+      || expression.expectedPlanId !== plan.id
+      || expression.recordingId !== recording.id
+      || expression.alignmentId !== alignment.id
+      || expression.noteGradingId !== noteGrading.id
+      || expression.scope.type !== attempt.gradingScope
+      || typeof versions.expressionAnalysis !== 'string'
+      || versions.expressionAnalysis !== expression.diagnostics.expressionAnalysisEngineVersion
+    ) {
+      throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent expression provenance.`)
+    }
   }
 }
 
