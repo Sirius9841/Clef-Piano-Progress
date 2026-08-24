@@ -23,6 +23,15 @@ export function clearLocalDataSafely(repository: Pick<PianoProgressRepository, '
   return safely(() => repository.clearAll())
 }
 
+export async function clearLocalDataAndPracticeSafely(
+  repository: Pick<PianoProgressRepository, 'clearAll'>,
+  clearPracticeSession: () => void,
+): Promise<PersistenceMutationResult<void>> {
+  const result = await clearLocalDataSafely(repository)
+  if (result.ok) clearPracticeSession()
+  return result
+}
+
 export function updateRepertoireStatusSafely(repository: Pick<PianoProgressRepository, 'updateRepertoireStatus'>, arrangementId: string, status: RepertoireStatus): Promise<PersistenceMutationResult<RepertoireEntry>> {
   return safely(() => repository.updateRepertoireStatus(arrangementId, status))
 }

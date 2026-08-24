@@ -50,7 +50,7 @@ export function AppShell() {
         </nav>
         <div className="sidebar-bottom">
           <div className="practice-mini">
-            <div className="practice-mini-top"><BookOpen size={16} /><span>This week</span></div>
+            <div className="practice-mini-top"><BookOpen size={16} /><span>Last 7 days</span></div>
             <strong>{week.status === 'loading' ? '…' : weekMinutes < 60 ? `${weekMinutes} min` : `${Math.floor(weekMinutes / 60)}h ${weekMinutes % 60}m`}</strong>
             <div className="mini-track"><span style={{ width: `${Math.min(100, weekMinutes / 300 * 100)}%` }} /></div>
             <small>{week.status === 'ready' ? `${week.data.sessionCount} completed session${week.data.sessionCount === 1 ? '' : 's'}` : week.status === 'error' ? 'Local data unavailable' : 'Reading local sessions'}</small>

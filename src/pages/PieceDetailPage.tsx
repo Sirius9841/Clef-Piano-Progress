@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, PageHeader, SectionHeading, Stat } from '../components/ui'
 import { REPERTOIRE_STATUSES, type RepertoireStatus } from '../domain/music'
-import { buildExpectedPerformancePlan } from '../features/expected-performance/builder'
 import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
@@ -12,6 +11,7 @@ import { removeRepertoireSafely, updateRepertoireStatusSafely } from '../feature
 import type { AttemptSummary, PersistedScoreVersion, RepertoireListItem } from '../features/persistence/types'
 import { comparableAttemptKey, derivePersonalBests, formatPercent, selectLatestHeadlineAttempt } from '../features/progress/model'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
+import { buildPersistedPracticePlan } from '../features/practice/persistedPractice'
 
 interface PieceData {
   readonly item: RepertoireListItem | null
@@ -53,7 +53,7 @@ export function PieceDetailPage() {
     setActionError(null)
     try {
       const score = parseMusicXml(item.scoreVersion.canonicalMusicXml)
-      const plan = buildExpectedPerformancePlan(score, { includedPartIds: [...item.scoreVersion.includedPartIds], fallbackQuarterBpm: 120 })
+      const plan = buildPersistedPracticePlan(score, item.scoreVersion)
       practice.startSession({
         arrangementId: item.arrangement.id,
         scoreVersionId: item.scoreVersion.id,

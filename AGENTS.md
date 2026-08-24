@@ -118,6 +118,7 @@ This repository builds a serious piano progress and performance-analysis applica
 
 - Keep domain/services behind `PianoProgressRepository`; raw IndexedDB APIs belong only in the adapter.
 - Persist canonical MusicXML and immutable ScoreVersion identity. Historical attempts always retain the exact ScoreVersion, expected plan, recording, analysis snapshots, and engine versions they used.
+- ScoreVersion duplicate identity includes the canonical deduplicated part-selection set. Changing that set creates a new immutable version, and Arrangement part metadata mirrors the latest active version.
 - PerformanceAttempt save, lightweight summary save, and PracticeSession linkage are one transaction and retries are idempotent by attempt ID.
 - Keep raw MIDI lossless, including arrival order, velocities, releases, sustain, timestamps, device context, warnings, and statistics.
 - Summary projections may accelerate queries but are rebuildable and never replace the authoritative attempt snapshot.
@@ -125,11 +126,13 @@ This repository builds a serious piano progress and performance-analysis applica
 - Personal bests are derived separately for Notes, Rhythm, and Tempo. Headline comparison requires the same Arrangement, ScoreVersion, full-plan scope, and practice speed; equality and partial takes are not new records.
 - Historical result views are read-only. Never silently regrade an old attempt with current engines.
 - Removing Repertoire membership preserves Work, Arrangement, ScoreVersions, sessions, and attempts. Full local deletion requires explicit confirmation.
+- Successful full local deletion also clears the active in-memory Practice session; a failed deletion preserves it for a safe retry.
 - Treat local storage failures and corrupt records as typed, recoverable UI states. Never replace missing evidence with mock data or fake zeroes.
 - Clear cached IndexedDB opens after failure, close, or version change so Retry performs a real reopen; keep healthy opens cached.
 - Exact re-import after Repertoire removal restores only membership. Never recreate preserved Work, Arrangement, ScoreVersion, session, or attempt identity.
 - Date-range progress queries use indexes, active days use the user's local calendar, and summary views never load raw MIDI snapshots.
 - Headline context requires `isHeadlineComparable`; unavailable metrics remain null and must not be plotted as zero.
+- Web MIDI teardown detaches local handlers and selection before awaiting device close. Close failures and stale async operations must never restore an old input or clear a newer one.
 
 ## Commands
 

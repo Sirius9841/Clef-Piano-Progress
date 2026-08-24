@@ -14,6 +14,8 @@ function defaultMidiAccessRequester(): MidiAccessRequester | null {
 export class WebMidiService {
   private access: MIDIAccess | null = null
   private selectedInput: MIDIInput | null = null
+  private accessOperation = 0
+  private selectionOperation = 0
   private deviceListeners = new Set<DeviceListener>()
   private eventListeners = new Set<EventListener>()
 
@@ -25,8 +27,16 @@ export class WebMidiService {
 
   async requestAccess(): Promise<MidiDevice[]> {
     if (!this.requestMidiAccess) throw new Error('Web MIDI is not supported in this browser.')
-    this.access = await this.requestMidiAccess({ sysex: false })
-    this.access.onstatechange = () => {
+    const operation = ++this.accessOperation
+    const access = await this.requestMidiAccess({ sysex: false })
+    if (operation !== this.accessOperation) {
+      if (this.access !== access) access.onstatechange = null
+      return this.getDevices()
+    }
+    if (this.access && this.access !== access) this.access.onstatechange = null
+    this.access = access
+    access.onstatechange = () => {
+      if (this.access !== access) return
       const devices = this.getDevices()
       if (this.selectedInput && !devices.some((device) => device.id === this.selectedInput?.id && device.state === 'connected')) {
         void this.selectInput(null).catch(() => { /* state change still clears the unavailable selection */ })
@@ -49,18 +59,35 @@ export class WebMidiService {
   }
 
   async selectInput(deviceId: string | null): Promise<void> {
-    if (this.selectedInput) {
-      this.selectedInput.onmidimessage = null
-      await this.selectedInput.close()
-      this.selectedInput = null
+    const operation = ++this.selectionOperation
+    const previousInput = this.selectedInput
+    this.selectedInput = null
+    if (previousInput) {
+      previousInput.onmidimessage = null
+      try {
+        await previousInput.close()
+      } catch {
+        // Local teardown is authoritative even when a browser or driver rejects close().
+      }
     }
 
-    if (!deviceId || !this.access) return
-    const input = this.access.inputs.get(deviceId)
+    if (operation !== this.selectionOperation || !deviceId || !this.access) return
+    const selectedAccess = this.access
+    const input = selectedAccess.inputs.get(deviceId)
     if (!input || input.state !== 'connected') throw new Error('The selected MIDI input is no longer available.')
 
     await input.open()
+    if (operation !== this.selectionOperation || this.access !== selectedAccess) {
+      input.onmidimessage = null
+      try {
+        await input.close()
+      } catch {
+        // A stale open cannot regain authority even if its compensating close fails.
+      }
+      return
+    }
     input.onmidimessage = (message) => {
+      if (this.selectedInput !== input) return
       if (!message.data) return
       const event = parseMidiMessage(message.data, message.timeStamp)
       if (event) this.eventListeners.forEach((listener) => listener(event))
@@ -79,9 +106,11 @@ export class WebMidiService {
   }
 
   async dispose(): Promise<void> {
-    await this.selectInput(null)
-    if (this.access) this.access.onstatechange = null
+    ++this.accessOperation
+    const access = this.access
     this.access = null
+    if (access) access.onstatechange = null
+    await this.selectInput(null)
   }
 
   private emitDevices(devices: MidiDevice[]): void {

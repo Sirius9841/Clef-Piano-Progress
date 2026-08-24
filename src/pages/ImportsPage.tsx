@@ -5,7 +5,6 @@ import {
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, PageHeader, StatusPill } from '../components/ui'
-import { buildExpectedPerformancePlan } from '../features/expected-performance/builder'
 import { ExpectedPerformanceBuildError } from '../features/expected-performance/types'
 import demoScoreXml from '../features/musicxml/demo-score.musicxml?raw'
 import { asScoreImportError, type ScoreImportError } from '../features/musicxml/errors'
@@ -17,6 +16,7 @@ import { usePersistence, useRepositoryQuery } from '../features/persistence/Pers
 import type { PersistedWork } from '../features/persistence/types'
 import type { Difficulty } from '../domain/music'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
+import { buildPersistedPracticePlan } from '../features/practice/persistedPractice'
 import { OsmdScoreRenderer, type ScoreRenderState } from '../features/score-renderer/OsmdScoreRenderer'
 
 type Relationship = 'arrangement' | 'derived' | 'new'
@@ -170,7 +170,6 @@ export function ImportsPage() {
     setPracticeError(null)
     setSaveState('saving')
     try {
-      const plan = buildExpectedPerformancePlan(score, { includedPartIds: selectedPartIds, fallbackQuarterBpm: 120 })
       const saved = await persistence.repository.importScore({
         relationship: relationship === 'arrangement' ? 'existing-work-arrangement' : relationship === 'derived' ? 'derived-work' : 'new-work',
         ...(relationship === 'arrangement' ? { existingWorkId } : {}),
@@ -182,6 +181,7 @@ export function ImportsPage() {
         parserVersion: MUSICXML_PARSER_VERSION,
         status: 'Learning',
       })
+      const plan = buildPersistedPracticePlan(score, saved.scoreVersion, selectedPartIds)
       setSaveState('saved')
       practice.startSession({ arrangementId: saved.arrangement.id, scoreVersionId: saved.scoreVersion.id, source: loaded, score, plan, sourceLabel: loaded.fileName, isDemo: false, speedMultiplier: 1 })
       navigate('/practice/session')

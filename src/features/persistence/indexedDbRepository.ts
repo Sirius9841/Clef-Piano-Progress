@@ -1,6 +1,7 @@
 import { PianoStorageError, asPianoStorageError } from './errors'
 import { sha256Hex } from './hash'
 import { localCalendarDateKey } from './localCalendar'
+import { canonicalizePartSelection, exactPartOrder, samePartSelection } from './partSelection'
 import { isRepertoireStatus, type RepertoireStatus } from '../../domain/music'
 import type { PianoProgressRepository } from './repository'
 import {
@@ -397,6 +398,10 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
   }
 
   async importScore(input: ImportScoreInput): Promise<ImportScoreResult> {
+    const includedPartIds = canonicalizePartSelection(input.arrangement.includedPartIds)
+    if (includedPartIds.length === 0 || includedPartIds.some((partId) => partId.length === 0)) {
+      throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'Select at least one valid score part before importing.')
+    }
     const contentHash = await sha256Hex(input.loaded.musicXmlText)
     const database = await this.openDatabase()
     const transaction = database.transaction([STORE.works, STORE.arrangements, STORE.scoreVersions, STORE.repertoire], 'readwrite')
@@ -421,7 +426,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'Choose the source Work for this derived Work.')
       }
 
-      const duplicate = matchingVersions.find((version) => {
+      const contextVersions = matchingVersions.filter((version) => {
         const arrangement = existingArrangements.find((candidate) => candidate.id === version.arrangementId)
         if (!arrangement || arrangement.name !== requestedArrangementName) return false
         if (requestedWorkId) return arrangement.workId === requestedWorkId
@@ -429,19 +434,42 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         if (input.relationship === 'derived-work') return work?.derivedFromWorkId === input.sourceWorkId && work?.title === input.work.title && work?.composer === input.work.composer
         return work?.title === input.work.title && work.composer === input.work.composer
       })
-      if (duplicate) {
-        const arrangement = existingArrangements.find((candidate) => candidate.id === duplicate.arrangementId)
+      const contextVersion = [...contextVersions].sort((left, right) => right.version - left.version || left.id.localeCompare(right.id))[0]
+      if (contextVersion) {
+        const arrangement = existingArrangements.find((candidate) => candidate.id === contextVersion.arrangementId)
         const work = arrangement ? existingWorks.find((candidate) => candidate.id === arrangement.workId) : undefined
-        const existingRepertoire = arrangement ? await requestValue(repertoireStore.index('arrangementId').get(arrangement.id)) as RepertoireEntry | undefined : undefined
         if (work && arrangement) {
+          const arrangementVersions = await requestValue(versionStore.index('arrangementId').getAll(idbRangeFor(arrangement.id))) as PersistedScoreVersion[]
+          const activeVersion = [...arrangementVersions].sort((left, right) => right.version - left.version || left.id.localeCompare(right.id))[0]
+          const existingRepertoire = await requestValue(repertoireStore.index('arrangementId').get(arrangement.id)) as RepertoireEntry | undefined
           const timestamp = this.now().toISOString()
           const repertoire = existingRepertoire ?? {
             id: this.createId(), arrangementId: arrangement.id, status: input.status, addedAt: timestamp, updatedAt: timestamp,
           }
           if (!existingRepertoire) repertoireStore.add(repertoire)
+          if (activeVersion && activeVersion.contentHash === contentHash && samePartSelection(activeVersion.includedPartIds, includedPartIds)) {
+            const activeArrangement = exactPartOrder(arrangement.includedPartIds, activeVersion.includedPartIds)
+              ? arrangement
+              : { ...arrangement, includedPartIds: [...activeVersion.includedPartIds], updatedAt: timestamp }
+            if (activeArrangement !== arrangement) arrangementStore.put(activeArrangement)
+            await completion
+            if (!existingRepertoire || activeArrangement !== arrangement) this.notify()
+            return { work, arrangement: activeArrangement, scoreVersion: activeVersion, repertoire, duplicate: true }
+          }
+          const scoreVersion: PersistedScoreVersion = {
+            id: this.createId(), arrangementId: arrangement.id,
+            version: Math.max(0, ...arrangementVersions.map((version) => version.version)) + 1,
+            format: input.loaded.sourceFormat, createdAt: timestamp, sourceFileName: input.loaded.fileName,
+            sourceBytes: input.loaded.sourceBytes, uncompressedBytes: input.loaded.uncompressedBytes,
+            contentHash, canonicalMusicXml: input.loaded.musicXmlText, normalizedScoreId: input.normalizedScoreId,
+            parserVersion: input.parserVersion, includedPartIds: [...includedPartIds],
+          }
+          const activeArrangement: PersistedArrangement = { ...arrangement, includedPartIds: [...includedPartIds], updatedAt: timestamp }
+          arrangementStore.put(activeArrangement)
+          versionStore.add(scoreVersion)
           await completion
-          if (!existingRepertoire) this.notify()
-          return { work, arrangement, scoreVersion: duplicate, repertoire, duplicate: true }
+          this.notify()
+          return { work, arrangement: activeArrangement, scoreVersion, repertoire, duplicate: false }
         }
       }
 
@@ -458,7 +486,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       const arrangement: PersistedArrangement = {
         id: this.createId(), workId: work.id, name: requestedArrangementName,
         difficulty: input.arrangement.difficulty, source: 'user-imported',
-        includedPartIds: [...input.arrangement.includedPartIds],
+        includedPartIds: [...includedPartIds],
         ...(input.arrangement.targetTempoBpm ? { targetTempoBpm: input.arrangement.targetTempoBpm } : {}),
         createdAt: timestamp, updatedAt: timestamp,
       }
@@ -468,7 +496,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         sourceBytes: input.loaded.sourceBytes, uncompressedBytes: input.loaded.uncompressedBytes,
         contentHash, canonicalMusicXml: input.loaded.musicXmlText, normalizedScoreId: input.normalizedScoreId,
         parserVersion: input.parserVersion,
-        includedPartIds: [...input.arrangement.includedPartIds],
+        includedPartIds: [...includedPartIds],
       }
       const repertoire: RepertoireEntry = {
         id: this.createId(), arrangementId: arrangement.id, status: input.status, addedAt: timestamp, updatedAt: timestamp,
@@ -488,26 +516,40 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
   }
 
   async createScoreVersion(input: CreateScoreVersionInput): Promise<CreateScoreVersionResult> {
+    const includedPartIds = canonicalizePartSelection(input.includedPartIds)
+    if (includedPartIds.length === 0 || includedPartIds.some((partId) => partId.length === 0)) {
+      throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'Select at least one valid score part before creating a ScoreVersion.')
+    }
     const contentHash = await sha256Hex(input.loaded.musicXmlText)
     const database = await this.openDatabase()
     const transaction = database.transaction([STORE.arrangements, STORE.scoreVersions], 'readwrite')
     const completion = transactionComplete(transaction)
     try {
-      const arrangement = await requestValue(transaction.objectStore(STORE.arrangements).get(input.arrangementId)) as PersistedArrangement | undefined
+      const arrangementStore = transaction.objectStore(STORE.arrangements)
+      const arrangement = await requestValue(arrangementStore.get(input.arrangementId)) as PersistedArrangement | undefined
       if (!arrangement) throw new PianoStorageError('NOT_FOUND', 'The Arrangement for this score revision no longer exists.')
       const store = transaction.objectStore(STORE.scoreVersions)
       const versions = await requestValue(store.index('arrangementId').getAll(idbRangeFor(input.arrangementId))) as PersistedScoreVersion[]
-      const duplicate = versions.find((version) => version.contentHash === contentHash)
+      const duplicate = [...versions].sort((left, right) => right.version - left.version || left.id.localeCompare(right.id))[0]
       if (duplicate) {
-        await completion
-        return { scoreVersion: duplicate, duplicate: true }
+        if (duplicate.contentHash === contentHash && samePartSelection(duplicate.includedPartIds, includedPartIds)) {
+          if (!exactPartOrder(arrangement.includedPartIds, duplicate.includedPartIds)) {
+            arrangementStore.put({ ...arrangement, includedPartIds: [...duplicate.includedPartIds], updatedAt: this.now().toISOString() })
+            await completion
+            this.notify()
+          } else {
+            await completion
+          }
+          return { scoreVersion: duplicate, duplicate: true }
+        }
       }
+      const timestamp = this.now().toISOString()
       const scoreVersion: PersistedScoreVersion = {
         id: this.createId(),
         arrangementId: input.arrangementId,
         version: Math.max(0, ...versions.map((version) => version.version)) + 1,
         format: input.loaded.sourceFormat,
-        createdAt: this.now().toISOString(),
+        createdAt: timestamp,
         sourceFileName: input.loaded.fileName,
         sourceBytes: input.loaded.sourceBytes,
         uncompressedBytes: input.loaded.uncompressedBytes,
@@ -515,9 +557,10 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         canonicalMusicXml: input.loaded.musicXmlText,
         normalizedScoreId: input.normalizedScoreId,
         parserVersion: input.parserVersion,
-        includedPartIds: [...input.includedPartIds],
+        includedPartIds: [...includedPartIds],
       }
       store.add(scoreVersion)
+      arrangementStore.put({ ...arrangement, includedPartIds: [...includedPartIds], updatedAt: timestamp })
       await completion
       this.notify()
       return { scoreVersion, duplicate: false }

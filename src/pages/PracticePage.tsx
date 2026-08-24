@@ -19,6 +19,7 @@ import { usePerformanceResults } from '../features/performance-results/usePerfor
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { capturedTakeSpeed, isPracticeSpeedLocked, resolvePracticeSpeedChange } from '../features/practice/speedPolicy'
+import { clearCurrentTake, takeClearActionCopy } from '../features/practice/takeWorkspace'
 import { usePersistence } from '../features/persistence/PersistenceContext'
 import type { PerformanceAttemptRecord, PracticeSessionRecord } from '../features/persistence/types'
 import { detectPersonalBestEvents, formatPercent, type PersonalBestEvent } from '../features/progress/model'
@@ -92,6 +93,15 @@ export function PracticePage() {
     setPersonalBestEvents([])
     setSavedRecordingId(null)
     capture.start()
+  }
+
+  const clearTake = () => {
+    clearCurrentTake(capture.discard)
+    setScoreHighlights(null)
+    setSaveStatus('idle')
+    setSaveMessage(null)
+    setPersonalBestEvents([])
+    setSavedRecordingId(null)
   }
 
   const saveAttempt = async () => {
@@ -172,13 +182,14 @@ export function PracticePage() {
   const practiceMs = scoreTimeToMilliseconds(plan.statistics.totalScoreDuration, plan.tempoTimeline, displayedSpeed)
   const activeEventCount = capture.state.status === 'recording' ? capture.state.eventCount : capture.recording?.statistics.eventCount ?? 0
   const activeAttackCount = capture.recording?.statistics.noteAttackCount ?? midi.activeNotes.length
+  const clearActionCopy = takeClearActionCopy(capture.recording?.id ?? null, savedRecordingId)
 
   return (
     <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice phase-seven-practice ${capture.state.status}`}>
       <Link to="/imports" className="back-link"><ArrowLeft size={15} /> Back to score import</Link>
       <header className="practice-header">
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
-        <div className="practice-speed"><span>{capture.recording ? `Captured take · ${Math.round(displayedSpeed * 100)}%` : 'Practice speed'}</span><div>{speeds.map((speed) => <button key={speed} className={displayedSpeed === speed ? 'active' : ''} disabled={speedLocked} onClick={() => practice.setSpeedMultiplier(resolvePracticeSpeedChange(session.speedMultiplier, speed, capture.state.status))}>{Math.round(speed * 100)}%</button>)}</div>{speedLocked && <small>Discard this take before changing the target speed.</small>}</div>
+        <div className="practice-speed"><span>{capture.recording ? `Captured take · ${Math.round(displayedSpeed * 100)}%` : 'Practice speed'}</span><div>{speeds.map((speed) => <button key={speed} className={displayedSpeed === speed ? 'active' : ''} disabled={speedLocked} onClick={() => practice.setSpeedMultiplier(resolvePracticeSpeedChange(session.speedMultiplier, speed, capture.state.status))}>{Math.round(speed * 100)}%</button>)}</div>{speedLocked && <small>Clear the current take before changing the target speed.</small>}</div>
       </header>
 
       <div className="practice-workspace">
@@ -197,8 +208,9 @@ export function PracticePage() {
             <div className="recording-actions">
               {capture.state.status === 'idle' && <Button icon={Activity} disabled={!midi.selectedDevice} onClick={startCapture}>Record take</Button>}
               {capture.state.status === 'recording' && <Button icon={CircleStop} onClick={capture.stop}>Stop recording</Button>}
-              {capture.state.status === 'stopped' && <><Button icon={RotateCcw} disabled={!midi.selectedDevice} onClick={startCapture}>Record again</Button><Button variant="ghost" icon={Trash2} onClick={capture.discard}>Discard take</Button></>}
+              {capture.state.status === 'stopped' && <><Button icon={RotateCcw} disabled={!midi.selectedDevice} onClick={startCapture}>Record again</Button><Button variant="ghost" icon={Trash2} onClick={clearTake}>{clearActionCopy.label}</Button></>}
             </div>
+            {capture.state.status === 'stopped' && clearActionCopy.detail && <small className="take-clear-note">{clearActionCopy.detail}</small>}
           </section>
           <section className="panel practice-midi"><MidiControls compact /></section>
         </aside>

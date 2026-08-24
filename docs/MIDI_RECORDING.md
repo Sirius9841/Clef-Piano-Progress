@@ -18,6 +18,8 @@ Sustain changes are preserved and counted, but they do not extend the physical k
 
 A selected-device disconnect stops capture with `device-disconnected`, retaining all data collected so far. A disconnect means either that the selected ID disappears or that the same ID remains present with a state other than `connected`. The provider clears selection, active keys, and sustain; its recording lifecycle then finalizes the active take. Reconnecting only makes the input available for explicit reselection. It never appends to or resumes the frozen take, and a subsequent Start creates a fresh recording ID and buffer.
 
+Input teardown is locally authoritative: the service clears its selected-input reference and message handler before awaiting `close()`. A driver rejection cannot keep the old input live. Monotonic operation identities also prevent a slow close or open from clearing or restoring a newer selection, and requesting access again detaches the prior access object's state handler.
+
 The exact lifecycle is:
 
 ```text

@@ -35,7 +35,7 @@ Canon Fantasy is therefore a separate Work with its own arrangements, score vers
 
 ## ScoreVersion
 
-A ScoreVersion is the exact MusicXML/MXL input used for analysis. It is historically immutable. Editing an import creates another version so old results remain reproducible.
+A ScoreVersion is the exact MusicXML/MXL input and canonical selected-part set used for analysis. It is historically immutable. Editing the score or changing that part set creates another version so old results remain reproducible; reordered or duplicate part IDs describe the same selection.
 
 Phase 2 produces a `NormalizedScore` from validated canonical MusicXML. Phase 8 persists the exact canonical XML, source metadata, parser version, included-part arrangement setup, and SHA-256 fingerprint in a ScoreVersion. The normalized model is reconstructed for a new live session; historical attempts retain the exact derived plan and analysis snapshots they used.
 

@@ -6,11 +6,13 @@ import { MidiDiagnostics } from '../features/midi/MidiDiagnostics'
 import { useMidi } from '../features/midi/MidiContext'
 import { PianoKeyboard } from '../features/midi/PianoKeyboard'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
-import { clearLocalDataSafely } from '../features/persistence/mutations'
+import { clearLocalDataAndPracticeSafely } from '../features/persistence/mutations'
+import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 
 export function SettingsPage() {
   const midi = useMidi()
   const persistence = usePersistence()
+  const practice = usePracticeSession()
   const counts = useRepositoryQuery((repository) => repository.getCounts(), 'storage-counts')
   const [clearState, setClearState] = useState<'idle' | 'clearing' | 'cleared' | 'error'>('idle')
   const [clearMessage, setClearMessage] = useState<string | null>(null)
@@ -20,7 +22,7 @@ export function SettingsPage() {
     if (!confirmed) return
     setClearState('clearing')
     setClearMessage(null)
-    const result = await clearLocalDataSafely(persistence.repository)
+    const result = await clearLocalDataAndPracticeSafely(persistence.repository, practice.clearSession)
     if (!result.ok) {
       setClearState('error')
       setClearMessage(`Local data was not cleared: ${result.error.message} You can retry safely.`)

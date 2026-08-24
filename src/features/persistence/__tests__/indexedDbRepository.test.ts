@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { makeResultPlan, recordingForPlan, analyzeResult } from '../../performance-results/__tests__/fixtures'
+import { clearCurrentTake } from '../../practice/takeWorkspace'
 import type { PerformanceAttemptRecord, PracticeSessionRecord } from '../types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
 
@@ -179,6 +180,29 @@ describe('IndexedDbPianoProgressRepository', () => {
     await expect(repo.getCounts()).resolves.toMatchObject({ works: 1, arrangements: 1, scoreVersions: 1, repertoireEntries: 1 })
   })
 
+  it('canonicalizes reordered and duplicate selected part IDs for exact import identity', async () => {
+    const repo = repository('canonical-parts-db')
+    const first = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P2', 'P1', 'P2'] } })
+    const second = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P1', 'P2'] } })
+    expect(first.scoreVersion.includedPartIds).toEqual(['P1', 'P2'])
+    expect(first.arrangement.includedPartIds).toEqual(['P1', 'P2'])
+    expect(second).toMatchObject({ duplicate: true, scoreVersion: { id: first.scoreVersion.id } })
+    await expect(repo.getCounts()).resolves.toMatchObject({ arrangements: 1, scoreVersions: 1 })
+  })
+
+  it('creates a new version for the same score content with a different part set and preserves history', async () => {
+    const repo = repository('changed-parts-db')
+    const first = await repo.importScore(importInput())
+    const oldAttempt = attemptFixture(first.arrangement.id, first.scoreVersion.id)
+    await repo.saveAttempt(oldAttempt)
+    const second = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P2', 'P1', 'P2'] } })
+    expect(second).toMatchObject({ duplicate: false, arrangement: { id: first.arrangement.id, includedPartIds: ['P1', 'P2'] }, scoreVersion: { version: 2, includedPartIds: ['P1', 'P2'] } })
+    expect(second.scoreVersion.id).not.toBe(first.scoreVersion.id)
+    expect((await repo.getScoreVersion(first.scoreVersion.id))?.includedPartIds).toEqual(['P1'])
+    expect((await repo.getAttempt(oldAttempt.attempt.id))?.scoreVersionId).toBe(first.scoreVersion.id)
+    expect((await repo.listRepertoire())[0]?.scoreVersion.id).toBe(second.scoreVersion.id)
+  })
+
   it('does not merge exact score files that are explicitly named as different arrangements', async () => {
     const repo = repository('distinct-arrangements-db')
     const source = await repo.importScore(importInput())
@@ -300,6 +324,26 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect((await repo.listScoreVersions(imported.arrangement.id)).map((version) => version.version)).toEqual([1, 2])
   })
 
+  it('includes the canonical part set in createScoreVersion duplicate identity', async () => {
+    const repo = repository('score-version-parts-db')
+    const imported = await repo.importScore(importInput())
+    const changedParts = await repo.createScoreVersion({
+      arrangementId: imported.arrangement.id,
+      loaded: importInput().loaded,
+      normalizedScoreId: imported.scoreVersion.normalizedScoreId,
+      parserVersion: imported.scoreVersion.parserVersion,
+      includedPartIds: ['P2', 'P1', 'P2'],
+    })
+    expect(changedParts).toMatchObject({ duplicate: false, scoreVersion: { version: 2, includedPartIds: ['P1', 'P2'] } })
+    const duplicate = await repo.createScoreVersion({
+      arrangementId: imported.arrangement.id,
+      loaded: importInput().loaded,
+      normalizedScoreId: 'ignored', parserVersion: 'ignored', includedPartIds: ['P2', 'P1'],
+    })
+    expect(duplicate).toMatchObject({ duplicate: true, scoreVersion: { id: changedParts.scoreVersion.id } })
+    expect((await repo.listRepertoire())[0]?.arrangement.includedPartIds).toEqual(['P1', 'P2'])
+  })
+
   it('saves raw MIDI and every analysis snapshot transactionally and idempotently', async () => {
     const repo = repository('attempt-db')
     const imported = await repo.importScore(importInput())
@@ -318,6 +362,17 @@ describe('IndexedDbPianoProgressRepository', () => {
     await expect(repo.saveAttempt(extendedRetry)).resolves.toMatchObject({ created: false })
     expect((await repo.listSessions())[0]).toMatchObject({ endedAt: fixture.session.endedAt, durationMs: 60_000 })
     await expect(repo.getCounts()).resolves.toMatchObject({ practiceSessions: 1, performanceAttempts: 1 })
+  })
+
+  it('keeps a saved attempt queryable when the current Practice take is cleared', async () => {
+    const repo = repository('saved-take-clear-db')
+    const imported = await repo.importScore(importInput())
+    const fixture = attemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    await repo.saveAttempt(fixture)
+    let currentTakeId: string | null = fixture.attempt.recording.id
+    clearCurrentTake(() => { currentTakeId = null })
+    expect(currentTakeId).toBeNull()
+    expect(await repo.getAttempt(fixture.attempt.id)).toMatchObject({ id: fixture.attempt.id, recording: { id: fixture.attempt.recording.id } })
   })
 
   it('links multiple attempts to one session and counts practice time once', async () => {

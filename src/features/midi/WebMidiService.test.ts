@@ -5,14 +5,32 @@ import { INITIAL_MIDI_RUNTIME_STATE, reduceMidiRuntimeState, type MidiRuntimeSta
 import { WebMidiService } from './WebMidiService'
 
 class FakeMidiInput {
-  readonly id = 'piano-1'
-  readonly name = 'Test Piano'
+  readonly name: string
   readonly manufacturer = 'Tests'
   state: MIDIPortDeviceState = 'connected'
   onmidimessage: ((event: MIDIMessageEvent) => void) | null = null
+  rejectClose = false
+  private closeBarrier: Promise<void> | null = null
+  private releaseClose: (() => void) | null = null
+
+  constructor(readonly id = 'piano-1') {
+    this.name = `Test Piano ${id}`
+  }
 
   async open(): Promise<MIDIPort> { return this as unknown as MIDIPort }
-  async close(): Promise<MIDIPort> { return this as unknown as MIDIPort }
+  async close(): Promise<MIDIPort> {
+    if (this.rejectClose) throw new Error('Driver rejected close')
+    await this.closeBarrier
+    return this as unknown as MIDIPort
+  }
+  deferClose(): void {
+    this.closeBarrier = new Promise((resolve) => { this.releaseClose = resolve })
+  }
+  resolveClose(): void {
+    this.releaseClose?.()
+    this.releaseClose = null
+    this.closeBarrier = null
+  }
   emit(data: readonly number[], timeStamp: number): void {
     this.onmidimessage?.({ data: Uint8Array.from(data), timeStamp } as unknown as MIDIMessageEvent)
   }
@@ -20,8 +38,15 @@ class FakeMidiInput {
 
 class FakeMidiAccess {
   readonly input = new FakeMidiInput()
-  readonly inputs = new Map([[this.input.id, this.input]]) as unknown as MIDIInputMap
+  readonly inputMap = new Map<string, FakeMidiInput>([[this.input.id, this.input]])
+  readonly inputs = this.inputMap as unknown as MIDIInputMap
   onstatechange: ((event: MIDIConnectionEvent) => void) | null = null
+
+  addInput(id: string): FakeMidiInput {
+    const input = new FakeMidiInput(id)
+    this.inputMap.set(id, input)
+    return input
+  }
 
   emitStateChange(): void {
     this.onstatechange?.({ port: this.input } as unknown as MIDIConnectionEvent)
@@ -29,6 +54,56 @@ class FakeMidiAccess {
 }
 
 describe('WebMidiService lifecycle', () => {
+  it('detaches locally when close rejects and can select a replacement device', async () => {
+    const access = new FakeMidiAccess()
+    const replacement = access.addInput('piano-2')
+    const service = new WebMidiService(async () => access as unknown as MIDIAccess)
+    const events: number[] = []
+    service.subscribeToEvents((event) => { if (event.type === 'note-on') events.push(event.note) })
+    await service.requestAccess()
+    await service.selectInput(access.input.id)
+    access.input.emit([0x90, 60, 90], 10)
+    access.input.rejectClose = true
+
+    await expect(service.selectInput(null)).resolves.toBeUndefined()
+    access.input.emit([0x90, 61, 90], 20)
+    await service.selectInput(replacement.id)
+    replacement.emit([0x90, 62, 90], 30)
+    expect(events).toEqual([60, 62])
+  })
+
+  it('does not let a slow stale teardown clear a newer selection', async () => {
+    const access = new FakeMidiAccess()
+    const replacement = access.addInput('piano-2')
+    const service = new WebMidiService(async () => access as unknown as MIDIAccess)
+    const events: number[] = []
+    service.subscribeToEvents((event) => { if (event.type === 'note-on') events.push(event.note) })
+    await service.requestAccess()
+    await service.selectInput(access.input.id)
+    access.input.deferClose()
+
+    const staleTeardown = service.selectInput(null)
+    await service.selectInput(replacement.id)
+    replacement.emit([0x90, 64, 90], 40)
+    access.input.resolveClose()
+    await staleTeardown
+    replacement.emit([0x90, 65, 90], 50)
+    expect(events).toEqual([64, 65])
+  })
+
+  it('detaches an earlier access object when access is requested again', async () => {
+    const first = new FakeMidiAccess()
+    const second = new FakeMidiAccess()
+    let requestCount = 0
+    const service = new WebMidiService(async () => (++requestCount === 1 ? first : second) as unknown as MIDIAccess)
+    await service.requestAccess()
+    await service.requestAccess()
+    expect(first.onstatechange).toBeNull()
+    expect(second.onstatechange).not.toBeNull()
+    await service.dispose()
+    expect(second.onstatechange).toBeNull()
+  })
+
   it('disconnects a same-ID device, freezes the active take, and permits a fresh take after reconnect', async () => {
     const access = new FakeMidiAccess()
     const service = new WebMidiService(async () => access as unknown as MIDIAccess)
