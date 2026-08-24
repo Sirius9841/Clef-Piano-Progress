@@ -26,7 +26,7 @@ Imports support a new Work, another Arrangement of an existing Work, or a separa
 
 ## Attempt transaction
 
-`saveAttempt` validates the Arrangement, exact ScoreVersion, and PracticeSession identities, then atomically:
+`saveAttempt` validates the Arrangement, exact ScoreVersion, and PracticeSession identities. Before any write or idempotent-return path, it also requires canonically equivalent included-part sets on the persisted ScoreVersion, PerformanceAttempt, and embedded ExpectedPerformancePlan. Reordered or repeated IDs follow the centralized set semantics; a mismatch aborts without an attempt, summary, or session record. It then atomically:
 
 1. adds the full PerformanceAttempt;
 2. adds its lightweight summary;

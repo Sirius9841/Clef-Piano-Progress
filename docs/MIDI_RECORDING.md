@@ -20,6 +20,8 @@ A selected-device disconnect stops capture with `device-disconnected`, retaining
 
 Input teardown is locally authoritative: the service clears its selected-input reference and message handler before awaiting `close()`. A driver rejection cannot keep the old input live. Monotonic operation identities also prevent a slow close or open from clearing or restoring a newer selection, and requesting access again detaches the prior access object's state handler.
 
+The React provider independently gates post-await selection and error updates by its latest user request. A slow selection therefore cannot restore an old displayed device after a newer selection or explicit deselection completes.
+
 The exact lifecycle is:
 
 ```text

@@ -62,6 +62,21 @@ function attemptFixture(arrangementId: string, scoreVersionId: string, sessionId
   return { attempt, session }
 }
 
+function withPartSelections(
+  fixture: ReturnType<typeof attemptFixture>,
+  attemptPartIds: readonly string[],
+  planPartIds: readonly string[],
+) {
+  return {
+    ...fixture,
+    attempt: {
+      ...fixture.attempt,
+      includedPartIds: attemptPartIds,
+      expectedPerformancePlan: { ...fixture.attempt.expectedPerformancePlan, includedPartIds: [...planPartIds] },
+    },
+  }
+}
+
 function repository(name: string, faultInjector?: () => void) {
   return new IndexedDbPianoProgressRepository({ databaseName: name, createId: ids(), now: () => new Date('2026-08-21T12:00:00.000Z'), ...(faultInjector ? { faultInjector } : {}) })
 }
@@ -362,6 +377,41 @@ describe('IndexedDbPianoProgressRepository', () => {
     await expect(repo.saveAttempt(extendedRetry)).resolves.toMatchObject({ created: false })
     expect((await repo.listSessions())[0]).toMatchObject({ endedAt: fixture.session.endedAt, durationMs: 60_000 })
     await expect(repo.getCounts()).resolves.toMatchObject({ practiceSessions: 1, performanceAttempts: 1 })
+  })
+
+  it('accepts canonically equivalent reordered attempt and plan part selections', async () => {
+    const repo = repository('attempt-reordered-parts-db')
+    const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P1', 'P2'] } })
+    const fixture = withPartSelections(attemptFixture(imported.arrangement.id, imported.scoreVersion.id), ['P2', 'P1'], ['P1', 'P2'])
+    await expect(repo.saveAttempt(fixture)).resolves.toMatchObject({ created: true })
+    expect(await repo.getAttempt(fixture.attempt.id)).toMatchObject({ includedPartIds: ['P2', 'P1'], expectedPerformancePlan: { includedPartIds: ['P1', 'P2'] } })
+  })
+
+  it('accepts duplicate IDs when all part selections are canonically equivalent', async () => {
+    const repo = repository('attempt-duplicate-parts-db')
+    const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P1', 'P2'] } })
+    const fixture = withPartSelections(attemptFixture(imported.arrangement.id, imported.scoreVersion.id), ['P1', 'P2', 'P1'], ['P2', 'P2', 'P1'])
+    await expect(repo.saveAttempt(fixture)).resolves.toMatchObject({ created: true })
+  })
+
+  it('rejects an attempt part mismatch before writing attempt, summary, or session records', async () => {
+    const repo = repository('attempt-part-mismatch-db')
+    const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P1', 'P2'] } })
+    const fixture = withPartSelections(attemptFixture(imported.arrangement.id, imported.scoreVersion.id), ['P1'], ['P1', 'P2'])
+    await expect(repo.saveAttempt(fixture)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY', message: 'The attempt part selection does not match its persisted ScoreVersion.' })
+    expect(await repo.getAttempt(fixture.attempt.id)).toBeNull()
+    expect(await repo.listAttemptSummaries(imported.arrangement.id)).toEqual([])
+    expect(await repo.listSessions(imported.arrangement.id)).toEqual([])
+  })
+
+  it('rejects a plan part mismatch before writing attempt, summary, or session records', async () => {
+    const repo = repository('plan-part-mismatch-db')
+    const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P1', 'P2'] } })
+    const fixture = withPartSelections(attemptFixture(imported.arrangement.id, imported.scoreVersion.id), ['P1', 'P2'], ['P1'])
+    await expect(repo.saveAttempt(fixture)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY', message: 'The attempt part selection does not match its persisted ScoreVersion.' })
+    expect(await repo.getAttempt(fixture.attempt.id)).toBeNull()
+    expect(await repo.listAttemptSummaries(imported.arrangement.id)).toEqual([])
+    expect(await repo.listSessions(imported.arrangement.id)).toEqual([])
   })
 
   it('keeps a saved attempt queryable when the current Practice take is cleared', async () => {

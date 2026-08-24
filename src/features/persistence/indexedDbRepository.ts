@@ -133,6 +133,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   if (
     ![versions, plan, recording, alignment, noteGrading, timing, results].every(isObjectRecord)
     || !isObjectRecord(noteGrading.scope)
+    || !Array.isArray(plan.includedPartIds)
     || !isObjectRecord(alignment.diagnostics)
     || !isObjectRecord(noteGrading.diagnostics)
     || !isObjectRecord(timing.diagnostics)
@@ -675,6 +676,13 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       ])
       if (!arrangement || !version || (version as PersistedScoreVersion).arrangementId !== attempt.arrangementId) {
         throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt references an unavailable Arrangement or ScoreVersion.')
+      }
+      assertScoreVersion(version)
+      if (
+        !samePartSelection(version.includedPartIds, attempt.includedPartIds)
+        || !samePartSelection(version.includedPartIds, attempt.expectedPerformancePlan.includedPartIds)
+      ) {
+        throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt part selection does not match its persisted ScoreVersion.')
       }
       if (existingAttempt) {
         const existingSummary = await requestValue(summaries.get(attempt.id)) as AttemptSummary | undefined

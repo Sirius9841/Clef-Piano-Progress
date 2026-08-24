@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { MidiContext, type MidiContextValue } from './MidiContext'
+import { selectLatestMidiInput } from './latestSelection'
 import { WebMidiService } from './WebMidiService'
 import { INITIAL_MIDI_RUNTIME_STATE, reduceMidiRuntimeState } from './runtimeState'
 import type { MidiAccessState, MidiEvent } from './types'
@@ -12,6 +13,7 @@ export function MidiProvider({ children }: { children: ReactNode }) {
   const [runtime, dispatchRuntime] = useReducer(reduceMidiRuntimeState, INITIAL_MIDI_RUNTIME_STATE)
   const [recentEvents, setRecentEvents] = useState<MidiEvent[]>([])
   const [error, setError] = useState<string | null>(null)
+  const selectionRequestRef = useRef(0)
 
   useEffect(() => {
     const unsubscribeDevices = service.subscribeToDevices((nextDevices) => {
@@ -23,6 +25,7 @@ export function MidiProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
+      selectionRequestRef.current += 1
       unsubscribeDevices()
       unsubscribeEvents()
       void service.dispose()
@@ -52,15 +55,17 @@ export function MidiProvider({ children }: { children: ReactNode }) {
   }, [service])
 
   const selectDevice = useCallback(async (id: string | null) => {
-    setError(null)
-    dispatchRuntime({ type: 'selection-changed', deviceId: null })
-    try {
-      await service.selectInput(id)
-      dispatchRuntime({ type: 'selection-changed', deviceId: id })
-    } catch (cause) {
-      dispatchRuntime({ type: 'selection-changed', deviceId: null })
-      setError(cause instanceof Error ? cause.message : 'Could not connect to the selected MIDI input.')
-    }
+    await selectLatestMidiInput(selectionRequestRef, id, (deviceId) => service.selectInput(deviceId), {
+      onStart: () => {
+        setError(null)
+        dispatchRuntime({ type: 'selection-changed', deviceId: null })
+      },
+      onSuccess: (deviceId) => dispatchRuntime({ type: 'selection-changed', deviceId }),
+      onError: (cause) => {
+        dispatchRuntime({ type: 'selection-changed', deviceId: null })
+        setError(cause instanceof Error ? cause.message : 'Could not connect to the selected MIDI input.')
+      },
+    })
   }, [service])
 
   const subscribeToEvents = useCallback((listener: (event: MidiEvent) => void) => service.subscribeToEvents(listener), [service])

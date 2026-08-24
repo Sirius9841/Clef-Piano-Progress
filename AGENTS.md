@@ -120,6 +120,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Persist canonical MusicXML and immutable ScoreVersion identity. Historical attempts always retain the exact ScoreVersion, expected plan, recording, analysis snapshots, and engine versions they used.
 - ScoreVersion duplicate identity includes the canonical deduplicated part-selection set. Changing that set creates a new immutable version, and Arrangement part metadata mirrors the latest active version.
 - PerformanceAttempt save, lightweight summary save, and PracticeSession linkage are one transaction and retries are idempotent by attempt ID.
+- Before attempt persistence writes, the ScoreVersion, PerformanceAttempt, and ExpectedPerformancePlan must have canonically equivalent included-part sets.
 - Keep raw MIDI lossless, including arrival order, velocities, releases, sustain, timestamps, device context, warnings, and statistics.
 - Summary projections may accelerate queries but are rebuildable and never replace the authoritative attempt snapshot.
 - Practice time sums completed PracticeSessions, not attempts. One session may contain multiple takes.
@@ -133,6 +134,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Date-range progress queries use indexes, active days use the user's local calendar, and summary views never load raw MIDI snapshots.
 - Headline context requires `isHeadlineComparable`; unavailable metrics remain null and must not be plotted as zero.
 - Web MIDI teardown detaches local handlers and selection before awaiting device close. Close failures and stale async operations must never restore an old input or clear a newer one.
+- MidiProvider state and errors follow only the latest async selection request; stale completions never override the service's authoritative input.
 
 ## Commands
 
