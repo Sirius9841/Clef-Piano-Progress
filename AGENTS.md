@@ -167,7 +167,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Unknown initial sustain state remains unknown. Never silently reinterpret a historical missing field as pedal-up.
 - Controller-derived damper intervals are not acoustic sound ends or sounding durations.
 - Pedal/key interaction context never rewrites or double-penalizes frozen Phase 9 Articulation.
-- Pedal timing primarily follows trustworthy local Phase 4 expected/performed onset correspondence: exact onset, bounded interpolation, bounded nearby onset, then the affine score clock as fallback. It never independently refits timing.
+- Pedal timing primarily follows trustworthy local Phase 4 expected/performed onset correspondence: exact onset, tempo-aware bounded interpolation, one-sided transfer of a bounded nearby onset's residual from the affine score clock, then that affine score clock as fallback. A nearby note never substitutes its timestamp directly for a different pedal score position, and Pedal never independently refits timing.
 - Pedal evaluates coordination with the musical structure the pianist actually performed. Rhythm/Tempo may describe rubato; Pedal must not independently punish the same global timing departure when the controller follows the aligned harmonic arrival.
 - CC64 state and effective transitions are channel-specific. Damper holds use the recorded key's own channel; multi-channel authored-pedal ownership remains explicitly ambiguous rather than merged or guessed.
 - Authored and performed pedal events use bounded, deterministic, non-cascading monotonic matching with explicit match, miss, and skipped-extra semantics. A missed earlier phrase must never steal a later gesture.

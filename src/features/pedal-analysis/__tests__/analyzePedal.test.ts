@@ -199,6 +199,31 @@ describe('pedal analysis', () => {
     expect(good.observations.find((item) => item.kind === 'change')!.score).toBeGreaterThan(bad.observations.find((item) => item.kind === 'change')!.score + 0.4)
   })
 
+  it('scores a final pedal release against the transferred final-onset residual', () => {
+    const basePlan = makePlan([[60], [62], [64]])
+    const plan = {
+      ...basePlan,
+      statistics: { ...basePlan.statistics, totalScoreDuration: musicalTime(4) },
+    }
+    const result = customCase({
+      plan,
+      attackTimes: [1_000, 1_500, 2_500],
+      forceGlobalClock: true,
+      durationMs: 4_200,
+      pedalEvents: [pedalEvent('final-start', 'start', 0), pedalEvent('final-stop', 'stop', 4)],
+      values: [{ ms: 1_000, value: 127 }, { ms: 3_500, value: 0 }],
+      initialSustain: { observed: true, down: false, value: 0 },
+    })
+    expect(result.targets[0]?.events[1]).toMatchObject({
+      kind: 'stop',
+      expectedPerformedMs: 3_500,
+      timingAnchor: { globalPredictedMs: 3_000, anchoredPerformedMs: 3_500, anchorOffsetFromGlobalMs: 500 },
+    })
+    expect(result.observations.find((item) => item.kind === 'stop')).toMatchObject({
+      score: 1, performedMs: 3_500, timingErrorMs: 0,
+    })
+  })
+
   it('marks multi-channel authored-pedal evidence unavailable rather than merging CC64 state', () => {
     const result = setup([{ ms: 1_000, value: 127, channel: 0 }, { ms: 2_500, value: 0, channel: 1 }]).result
     expect(result).toMatchObject({ status: 'unavailable', score: null, reliability: 'unavailable', controllerEvidence: { channelMode: 'multi-channel-ambiguous', authoritativeChannel: null } })

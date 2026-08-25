@@ -11,6 +11,7 @@ interface LocalMusicalAnchor {
   readonly expectedGroupId: string
   readonly performedGroupId: string
   readonly position: MusicalTime
+  readonly globalPredictedMs: number
   readonly performedMs: number
   readonly confidence: number
   readonly pairedAttacks: readonly ExpectedNoteAttack[]
@@ -21,7 +22,7 @@ function globalPrediction(position: MusicalTime, plan: ExpectedPerformancePlan, 
   return alignment.timeTransform.offsetMs + alignment.timeTransform.scale * referenceMs
 }
 
-function safeCorrespondences(alignment: AlignmentResult, options: PedalAnalysisOptions): LocalMusicalAnchor[] {
+function safeCorrespondences(plan: ExpectedPerformancePlan, alignment: AlignmentResult, options: PedalAnalysisOptions): LocalMusicalAnchor[] {
   if (alignment.status !== 'aligned') return []
   return alignment.groupAlignments.flatMap((step): LocalMusicalAnchor[] => {
     if (step.kind !== 'correspondence' || step.performedGroup.spreadMs > options.localAnchorMaximumPerformedSpreadMs) return []
@@ -33,6 +34,7 @@ function safeCorrespondences(alignment: AlignmentResult, options: PedalAnalysisO
       expectedGroupId: step.expectedGroup.id,
       performedGroupId: step.performedGroup.id,
       position: step.expectedGroup.position,
+      globalPredictedMs: globalPrediction(step.expectedGroup.position, plan, alignment),
       performedMs: step.performedGroup.representativeMs,
       confidence: spreadConfidence,
       pairedAttacks,
@@ -67,8 +69,9 @@ function localAnchor(
     const afterValue = timeToNumber(after.position)
     const beforeDistance = targetValue - beforeValue
     const afterDistance = afterValue - targetValue
-    if (beforeDistance <= maximumDistance && afterDistance <= maximumDistance && afterValue > beforeValue && after.performedMs >= before.performedMs) {
-      const fraction = (targetValue - beforeValue) / (afterValue - beforeValue)
+    const canonicalSpanMs = after.globalPredictedMs - before.globalPredictedMs
+    if (beforeDistance <= maximumDistance && afterDistance <= maximumDistance && afterValue > beforeValue && canonicalSpanMs > 0 && after.performedMs >= before.performedMs) {
+      const fraction = (globalPredictedMs - before.globalPredictedMs) / canonicalSpanMs
       const performedMs = before.performedMs + fraction * (after.performedMs - before.performedMs)
       return {
         source: 'local-performed', scorePosition: { ...event.position }, globalPredictedMs,
@@ -85,9 +88,11 @@ function localAnchor(
     .sort((left, right) => left.distance - right.distance || compareTime(left.anchor.position, right.anchor.position) || left.anchor.expectedGroupId.localeCompare(right.anchor.expectedGroupId))[0]
   if (!nearby) return null
   const confidence = nearby.anchor.confidence * (0.55 + 0.25 * (1 - nearby.distance / Math.max(maximumDistance, Number.EPSILON)))
+  const localResidualMs = nearby.anchor.performedMs - nearby.anchor.globalPredictedMs
+  const performedMs = globalPredictedMs + localResidualMs
   return {
     source: 'local-performed', scorePosition: { ...event.position }, globalPredictedMs,
-    anchoredPerformedMs: nearby.anchor.performedMs, anchorOffsetFromGlobalMs: nearby.anchor.performedMs - globalPredictedMs,
+    anchoredPerformedMs: performedMs, anchorOffsetFromGlobalMs: localResidualMs,
     beforeExpectedGroupId: compareTime(nearby.anchor.position, event.position) < 0 ? nearby.anchor.expectedGroupId : null,
     afterExpectedGroupId: compareTime(nearby.anchor.position, event.position) > 0 ? nearby.anchor.expectedGroupId : null,
     matchedPerformedGroupIds: [nearby.anchor.performedGroupId], confidence,
@@ -108,7 +113,7 @@ export function createPedalTimingAnchorResolver(
   alignment: AlignmentResult,
   options: PedalAnalysisOptions,
 ): (event: PedalEvent) => PedalTimingAnchor {
-  const safeAnchors = safeCorrespondences(alignment, options)
+  const safeAnchors = safeCorrespondences(plan, alignment, options)
   return (event) => {
     const globalPredictedMs = globalPrediction(event.position, plan, alignment)
     const compatibleAnchors = safeAnchors.filter((anchor) => anchor.pairedAttacks.some((attack) => notationLaneCompatible(event, attack)))

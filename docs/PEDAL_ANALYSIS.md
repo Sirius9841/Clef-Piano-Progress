@@ -11,7 +11,7 @@ NormalizedScore + ExpectedPerformancePlan + PerformanceRecording
        authored phrases     CC64 timeline      damper/key context
 ```
 
-The pure engine version is `pedal-analysis-1.1.0`. It validates exact score, plan, recording, alignment, note-grade, expression, scope, and included-part provenance. It reuses Phase 4 correspondence and its affine fallback—both offset and scale—plus the existing practice-speed tempo timeline. It never reparses, realigns, regrades, mutates Phase 9 Articulation, or depends on React, IndexedDB, or OSMD.
+The pure engine version is `pedal-analysis-1.1.1`. It validates exact score, plan, recording, alignment, note-grade, expression, scope, and included-part provenance. It reuses Phase 4 correspondence and its affine fallback—both offset and scale—plus the existing practice-speed tempo timeline. It never reparses, realigns, regrades, mutates Phase 9 Articulation, or depends on React, IndexedDB, or OSMD.
 
 ## Authored phrases
 
@@ -26,11 +26,13 @@ Pedal timing is primarily evaluated against the locally aligned musical performa
 The deterministic anchor hierarchy is:
 
 1. an exact trustworthy aligned performed onset at the pedal score position;
-2. interpolation between the immediately surrounding trustworthy aligned onsets within the configured score-distance window;
-3. the nearest trustworthy aligned onset within that same conservative window;
+2. tempo-aware interpolation between the immediately surrounding trustworthy aligned onsets within the configured score-distance window, using their canonical affine-clock milliseconds rather than raw quarter-position distance;
+3. one-sided transfer of the nearest trustworthy aligned onset's local residual within that same conservative window;
 4. the existing affine score-clock prediction when local evidence is missing, distant, ambiguous, performed-only, expected-only, or unsupported by an exact pitch pair.
 
-Every 1.1 target and observation retains the selected source, global prediction, local selected time, their difference, alignment group provenance, and confidence. Local and global times are never blindly averaged. This freedom is not “anything goes”: pedal timing that is poorly coordinated with the performed harmony still scores poorly.
+For one-sided evidence, Clef computes the nearby onset's residual from its own affine score-clock prediction and adds that residual to the pedal target's separate global prediction. For example, a nearby note predicted at 2000 ms and performed at 2500 ms contributes a +500 ms residual; a pedal target predicted at 3000 ms is therefore anchored at 3500 ms, never snapped backward to the note's 2500 ms timestamp. This works with an onset before or after the target, while distance still lowers confidence and eventually forces global fallback.
+
+Every modern 1.1 target and observation retains the selected source, global prediction, local selected time, their difference, alignment group provenance, and confidence. Local and global times are never blindly averaged. This freedom is not “anything goes”: pedal timing that is poorly coordinated with the performed harmony still scores poorly.
 
 ## Controller timeline and scoring
 
@@ -54,7 +56,7 @@ Neutral interaction context may report a detached key continued by pedal or a po
 
 Pedal independently reports reliable, limited, provisional, or unavailable evidence. Aligned-span scope, sparse or partial phrases, low event/controller-state/local-anchor coverage, predepression, truncation, or unavailable events cap reliability; ambiguous correspondence is provisional and ambiguous multi-channel authored ownership is unavailable. Unavailable values remain null.
 
-New saves use `PerformanceAttemptRecordV3` and preserve the exact Pedal result and engine version beside the exact V2 expression snapshot. Frozen V3 `pedal-analysis-1.0.0` records remain readable without additive 1.1 anchor/channel/coverage diagnostics and are never reanalyzed. New V3 records require the 1.1 shape. V1/V2 history is shown as “Pedal not analyzed.” IndexedDB schema version remains 3 because no stores or indexes changed; AttemptSummary, personal bests, trends, Home, and Progress remain Notes/Rhythm/Tempo-only.
+New saves use `PerformanceAttemptRecordV3` and preserve the exact Pedal result and engine version beside the exact V2 expression snapshot. Frozen V3 `pedal-analysis-1.0.0` records remain readable without additive 1.1 anchor/channel/coverage diagnostics, and frozen `pedal-analysis-1.1.0` records retain their original timing semantics; neither is reanalyzed. New V3 records use `pedal-analysis-1.1.1` with the existing modern 1.1 result shape. V1/V2 history is shown as “Pedal not analyzed.” IndexedDB schema version remains 3 because no stores or indexes changed; AttemptSummary, personal bests, trends, Home, and Progress remain Notes/Rhythm/Tempo-only.
 
 Pedal is authored pedal-coordination fidelity evidence, not objective emotional or artistic quality. Maximum literal conformity is not maximum musical quality.
 

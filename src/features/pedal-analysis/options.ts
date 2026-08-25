@@ -1,4 +1,4 @@
-export const PEDAL_ANALYSIS_ENGINE_VERSION = 'pedal-analysis-1.1.0'
+export const PEDAL_ANALYSIS_ENGINE_VERSION = 'pedal-analysis-1.1.1'
 
 export interface PedalAnalysisOptions {
   readonly timingToleranceQuarterFraction: number

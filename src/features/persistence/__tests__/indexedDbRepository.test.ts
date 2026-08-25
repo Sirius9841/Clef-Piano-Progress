@@ -130,6 +130,20 @@ function legacyV3AttemptFixture(arrangementId: string, scoreVersionId: string) {
   return { ...fixture, attempt }
 }
 
+function historicalV11AttemptFixture(arrangementId: string, scoreVersionId: string) {
+  const fixture = v3AttemptFixture(arrangementId, scoreVersionId, 'practice-v3-historical-1-1')
+  const pedalAnalysis = {
+    ...fixture.attempt.pedalAnalysis,
+    diagnostics: { ...fixture.attempt.pedalAnalysis.diagnostics, pedalAnalysisEngineVersion: 'pedal-analysis-1.1.0' },
+  }
+  const attempt: PerformanceAttemptRecordV3 = {
+    ...fixture.attempt,
+    engineVersions: { ...fixture.attempt.engineVersions, pedalAnalysis: 'pedal-analysis-1.1.0' },
+    pedalAnalysis,
+  }
+  return { ...fixture, attempt }
+}
+
 function withPartSelections(
   fixture: ReturnType<typeof attemptFixture>,
   attemptPartIds: readonly string[],
@@ -688,13 +702,17 @@ describe('IndexedDbPianoProgressRepository', () => {
     await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
   })
 
-  it('reads an exact V3 unavailable pedal snapshot without changing the IndexedDB schema', async () => {
+  it('reads a new pedal-analysis-1.1.1 V3 snapshot without changing the IndexedDB schema', async () => {
     const name = 'valid-v3-pedal'
     const repo = repository(name)
     await repo.initialize()
     const fixture = v3AttemptFixture('arrangement', 'score')
     await putRawAttempt(name, fixture.attempt)
-    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toMatchObject({ schemaVersion: 3, pedalAnalysis: { status: 'unavailable', score: null } })
+    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toMatchObject({
+      schemaVersion: 3,
+      engineVersions: { pedalAnalysis: 'pedal-analysis-1.1.1' },
+      pedalAnalysis: { status: 'unavailable', score: null, diagnostics: { pedalAnalysisEngineVersion: 'pedal-analysis-1.1.1' } },
+    })
     expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
   })
 
@@ -703,6 +721,16 @@ describe('IndexedDbPianoProgressRepository', () => {
     const repo = repository(name)
     await repo.initialize()
     const fixture = legacyV3AttemptFixture('arrangement', 'score')
+    await putRawAttempt(name, fixture.attempt)
+    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(fixture.attempt)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+  })
+
+  it('keeps frozen pedal-analysis-1.1.0 V3 snapshots readable with the modern shape', async () => {
+    const name = 'valid-v3-pedal-historical-1-1'
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = historicalV11AttemptFixture('arrangement', 'score')
     await putRawAttempt(name, fixture.attempt)
     await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(fixture.attempt)
     expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)

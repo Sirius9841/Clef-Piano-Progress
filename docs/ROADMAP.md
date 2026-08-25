@@ -44,9 +44,13 @@ Authored damper-pedal phrase modeling, lossless CC64 timelines, tempo-aware star
 
 Musical-integrity hardening: rubato-aware local pedal anchors, channel-safe CC64 state and damper holds, bounded non-cascading transition matching, honest partial event coverage, and a permanent distinction between score fidelity and musical interpretation.
 
+## Phase 10.2 — complete
+
+Final local timing-anchor correctness: tempo-aware interpolation between bracketing onsets and one-sided transfer of nearby onset residuals without collapsing distinct score positions. Phase 10 is closed.
+
 ## Phase 11+
 
-Reference-performance expression and advanced voicing, Technique Lab exercises, and transferable skill measurement.
+Phase 11 begins interpretation-aware reference performances and advanced voicing. Later work includes Technique Lab exercises and transferable skill measurement.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
