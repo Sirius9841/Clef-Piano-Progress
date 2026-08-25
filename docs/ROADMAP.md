@@ -62,6 +62,8 @@ Interpretation-integrity hardening: current-intent reference Voicing with immuta
 
 Technique Lab now provides eight deterministic, notation-backed MIDI exercise modules, challenge-qualified independent facets, exact-instance sight-reading novelty, dedicated local-first TechniqueAttempt persistence, and frozen historical results. It intentionally does not create an overall score, Skill Rating, Mastery, or repertoire progress claim.
 
+Phase 12.1 hardens that evidence boundary: musically exact scale/arpeggio generation, true turn/register/jump-transition identity, purpose-specific safe configuration, separate facet observation families, actual event coverage, V1/V2 frozen history, Phase-13-ready V2 summaries, deep repository validation, and same-ID collision protection. Generator/analysis engines advance to `1.1.0`; IndexedDB remains schema 4.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, or Practice Priority. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, Mastery, cloud sync, and accounts remain unimplemented.

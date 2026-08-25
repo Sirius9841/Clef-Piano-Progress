@@ -10,7 +10,18 @@ import type { PerformanceResults } from '../performance-results/types'
 import type { TimingAnalysisResult } from '../timing-analysis/types'
 import type { VoicingAnalysisResult, VoicingIntentProfile } from '../voicing-analysis/types'
 import type { ReferenceComparisonResult } from '../reference-comparison/types'
-import type { TechniqueAnalysisResult, TechniqueChallengeProfile, TechniqueExerciseSnapshot, TechniqueFacetResult, TechniqueModuleId, TechniqueNovelty } from '../technique/types'
+import type {
+  TechniqueAnalysisResultV1,
+  TechniqueAnalysisResultV2,
+  TechniqueChallengeProfileV1,
+  TechniqueChallengeProfileV2,
+  TechniqueExerciseSnapshotV1,
+  TechniqueExerciseSnapshotV2,
+  TechniqueFacetResultV1,
+  TechniqueFacetResultV2,
+  TechniqueModuleId,
+  TechniqueNovelty,
+} from '../technique/types'
 
 export const PERSISTENCE_SCHEMA_VERSION = 4
 export const PIANO_PROGRESS_DB_NAME = 'clef-piano-progress'
@@ -231,13 +242,13 @@ export interface TechniqueAttemptRecordV1 {
   readonly templateId: string
   readonly exerciseInstanceId: string
   readonly performedAt: string
-  readonly exercise: TechniqueExerciseSnapshot
+  readonly exercise: TechniqueExerciseSnapshotV1
   readonly expectedPerformancePlan: ExpectedPerformancePlan
   readonly recording: PerformanceRecording
   readonly alignment: AlignmentResult
   readonly noteGrading: NoteGradingResult
   readonly timingAnalysis: TimingAnalysisResult
-  readonly techniqueAnalysis: TechniqueAnalysisResult
+  readonly techniqueAnalysis: TechniqueAnalysisResultV1
   readonly novelty: TechniqueNovelty
   readonly engineVersions: {
     readonly exercise: 'technique-exercise-1.0.0'
@@ -249,29 +260,88 @@ export interface TechniqueAttemptRecordV1 {
   }
 }
 
-export type TechniqueAttemptRecord = TechniqueAttemptRecordV1
+export interface TechniqueAttemptRecordV2 {
+  readonly schemaVersion: 2
+  readonly id: string
+  readonly moduleId: TechniqueModuleId
+  readonly templateId: string
+  readonly exerciseInstanceId: string
+  readonly performedAt: string
+  readonly exercise: TechniqueExerciseSnapshotV2
+  readonly expectedPerformancePlan: ExpectedPerformancePlan
+  readonly recording: PerformanceRecording
+  readonly alignment: AlignmentResult
+  readonly noteGrading: NoteGradingResult
+  readonly timingAnalysis: TimingAnalysisResult
+  readonly techniqueAnalysis: TechniqueAnalysisResultV2
+  readonly novelty: TechniqueNovelty
+  readonly engineVersions: {
+    readonly exercise: 'technique-exercise-1.1.0'
+    readonly parser: string
+    readonly alignment: string
+    readonly noteGrading: string
+    readonly timingAnalysis: string
+    readonly techniqueAnalysis: 'technique-analysis-1.1.0'
+  }
+}
 
-export interface TechniqueAttemptSummary {
+export type TechniqueAttemptRecord = TechniqueAttemptRecordV1 | TechniqueAttemptRecordV2
+
+export interface TechniqueAttemptSummaryV1 {
   readonly id: string
   readonly moduleId: TechniqueModuleId
   readonly templateId: string
   readonly exerciseInstanceId: string
   readonly performedAt: string
   readonly durationMs: number
-  readonly challenge: TechniqueChallengeProfile
+  readonly challenge: TechniqueChallengeProfileV1
   readonly completionRatio: number
-  readonly facets: readonly Pick<TechniqueFacetResult, 'id' | 'label' | 'status' | 'score' | 'reliability' | 'evidenceCount' | 'coverage'>[]
+  readonly facets: readonly Pick<TechniqueFacetResultV1, 'id' | 'label' | 'status' | 'score' | 'reliability' | 'evidenceCount' | 'coverage'>[]
 }
+
+export interface TechniqueAttemptSummaryV2 {
+  readonly schemaVersion: 2
+  readonly id: string
+  readonly moduleId: TechniqueModuleId
+  readonly templateId: string
+  readonly exerciseInstanceId: string
+  readonly performedAt: string
+  readonly durationMs: number
+  readonly exerciseEngineVersion: 'technique-exercise-1.1.0'
+  readonly techniqueAnalysisEngineVersion: 'technique-analysis-1.1.0'
+  readonly challenge: TechniqueChallengeProfileV2
+  readonly completion: TechniqueAnalysisResultV2['completion']
+  readonly novelty: TechniqueNovelty
+  readonly facets: readonly Pick<TechniqueFacetResultV2, 'id' | 'label' | 'status' | 'score' | 'reliability' | 'evidenceCount' | 'eligibleCount' | 'coverage' | 'evidenceFamily' | 'evidenceContext' | 'minimumEvidence'>[]
+}
+
+export type TechniqueAttemptSummary = TechniqueAttemptSummaryV1 | TechniqueAttemptSummaryV2
 
 export interface TechniqueAttemptSaveResult { readonly created: boolean; readonly summary: TechniqueAttemptSummary }
 
 export function createTechniqueAttemptSummary(attempt: TechniqueAttemptRecord): TechniqueAttemptSummary {
+  if (attempt.schemaVersion === 1) {
+    return {
+      id: attempt.id, moduleId: attempt.moduleId, templateId: attempt.templateId, exerciseInstanceId: attempt.exerciseInstanceId,
+      performedAt: attempt.performedAt, durationMs: attempt.recording.durationMs, challenge: attempt.exercise.challenge,
+      completionRatio: attempt.techniqueAnalysis.completion.ratio,
+      facets: attempt.techniqueAnalysis.facets.map(({ id, label, status, score, reliability, evidenceCount, coverage }) => ({ id, label, status, score, reliability, evidenceCount, coverage })),
+    }
+  }
   return {
+    schemaVersion: 2,
     id: attempt.id, moduleId: attempt.moduleId, templateId: attempt.templateId, exerciseInstanceId: attempt.exerciseInstanceId,
     performedAt: attempt.performedAt, durationMs: attempt.recording.durationMs, challenge: attempt.exercise.challenge,
-    completionRatio: attempt.techniqueAnalysis.completion.ratio,
-    facets: attempt.techniqueAnalysis.facets.map(({ id, label, status, score, reliability, evidenceCount, coverage }) => ({ id, label, status, score, reliability, evidenceCount, coverage })),
+    exerciseEngineVersion: attempt.engineVersions.exercise,
+    techniqueAnalysisEngineVersion: attempt.engineVersions.techniqueAnalysis,
+    completion: attempt.techniqueAnalysis.completion,
+    novelty: attempt.novelty,
+    facets: attempt.techniqueAnalysis.facets.map(({ id, label, status, score, reliability, evidenceCount, eligibleCount, coverage, evidenceFamily, evidenceContext, minimumEvidence }) => ({ id, label, status, score, reliability, evidenceCount, eligibleCount, coverage, evidenceFamily, evidenceContext, minimumEvidence })),
   }
+}
+
+export function techniqueSummaryCoverageRatio(summary: TechniqueAttemptSummary): number {
+  return 'schemaVersion' in summary ? summary.completion.eventCoverageRatio : summary.completionRatio
 }
 
 export interface AttemptSaveResult {

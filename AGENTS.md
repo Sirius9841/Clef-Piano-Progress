@@ -164,10 +164,15 @@ This repository builds a serious piano progress and performance-analysis applica
 
 - TechniqueAttempt is a separate immutable record family; never attach it to Work, Arrangement, ScoreVersion, PracticeSession, or PerformanceAttempt.
 - Generated exercises are deterministic from an explicit spec, template, and seed, then compile through the canonical MusicXML parser and expected-performance builder.
+- Phase 12 `1.0.0` TechniqueAttempt V1 history is immutable. New Phase 12.1 attempts use record/summary V2 with `technique-exercise-1.1.0` and `technique-analysis-1.1.0`; IndexedDB remains schema 4.
 - Every Technique facet retains exact challenge context. Never collapse challenge into one difficulty number or combine facets into an overall score, Skill Rating, Mastery, or headline progress claim.
 - Technique analysis consumes frozen Alignment, NoteGrading, and TimingAnalysis snapshots; it never reparses, realigns, or regrades.
-- Wrong, missed, additional, and unsafe pitch evidence cannot become a second timing penalty. Sparse timing evidence is unavailable, never zero.
-- Sight-reading first-pass evidence is available only for the first saved attempt of an exact generated exercise instance. Repeats may retain ordinary facets but never recreate novelty.
+- Wrong, missed, additional, unsafe, or non-adjacent pitch evidence cannot become a second timing penalty. Sparse timing evidence is unavailable, never zero.
+- Rhythm precision and hesitation continuity, global target tempo and local stability, scale-wide evenness and its turn, and jump landing and recovery use distinct observation semantics/populations.
+- Actual event coverage and reached score span are separate. Facet-specific minimum evidence prevents tiny perfect fragments from producing strong claims.
+- Sight-reading novelty is first-pass/repeat context on independent facets, never a composite score. Transactional save remains authoritative for exact-instance novelty.
+- Declared hand context is user metadata only; never infer the physical hand from MIDI.
+- Technical exactness is valid only when it is the declared exercise objective. Do not transfer metronomic expectations to interpretation-aware repertoire timing.
 - Do not infer fingering, physical hand use, tension, relaxation, biomechanics, injury risk, acoustic tone, velocity quality, or pedal quality from Phase 12 evidence.
 
 ## Pedal-analysis rules

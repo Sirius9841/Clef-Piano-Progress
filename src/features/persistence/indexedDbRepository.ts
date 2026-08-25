@@ -33,7 +33,15 @@ import {
   type TechniqueAttemptSaveResult,
   type TechniqueAttemptSummary,
 } from './types'
-import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_MODULE_IDS } from '../technique/types'
+import {
+  TECHNIQUE_ANALYSIS_ENGINE_VERSION,
+  TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1,
+  TECHNIQUE_EXERCISE_ENGINE_VERSION,
+  TECHNIQUE_EXERCISE_ENGINE_VERSION_V1,
+  TECHNIQUE_FACET_IDS,
+  TECHNIQUE_FACET_IDS_V1,
+  TECHNIQUE_MODULE_IDS,
+} from '../technique/types'
 
 const STORE = {
   works: 'works',
@@ -95,27 +103,190 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object'
 }
 
+const TECHNIQUE_DIRECTIONS = ['ascending', 'descending', 'both'] as const
+const TECHNIQUE_MODES_V2 = ['major', 'natural-minor'] as const
+const TECHNIQUE_HANDS = ['left', 'right', 'both'] as const
+const TECHNIQUE_TEMPO_SHAPES = ['steady', 'accelerate', 'decelerate', 'arch'] as const
+const TECHNIQUE_EVENT_ROLES_V2 = ['opening', 'continuation', 'turn', 'landing', 'recovery', 'closing'] as const
+const TECHNIQUE_TRANSITIONS = ['opening', 'ordinary', 'direction-change', 'register-boundary', 'jump-landing', 'jump-recovery'] as const
+const TECHNIQUE_EVIDENCE_FAMILIES = ['pitch', 'interval-precision', 'continuity', 'synchronization', 'tempo'] as const
+const TECHNIQUE_EVIDENCE_CONTEXTS = ['first-pass', 'repeat-practice', 'technical-drill'] as const
+const TECHNIQUE_OBSERVATION_UNITS = ['ratio', 'milliseconds', 'count', 'percent', 'log-ratio'] as const
+const TECHNIQUE_OBSERVATION_METHODS = ['event-pitch', 'rhythm-loss', 'median-centered-interval', 'hesitation-expansion', 'chord-spread', 'turn-neighborhood', 'jump-landing-interval', 'jump-recovery-interval', 'target-tempo-ratio', 'local-tempo-stability', 'authored-tempo-trajectory'] as const
+
+function inEnum(value: unknown, values: readonly string[]): value is string { return typeof value === 'string' && values.includes(value) }
+function validTechniqueModule(value: unknown): boolean { return inEnum(value, TECHNIQUE_MODULE_IDS) }
+function validTechniqueTime(value: unknown, positive = false): boolean {
+  return isObjectRecord(value) && Number.isInteger(value.numerator) && Number.isInteger(value.denominator) && (value.denominator as number) > 0 && (!positive || (value.numerator as number) > 0)
+}
+function validTechniqueNovelty(value: unknown, exerciseInstanceId: string): boolean {
+  return isObjectRecord(value) && value.exerciseInstanceId === exerciseInstanceId && isNonnegativeInteger(value.priorSavedAttemptCount) && typeof value.firstSavedAttempt === 'boolean'
+    && value.firstSavedAttempt === (value.priorSavedAttemptCount === 0)
+}
+function validTechniqueSpecV2(value: unknown): value is Record<string, unknown> {
+  return isObjectRecord(value) && validTechniqueModule(value.moduleId) && typeof value.templateId === 'string' && value.templateId.length > 0 && typeof value.seed === 'string' && value.seed.length > 0
+    && value.exerciseEngineVersion === TECHNIQUE_EXERCISE_ENGINE_VERSION && Number.isInteger(value.tonic) && (value.tonic as number) >= 0 && (value.tonic as number) <= 11
+    && inEnum(value.mode, TECHNIQUE_MODES_V2) && isFiniteNumber(value.targetTempoBpm) && value.targetTempoBpm >= 30 && value.targetTempoBpm <= 240
+    && isNonnegativeInteger(value.eventCount) && value.eventCount >= 4 && value.eventCount <= 64 && inEnum(value.direction, TECHNIQUE_DIRECTIONS)
+    && (value.octaveSpan === 1 || value.octaveSpan === 2) && (value.subdivision === 1 || value.subdivision === 2 || value.subdivision === 4)
+    && (value.chordInversion === 0 || value.chordInversion === 1 || value.chordInversion === 2) && [7, 12, 19, 24].includes(value.jumpSemitones as number)
+    && inEnum(value.tempoShape, TECHNIQUE_TEMPO_SHAPES) && inEnum(value.declaredHandContext, TECHNIQUE_HANDS)
+}
+function validTechniqueChallengeV2(value: unknown, spec?: Record<string, unknown>): value is Record<string, unknown> {
+  if (!isObjectRecord(value) || !isFiniteNumber(value.targetTempoBpm) || value.targetTempoBpm < 30 || value.targetTempoBpm > 240
+    || !isNonnegativeInteger(value.eventCount) || value.eventCount < 1 || !validTechniqueTime(value.expectedDuration, true) || !isFiniteNumber(value.expectedDurationMs) || value.expectedDurationMs <= 0
+    || !Number.isInteger(value.minimumMidi) || !Number.isInteger(value.maximumMidi) || (value.minimumMidi as number) < 0 || (value.maximumMidi as number) > 127 || (value.minimumMidi as number) > (value.maximumMidi as number)
+    || !isFiniteNumber(value.pitchSpanSemitones) || value.pitchSpanSemitones !== (value.maximumMidi as number) - (value.minimumMidi as number)
+    || !isNonnegativeInteger(value.maximumChordSize) || value.maximumChordSize < 1 || !isNonnegativeInteger(value.maximumJumpSemitones)
+    || !isFiniteNumber(value.rhythmicDensity) || value.rhythmicDensity <= 0 || ![1, 2, 4].includes(value.smallestSubdivision as number)
+    || !isNonnegativeInteger(value.tempoChangeCount) || (value.octaveSpan !== 1 && value.octaveSpan !== 2) || !isObjectRecord(value.moduleSpecific)
+    || !Number.isInteger(value.tonic) || (value.tonic as number) < 0 || (value.tonic as number) > 11 || !inEnum(value.mode, TECHNIQUE_MODES_V2)
+    || !inEnum(value.declaredHandContext, TECHNIQUE_HANDS) || !inEnum(value.direction, TECHNIQUE_DIRECTIONS)
+    || ![1, 2, 4].includes(value.subdivision as number) || ![0, 1, 2].includes(value.chordInversion as number)
+    || ![7, 12, 19, 24].includes(value.jumpSemitones as number) || !inEnum(value.tempoShape, TECHNIQUE_TEMPO_SHAPES)) return false
+  return !spec || (value.tonic === spec.tonic && value.mode === spec.mode && value.declaredHandContext === spec.declaredHandContext && value.direction === spec.direction
+    && value.subdivision === spec.subdivision && value.chordInversion === spec.chordInversion && value.jumpSemitones === spec.jumpSemitones && value.tempoShape === spec.tempoShape
+    && value.targetTempoBpm === spec.targetTempoBpm && value.eventCount === spec.eventCount && value.octaveSpan === spec.octaveSpan)
+}
+function validTechniqueExerciseV2(value: unknown): value is Record<string, unknown> {
+  if (!isObjectRecord(value) || typeof value.id !== 'string' || typeof value.title !== 'string' || value.title.length === 0 || typeof value.generatedMusicXml !== 'string' || value.generatedMusicXml.length === 0
+    || typeof value.parserVersion !== 'string' || !validTechniqueSpecV2(value.spec) || !Array.isArray(value.events) || !validTechniqueChallengeV2(value.challenge, value.spec)
+    || value.events.length !== value.spec.eventCount || value.events.length !== value.challenge.eventCount) return false
+  const ids = new Set<string>()
+  const eventsValid = value.events.every((event) => {
+    if (!isObjectRecord(event) || typeof event.id !== 'string' || ids.has(event.id) || !validTechniqueTime(event.position) || !validTechniqueTime(event.duration, true)
+      || !Array.isArray(event.midiNotes) || event.midiNotes.length === 0 || !event.midiNotes.every((midi) => Number.isInteger(midi) && midi >= 0 && midi <= 127)
+      || !inEnum(event.role, TECHNIQUE_EVENT_ROLES_V2) || !inEnum(event.transitionKind, TECHNIQUE_TRANSITIONS) || !isFiniteNumber(event.targetTempoBpm) || event.targetTempoBpm < 30 || event.targetTempoBpm > 240) return false
+    ids.add(event.id); return true
+  })
+  return eventsValid
+}
+function validTechniqueCompletionV2(value: unknown): boolean {
+  if (!isObjectRecord(value) || !isNonnegativeInteger(value.expectedEventCount) || value.expectedEventCount < 1 || !isNonnegativeInteger(value.attemptedEventCount)
+    || !isNonnegativeInteger(value.completeCorrectOrIncorrectEventCount) || value.attemptedEventCount > value.expectedEventCount || value.completeCorrectOrIncorrectEventCount > value.attemptedEventCount
+    || !(value.reachedSpanEndIndex === null || (isNonnegativeInteger(value.reachedSpanEndIndex) && value.reachedSpanEndIndex < value.expectedEventCount))
+    || !isFiniteNumber(value.eventCoverageRatio) || !isFiniteNumber(value.spanReachedRatio) || value.eventCoverageRatio < 0 || value.eventCoverageRatio > 1 || value.spanReachedRatio < 0 || value.spanReachedRatio > 1
+    || typeof value.completeEnoughForEvidence !== 'boolean') return false
+  const expectedCoverage = value.completeCorrectOrIncorrectEventCount / value.expectedEventCount
+  const expectedSpan = value.reachedSpanEndIndex === null ? 0 : (value.reachedSpanEndIndex + 1) / value.expectedEventCount
+  return approximately(value.eventCoverageRatio, expectedCoverage) && approximately(value.spanReachedRatio, expectedSpan)
+}
+function validTechniqueFacetV2(value: unknown, challenge: Record<string, unknown>, observationIds: ReadonlySet<string>): boolean {
+  if (!isObjectRecord(value) || !inEnum(value.id, TECHNIQUE_FACET_IDS) || typeof value.label !== 'string' || value.label.length === 0 || !validStatus(value.status)
+    || !(value.score === null || (isFiniteNumber(value.score) && value.score >= 0 && value.score <= 100)) || !validReliability(value.reliability)
+    || !isNonnegativeInteger(value.evidenceCount) || !isNonnegativeInteger(value.eligibleCount) || value.evidenceCount > value.eligibleCount
+    || !isFiniteNumber(value.coverage) || value.coverage < 0 || value.coverage > 1 || !approximately(value.coverage, value.eligibleCount === 0 ? 0 : value.evidenceCount / value.eligibleCount)
+    || !inEnum(value.evidenceFamily, TECHNIQUE_EVIDENCE_FAMILIES) || !inEnum(value.evidenceContext, TECHNIQUE_EVIDENCE_CONTEXTS)
+    || !Array.isArray(value.observationIds) || !value.observationIds.every((id) => typeof id === 'string' && observationIds.has(id)) || new Set(value.observationIds).size !== value.observationIds.length
+    || value.evidenceCount !== value.observationIds.length || !isNonnegativeInteger(value.minimumEvidence) || value.minimumEvidence < 1 || typeof value.summary !== 'string'
+    || !validTechniqueChallengeV2(value.challengeEvidence) || !semanticEqual(value.challengeEvidence, challenge)) return false
+  return value.status === 'ready' ? value.score !== null && value.evidenceCount >= value.minimumEvidence && value.reliability !== 'unavailable' : value.score === null && value.reliability === 'unavailable'
+}
+function validTechniqueAnalysisV2(value: unknown, exercise: Record<string, unknown>): value is Record<string, unknown> {
+  if (!isObjectRecord(value) || typeof value.id !== 'string' || !validStatus(value.status) || value.analysisEngineVersion !== TECHNIQUE_ANALYSIS_ENGINE_VERSION
+    || value.moduleId !== (exercise.spec as Record<string, unknown>).moduleId || value.exerciseInstanceId !== exercise.id || typeof value.recordingId !== 'string'
+    || typeof value.alignmentId !== 'string' || typeof value.noteGradingId !== 'string' || typeof value.timingAnalysisId !== 'string'
+    || !validTechniqueCompletionV2(value.completion) || !validTechniqueNovelty(value.novelty, exercise.id as string) || !validTechniqueChallengeV2(value.challenge, exercise.spec as Record<string, unknown>)
+    || !semanticEqual(value.challenge, exercise.challenge) || !Array.isArray(value.facets) || !Array.isArray(value.observations) || !Array.isArray(value.findings)
+    || !isStringArray(value.findings) || !isStringArray(value.exclusions) || !isStringArray(value.warnings)) return false
+  const facetIds = new Set(value.facets.flatMap((facet) => isObjectRecord(facet) && typeof facet.id === 'string' ? [facet.id] : []))
+  const observationIds = new Set<string>()
+  const observationsValid = value.observations.every((observation) => {
+    if (!isObjectRecord(observation) || typeof observation.id !== 'string' || observationIds.has(observation.id) || !inEnum(observation.facetId, TECHNIQUE_FACET_IDS) || !facetIds.has(observation.facetId)
+      || !isStringArray(observation.expectedEventIds) || !isStringArray(observation.expectedGroupIds) || !isStringArray(observation.performedGroupIds)
+      || !isStringArray(observation.sourceTimingObservationIds) || !isStringArray(observation.sourceNoteResultIds)
+      || !isFiniteNumber(observation.score) || observation.score < 0 || observation.score > 100 || !isFiniteNumber(observation.value)
+      || !inEnum(observation.unit, TECHNIQUE_OBSERVATION_UNITS) || !inEnum(observation.method, TECHNIQUE_OBSERVATION_METHODS) || typeof observation.summary !== 'string') return false
+    observationIds.add(observation.id); return true
+  })
+  return observationsValid && facetIds.size === value.facets.length && value.facets.every((facet) => validTechniqueFacetV2(facet, value.challenge as Record<string, unknown>, observationIds))
+    && (value.status === 'ready' ? value.facets.some((facet) => isObjectRecord(facet) && facet.status === 'ready') : value.facets.every((facet) => isObjectRecord(facet) && facet.status === 'unavailable'))
+}
+function validTechniqueV1Base(value: Record<string, unknown>): boolean {
+  if (value.schemaVersion !== 1 || typeof value.id !== 'string' || !isCanonicalIsoTimestamp(value.performedAt) || !validTechniqueModule(value.moduleId)
+    || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string' || !isObjectRecord(value.exercise) || value.exercise.id !== value.exerciseInstanceId
+    || !isObjectRecord(value.exercise.spec) || value.exercise.spec.moduleId !== value.moduleId || value.exercise.spec.templateId !== value.templateId
+    || value.exercise.spec.exerciseEngineVersion !== TECHNIQUE_EXERCISE_ENGINE_VERSION_V1 || !isObjectRecord(value.techniqueAnalysis)
+    || value.techniqueAnalysis.analysisEngineVersion !== TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1 || !isObjectRecord(value.engineVersions)
+    || value.engineVersions.exercise !== TECHNIQUE_EXERCISE_ENGINE_VERSION_V1 || value.engineVersions.techniqueAnalysis !== TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1) return false
+  return Array.isArray(value.techniqueAnalysis.facets) && value.techniqueAnalysis.facets.every((facet) => isObjectRecord(facet) && inEnum(facet.id, TECHNIQUE_FACET_IDS_V1))
+}
+function validTechniqueCrossProvenance(value: Record<string, unknown>, strictEngines: boolean): boolean {
+  if (!isObjectRecord(value.exercise) || !isObjectRecord(value.expectedPerformancePlan) || !isObjectRecord(value.recording) || !isObjectRecord(value.recording.practiceContext)
+    || !isObjectRecord(value.alignment) || !isObjectRecord(value.noteGrading) || !isObjectRecord(value.timingAnalysis) || !isObjectRecord(value.techniqueAnalysis) || !isObjectRecord(value.engineVersions)) return false
+  const plan = value.expectedPerformancePlan, recording = value.recording, practiceContext = recording.practiceContext as Record<string, unknown>, alignment = value.alignment, notes = value.noteGrading, timing = value.timingAnalysis, technique = value.techniqueAnalysis
+  const provenance = plan.id === practiceContext.expectedPerformancePlanId && alignment.expectedPlanId === plan.id && alignment.recordingId === recording.id
+    && notes.expectedPlanId === plan.id && notes.recordingId === recording.id && notes.alignmentId === alignment.id
+    && timing.expectedPlanId === plan.id && timing.recordingId === recording.id && timing.alignmentId === alignment.id && timing.noteGradingId === notes.id
+    && technique.exerciseInstanceId === value.exercise.id && technique.recordingId === recording.id && technique.alignmentId === alignment.id && technique.noteGradingId === notes.id && technique.timingAnalysisId === timing.id
+  if (!strictEngines) return provenance
+  return provenance && isObjectRecord(alignment.diagnostics) && isObjectRecord(notes.diagnostics) && isObjectRecord(timing.diagnostics)
+    && value.engineVersions.exercise === (value.exercise.spec as Record<string, unknown>).exerciseEngineVersion && value.engineVersions.parser === value.exercise.parserVersion
+    && value.engineVersions.alignment === alignment.diagnostics.alignmentEngineVersion && value.engineVersions.noteGrading === notes.diagnostics.noteGradingEngineVersion
+    && value.engineVersions.timingAnalysis === timing.diagnostics.timingAnalysisEngineVersion && value.engineVersions.techniqueAnalysis === technique.analysisEngineVersion
+}
+function validTechniqueSnapshotSources(value: Record<string, unknown>): boolean {
+  const exercise = value.exercise, plan = value.expectedPerformancePlan, recording = value.recording, alignment = value.alignment, notes = value.noteGrading, timing = value.timingAnalysis, technique = value.techniqueAnalysis
+  if (!isObjectRecord(exercise) || !Array.isArray(exercise.events) || !isObjectRecord(plan) || typeof plan.id !== 'string' || !Array.isArray(plan.onsetGroups)
+    || !isObjectRecord(recording) || typeof recording.id !== 'string' || !isFiniteNumber(recording.durationMs) || recording.durationMs < 0 || !Array.isArray(recording.events) || !Array.isArray(recording.keyPresses) || !isObjectRecord(recording.statistics)
+    || !isObjectRecord(alignment) || typeof alignment.id !== 'string' || !Array.isArray(alignment.expectedGroups) || !Array.isArray(alignment.performedGroups) || !Array.isArray(alignment.groupAlignments)
+    || !isObjectRecord(notes) || typeof notes.id !== 'string' || !Array.isArray(notes.expectedResults) || !Array.isArray(notes.performedResults) || !Array.isArray(notes.groupResults)
+    || !isObjectRecord(timing) || typeof timing.id !== 'string' || !isObjectRecord(timing.rhythm) || !Array.isArray(timing.rhythm.observations) || !Array.isArray(timing.rhythm.chordSpreadDiagnostics)
+    || !isObjectRecord(timing.tempo) || !Array.isArray(timing.tempo.localSamples) || !isObjectRecord(technique) || !Array.isArray(technique.observations)) return false
+  const ids = (items: readonly unknown[]): Set<string> => new Set(items.flatMap((item) => isObjectRecord(item) && typeof item.id === 'string' ? [item.id] : []))
+  const eventIds = ids(exercise.events), expectedGroupIds = ids(alignment.expectedGroups), performedGroupIds = ids(alignment.performedGroups)
+  const noteResultIds = new Set([...ids(notes.expectedResults), ...ids(notes.performedResults), ...ids(notes.groupResults)])
+  const timingIds = new Set([...ids(timing.rhythm.observations), ...ids(timing.rhythm.chordSpreadDiagnostics), ...ids(timing.tempo.localSamples)])
+  if (eventIds.size !== exercise.events.length || expectedGroupIds.size !== alignment.expectedGroups.length || performedGroupIds.size !== alignment.performedGroups.length) return false
+  return technique.observations.every((observation) => isObjectRecord(observation)
+    && isStringArray(observation.expectedEventIds) && observation.expectedEventIds.every((id) => eventIds.has(id))
+    && isStringArray(observation.expectedGroupIds) && observation.expectedGroupIds.every((id) => expectedGroupIds.has(id))
+    && isStringArray(observation.performedGroupIds) && observation.performedGroupIds.every((id) => performedGroupIds.has(id))
+    && isStringArray(observation.sourceTimingObservationIds) && observation.sourceTimingObservationIds.every((id) => timingIds.has(id))
+    && isStringArray(observation.sourceNoteResultIds) && observation.sourceNoteResultIds.every((id) => noteResultIds.has(id)))
+}
 function assertTechniqueAttempt(value: unknown): asserts value is TechniqueAttemptRecord {
-  if (!isObjectRecord(value) || value.schemaVersion !== 1 || typeof value.id !== 'string' || typeof value.performedAt !== 'string' || !isCanonicalIsoTimestamp(value.performedAt)
-    || typeof value.moduleId !== 'string' || !(TECHNIQUE_MODULE_IDS as readonly string[]).includes(value.moduleId) || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string'
-    || !isObjectRecord(value.exercise) || value.exercise.id !== value.exerciseInstanceId || !isObjectRecord(value.expectedPerformancePlan) || !isObjectRecord(value.recording)
-    || !isObjectRecord(value.alignment) || !isObjectRecord(value.noteGrading) || !isObjectRecord(value.timingAnalysis) || !isObjectRecord(value.techniqueAnalysis)
-    || !isObjectRecord(value.engineVersions) || value.engineVersions.exercise !== TECHNIQUE_EXERCISE_ENGINE_VERSION || value.engineVersions.techniqueAnalysis !== TECHNIQUE_ANALYSIS_ENGINE_VERSION) {
-    throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt record is invalid.')
-  }
-  const exerciseSpec = isObjectRecord(value.exercise.spec) ? value.exercise.spec : null
-  const practiceContext = isObjectRecord(value.recording.practiceContext) ? value.recording.practiceContext : null
-  if (!exerciseSpec || !practiceContext || exerciseSpec.moduleId !== value.moduleId || exerciseSpec.templateId !== value.templateId || value.techniqueAnalysis.exerciseInstanceId !== value.exerciseInstanceId
-    || value.expectedPerformancePlan.id !== practiceContext.expectedPerformancePlanId || value.alignment.recordingId !== value.recording.id
-    || value.noteGrading.alignmentId !== value.alignment.id || value.timingAnalysis.noteGradingId !== value.noteGrading.id || value.techniqueAnalysis.timingAnalysisId !== value.timingAnalysis.id) {
-    throw new PianoStorageError('CORRUPT_RECORD', 'A TechniqueAttempt snapshot has inconsistent provenance.')
-  }
+  if (!isObjectRecord(value)) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt record is invalid.')
+  const valid = value.schemaVersion === 1 ? validTechniqueV1Base(value) && validTechniqueCrossProvenance(value, false)
+    : value.schemaVersion === 2 && typeof value.id === 'string' && isCanonicalIsoTimestamp(value.performedAt) && validTechniqueModule(value.moduleId)
+      && typeof value.templateId === 'string' && typeof value.exerciseInstanceId === 'string' && validTechniqueExerciseV2(value.exercise)
+      && value.exercise.id === value.exerciseInstanceId && (value.exercise.spec as Record<string, unknown>).moduleId === value.moduleId && (value.exercise.spec as Record<string, unknown>).templateId === value.templateId
+      && validTechniqueAnalysisV2(value.techniqueAnalysis, value.exercise) && validTechniqueNovelty(value.novelty, value.exerciseInstanceId) && semanticEqual(value.novelty, value.techniqueAnalysis.novelty)
+      && isObjectRecord(value.engineVersions) && value.engineVersions.exercise === TECHNIQUE_EXERCISE_ENGINE_VERSION && value.engineVersions.techniqueAnalysis === TECHNIQUE_ANALYSIS_ENGINE_VERSION
+      && validTechniqueCrossProvenance(value, true) && validTechniqueSnapshotSources(value)
+  if (!valid) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt record is invalid or has inconsistent provenance.')
 }
 
+function validTechniqueSummaryV1(value: Record<string, unknown>): boolean {
+  return !('schemaVersion' in value) && typeof value.id === 'string' && validTechniqueModule(value.moduleId) && typeof value.templateId === 'string' && typeof value.exerciseInstanceId === 'string'
+    && isCanonicalIsoTimestamp(value.performedAt) && isFiniteNumber(value.durationMs) && value.durationMs >= 0 && isObjectRecord(value.challenge)
+    && isFiniteNumber(value.completionRatio) && value.completionRatio >= 0 && value.completionRatio <= 1 && Array.isArray(value.facets)
+    && value.facets.every((facet) => isObjectRecord(facet) && inEnum(facet.id, TECHNIQUE_FACET_IDS_V1) && typeof facet.label === 'string' && validStatus(facet.status)
+      && (facet.score === null || (isFiniteNumber(facet.score) && facet.score >= 0 && facet.score <= 100)) && validReliability(facet.reliability)
+      && isNonnegativeInteger(facet.evidenceCount) && isFiniteNumber(facet.coverage) && facet.coverage >= 0 && facet.coverage <= 1)
+}
+function validTechniqueSummaryV2(value: Record<string, unknown>): boolean {
+  if (value.schemaVersion !== 2 || typeof value.id !== 'string' || !validTechniqueModule(value.moduleId) || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string'
+    || !isCanonicalIsoTimestamp(value.performedAt) || !isFiniteNumber(value.durationMs) || value.durationMs < 0 || value.exerciseEngineVersion !== TECHNIQUE_EXERCISE_ENGINE_VERSION
+    || value.techniqueAnalysisEngineVersion !== TECHNIQUE_ANALYSIS_ENGINE_VERSION || !validTechniqueChallengeV2(value.challenge) || !validTechniqueCompletionV2(value.completion)
+    || !validTechniqueNovelty(value.novelty, value.exerciseInstanceId) || !Array.isArray(value.facets)) return false
+  return value.facets.every((facet) => isObjectRecord(facet) && inEnum(facet.id, TECHNIQUE_FACET_IDS) && typeof facet.label === 'string' && validStatus(facet.status)
+    && (facet.score === null || (isFiniteNumber(facet.score) && facet.score >= 0 && facet.score <= 100)) && validReliability(facet.reliability)
+    && isNonnegativeInteger(facet.evidenceCount) && isNonnegativeInteger(facet.eligibleCount) && facet.evidenceCount <= facet.eligibleCount
+    && isFiniteNumber(facet.coverage) && facet.coverage >= 0 && facet.coverage <= 1 && approximately(facet.coverage, facet.eligibleCount === 0 ? 0 : facet.evidenceCount / facet.eligibleCount)
+    && inEnum(facet.evidenceFamily, TECHNIQUE_EVIDENCE_FAMILIES) && inEnum(facet.evidenceContext, TECHNIQUE_EVIDENCE_CONTEXTS) && isNonnegativeInteger(facet.minimumEvidence) && facet.minimumEvidence >= 1
+    && (facet.status === 'ready' ? facet.score !== null && facet.evidenceCount >= facet.minimumEvidence && facet.reliability !== 'unavailable' : facet.score === null && facet.reliability === 'unavailable'))
+}
 function assertTechniqueSummary(value: unknown): asserts value is TechniqueAttemptSummary {
-  if (!isObjectRecord(value) || typeof value.id !== 'string' || typeof value.moduleId !== 'string' || !(TECHNIQUE_MODULE_IDS as readonly string[]).includes(value.moduleId)
-    || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string' || typeof value.performedAt !== 'string' || !isCanonicalIsoTimestamp(value.performedAt)
-    || !Array.isArray(value.facets)) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt summary is invalid.')
+  if (!isObjectRecord(value) || !(validTechniqueSummaryV1(value) || validTechniqueSummaryV2(value))) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt summary is invalid.')
+}
+
+function semanticEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((item, index) => semanticEqual(item, right[index]))
+  if (!isObjectRecord(left) || !isObjectRecord(right)) return false
+  const leftKeys = Object.keys(left).sort(), rightKeys = Object.keys(right).sort()
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index] && semanticEqual(left[key], right[key]))
 }
 
 function isNullableInteger(value: unknown): value is number | null {
@@ -1071,6 +1242,10 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         assertTechniqueAttempt(existing)
         const existingSummary = await requestValue(summaries.get(attempt.id)) as unknown
         assertTechniqueSummary(existingSummary)
+        const incomingSummary = createTechniqueAttemptSummary(attempt)
+        if (!semanticEqual(existing, attempt) || !semanticEqual(existingSummary, incomingSummary)) {
+          throw new PianoStorageError('IMMUTABLE_RECORD', 'A different frozen Technique attempt already uses this attempt ID.')
+        }
         await completion
         return { created: false, summary: existingSummary }
       }
