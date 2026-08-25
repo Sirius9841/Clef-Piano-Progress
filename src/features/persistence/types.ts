@@ -5,6 +5,7 @@ import type { ExpressionAnalysisResult } from '../expression-analysis/types'
 import type { LoadedMusicXml } from '../musicxml/types'
 import type { GradingScopeType, NoteGradingResult } from '../note-grading/types'
 import type { PerformanceRecording } from '../performance/types'
+import type { PedalAnalysisResult } from '../pedal-analysis/types'
 import type { PerformanceResults } from '../performance-results/types'
 import type { TimingAnalysisResult } from '../timing-analysis/types'
 
@@ -67,6 +68,10 @@ export interface AnalysisEngineVersionsV2 extends AnalysisEngineVersionsV1 {
   readonly expressionAnalysis: string
 }
 
+export interface AnalysisEngineVersionsV3 extends AnalysisEngineVersionsV2 {
+  readonly pedalAnalysis: string
+}
+
 interface PerformanceAttemptRecordBase {
   readonly id: string
   readonly arrangementId: string
@@ -95,7 +100,14 @@ export interface PerformanceAttemptRecordV2 extends PerformanceAttemptRecordBase
   readonly expressionAnalysis: ExpressionAnalysisResult
 }
 
-export type PerformanceAttemptRecord = PerformanceAttemptRecordV1 | PerformanceAttemptRecordV2
+export interface PerformanceAttemptRecordV3 extends PerformanceAttemptRecordBase {
+  readonly schemaVersion: 3
+  readonly engineVersions: AnalysisEngineVersionsV3
+  readonly expressionAnalysis: ExpressionAnalysisResult
+  readonly pedalAnalysis: PedalAnalysisResult
+}
+
+export type PerformanceAttemptRecord = PerformanceAttemptRecordV1 | PerformanceAttemptRecordV2 | PerformanceAttemptRecordV3
 
 export interface AttemptSummary {
   readonly id: string

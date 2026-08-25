@@ -80,13 +80,15 @@ export function MidiProvider({ children }: { children: ReactNode }) {
     selectedDevice,
     activeNotes: [...runtime.activeNotes],
     sustainDown: runtime.sustainDown,
+    sustainValue: runtime.sustainValue,
+    sustainObserved: runtime.sustainObserved,
     recentEvents,
     error: presentedError,
     requestAccess,
     selectDevice,
     subscribeToEvents,
     clearEvents: () => setRecentEvents([]),
-  }), [accessState, presentedError, recentEvents, requestAccess, runtime.activeNotes, runtime.devices, runtime.selectedDeviceId, runtime.sustainDown, selectDevice, selectedDevice, service.isSupported, subscribeToEvents])
+  }), [accessState, presentedError, recentEvents, requestAccess, runtime.activeNotes, runtime.devices, runtime.selectedDeviceId, runtime.sustainDown, runtime.sustainObserved, runtime.sustainValue, selectDevice, selectedDevice, service.isSupported, subscribeToEvents])
 
   return <MidiContext.Provider value={value}>{children}</MidiContext.Provider>
 }

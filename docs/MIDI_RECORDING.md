@@ -12,7 +12,9 @@ The explicit lifecycle is `idle → recording → stopped`. Pre-start timestamps
 
 Note On creates a physical key press. Note Off pairs FIFO with the earliest unmatched Note On of the same MIDI channel and pitch, which handles repeated same-pitch activity deterministically. A held key at Stop keeps `releaseMs = null`. An orphan Note Off is preserved in events, creates no fake press, and produces a warning/statistic.
 
-Sustain changes are preserved and counted. Phase 9 key Articulation still uses the physical attack-to-release span and only reports whether sustain was active around an observation; it never extends release to pedal-up. Pedal-aware acoustic duration and pedal grading belong to Phase 10+.
+Sustain changes preserve every raw CC64 value and are counted. Runtime state separately exposes whether a real CC64 value has ever been observed for the selected input; selection change or disconnect clears value, observed identity, and down state together. New takes freeze that initial state as known up, known down, or unknown. Historical recordings without the field remain valid and unknown.
+
+Phase 9 key Articulation still uses the physical attack-to-release span and never extends release to pedal-up. Phase 10 derives separate controller-based damper-release context and pedal timing without rewriting Articulation. Intermediate controller values are evidence of a continuous-capable stream, not calibrated half-pedal depth or acoustic duration.
 
 ## Disconnects and statistics
 

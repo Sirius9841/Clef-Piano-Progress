@@ -50,6 +50,7 @@ function freezeRecording(recording: PerformanceRecording): PerformanceRecording 
   Object.freeze(recording.device)
   if (recording.practiceContext.includedPartIds) Object.freeze(recording.practiceContext.includedPartIds)
   Object.freeze(recording.practiceContext)
+  if (recording.initialSustain) Object.freeze(recording.initialSustain)
   if (recording.statistics.velocity) Object.freeze(recording.statistics.velocity)
   Object.freeze(recording.statistics)
   return Object.freeze(recording)
@@ -86,6 +87,7 @@ export class PerformanceRecorder {
       options: {
         device: { ...options.device },
         practiceContext: options.practiceContext ? { ...options.practiceContext, includedPartIds: options.practiceContext.includedPartIds ? [...options.practiceContext.includedPartIds] : undefined } : {},
+        initialSustain: options.initialSustain ? { ...options.initialSustain } : { observed: false, down: null, value: null },
       },
       events: [],
       warnings: [],
@@ -122,6 +124,7 @@ export class PerformanceRecorder {
       stopReason: reason,
       device: { ...active.options.device },
       practiceContext: { ...active.options.practiceContext, includedPartIds: active.options.practiceContext?.includedPartIds ? [...active.options.practiceContext.includedPartIds] : undefined },
+      initialSustain: { ...active.options.initialSustain! },
       events: [...active.events],
       keyPresses,
       statistics,

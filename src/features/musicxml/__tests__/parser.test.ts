@@ -17,7 +17,7 @@ import {
 
 describe('MusicXML normalized parser', () => {
   it('owns one explicit parser version for persisted ScoreVersion provenance', () => {
-    expect(MUSICXML_PARSER_VERSION).toMatch(/^musicxml-parser-\d+\.\d+\.\d+$/)
+    expect(MUSICXML_PARSER_VERSION).toBe('musicxml-parser-1.2.0')
   })
 
   it('parses metadata, melody, rests, context, and basic measure timing', () => {
@@ -100,10 +100,26 @@ describe('MusicXML normalized parser', () => {
     expect(score.wedgeEvents.map((event) => event.type)).toEqual(['crescendo', 'stop'])
     expect(score.dynamicEvents[1]).toMatchObject({ position: musicalTime(5), measureNumber: '2', measureOnset: musicalTime(1), partId: 'P1', staff: 2, voice: '2' })
     expect(score.wedgeEvents[1]).toMatchObject({ position: musicalTime(5), measureNumber: '2', measureOnset: musicalTime(1), partId: 'P1', staff: 2, voice: '2', number: '1' })
-    expect(score.pedalEvents[0]).toMatchObject({ type: 'start', staff: 2 })
+    expect(score.pedalEvents[0]).toMatchObject({ type: 'start', position: musicalTime(5), measureOnset: musicalTime(1), measureIndex: 1, measureNumber: '2', partId: 'P1', staff: 2, voice: '2' })
     const firstNote = score.parts[0]?.measures[0]?.events[0]
     expect(firstNote).toMatchObject({ type: 'note', articulations: ['staccato', 'accent'], slurs: [{ type: 'start', number: '1' }] })
     expect(score.statistics).toMatchObject({ timeSignatureChangeCount: 1, keySignatureChangeCount: 1, dynamicEventCount: 2 })
+  })
+
+  it('preserves every supported pedal direction with exact offset and lane provenance', () => {
+    const score = parseMusicXml(scoreFixture(`<measure number="7"><attributes><divisions>2</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+      <direction><offset>0</offset><direction-type><pedal type="start"/></direction-type><voice>1</voice><staff>2</staff></direction>
+      <direction><offset>1</offset><direction-type><pedal type="change"/></direction-type><voice>1</voice><staff>2</staff></direction>
+      <direction><offset>2</offset><direction-type><pedal type="continue"/></direction-type><voice>1</voice><staff>2</staff></direction>
+      <direction><offset>3</offset><direction-type><pedal type="stop"/></direction-type><voice>1</voice><staff>2</staff></direction>
+      <note><rest/><duration>4</duration><voice>1</voice><staff>2</staff></note></measure>`))
+    expect(score.pedalEvents.map((event) => ({ type: event.type, position: event.position, measureOnset: event.measureOnset, measureNumber: event.measureNumber, partId: event.partId, staff: event.staff, voice: event.voice }))).toEqual([
+      { type: 'start', position: musicalTime(0), measureOnset: musicalTime(0), measureNumber: '7', partId: 'P1', staff: 2, voice: '1' },
+      { type: 'change', position: musicalTime(1, 2), measureOnset: musicalTime(1, 2), measureNumber: '7', partId: 'P1', staff: 2, voice: '1' },
+      { type: 'continue', position: musicalTime(1), measureOnset: musicalTime(1), measureNumber: '7', partId: 'P1', staff: 2, voice: '1' },
+      { type: 'stop', position: musicalTime(3, 2), measureOnset: musicalTime(3, 2), measureNumber: '7', partId: 'P1', staff: 2, voice: '1' },
+    ])
+    expect(parseMusicXml(scoreFixture(`<measure number="7"><attributes><divisions>2</divisions></attributes><direction><direction-type><pedal type="start"/></direction-type></direction></measure>`)).pedalEvents[0]?.id).toBeTruthy()
   })
 
   it('uses actual pickup duration for following absolute positions', () => {

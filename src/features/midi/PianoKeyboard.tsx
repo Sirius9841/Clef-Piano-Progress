@@ -11,7 +11,7 @@ function blackKeyPosition(note: number): number {
   return (whiteBefore / whiteNotes.length) * 100
 }
 
-export function PianoKeyboard({ activeNotes, sustainDown }: { activeNotes: ActiveNote[]; sustainDown: boolean }) {
+export function PianoKeyboard({ activeNotes, sustainDown, sustainObserved = true }: { activeNotes: ActiveNote[]; sustainDown: boolean; sustainObserved?: boolean }) {
   const activeMap = new Map(activeNotes.map((item) => [item.note, item.velocity]))
 
   return (
@@ -21,7 +21,7 @@ export function PianoKeyboard({ activeNotes, sustainDown }: { activeNotes: Activ
           <div className="piano-title"><Piano size={18} /> 88-key monitor</div>
           <p>A0–C8 · velocity-responsive input</p>
         </div>
-        <div className={`pedal-indicator ${sustainDown ? 'down' : ''}`}><Gauge size={16} /> Sustain <strong>{sustainDown ? 'DOWN' : 'UP'}</strong></div>
+        <div className={`pedal-indicator ${sustainObserved && sustainDown ? 'down' : ''}`}><Gauge size={16} /> Sustain <strong>{sustainObserved ? sustainDown ? 'DOWN' : 'UP' : '—'}</strong></div>
       </div>
       <div className="keyboard-scroll">
         <div className="keyboard">

@@ -9,6 +9,8 @@ export interface MidiContextValue {
   selectedDevice: MidiDevice | null
   activeNotes: ActiveNote[]
   sustainDown: boolean
+  sustainValue: number | null
+  sustainObserved: boolean
   recentEvents: MidiEvent[]
   error: string | null
   requestAccess: () => Promise<void>

@@ -1,0 +1,27 @@
+import { AlertCircle, Gauge, RefreshCw, ScanSearch, Sparkles } from 'lucide-react'
+import { Button, StatusPill } from '../../components/ui'
+import type { PedalAnalysisState } from './usePedalAnalysis'
+
+function percent(value: number | null): string { return value === null ? '—' : `${(value * 100).toFixed(1)}` }
+
+function Timeline({ analysis }: { analysis: Extract<PedalAnalysisState, { status: 'ready' }>['result'] }) {
+  const duration = Math.max(1, ...analysis.timeline.rawSamples.map((sample) => sample.relativeMs), ...analysis.targets.flatMap((target) => target.events.map((event) => event.expectedPerformedMs)))
+  return <svg className="pedal-timeline" viewBox="0 0 800 120" role="img" aria-labelledby={`pedal-title-${analysis.id} pedal-desc-${analysis.id}`}>
+    <title id={`pedal-title-${analysis.id}`}>Authored and performed damper pedal timeline</title><desc id={`pedal-desc-${analysis.id}`}>Authored targets appear above observed CC64 transitions, arranged from recording start to finish.</desc>
+    <line x1="28" x2="772" y1="42" y2="42" /><line x1="28" x2="772" y1="88" y2="88" />
+    <text x="28" y="25">Score</text><text x="28" y="111">CC64</text>
+    {analysis.targets.flatMap((target) => target.events).map((event) => <g key={event.id} transform={`translate(${28 + 744 * Math.max(0, event.expectedPerformedMs) / duration},42)`}><circle r="6" className={`target ${event.kind}`} /><title>{event.kind} · measure {event.measureNumber}</title></g>)}
+    {analysis.timeline.transitions.map((transition) => <g key={transition.id} transform={`translate(${28 + 744 * transition.relativeMs / duration},88)`}><path d={transition.kind === 'down' ? 'M-6,-7 L6,7 M-6,7 L6,7' : 'M-6,7 L6,-7 M-6,-7 L6,-7'} className={`observed ${transition.kind}`} /><title>{transition.kind} · {Math.round(transition.relativeMs)} ms · value {transition.value}</title></g>)}
+  </svg>
+}
+
+export function PedalAnalysisPanel({ analysis, onAnalyze, readOnly = false }: { analysis: PedalAnalysisState; onAnalyze: () => void; readOnly?: boolean }) {
+  if (analysis.status === 'idle') return <section className="panel expression-state"><div><Gauge /><span><small>Phase 10 pedal</small><strong>Analyze sustain pedal</strong><p>Compare authored damper notation with the preserved CC64 controller timeline.</p></span></div><Button icon={Gauge} onClick={onAnalyze}>Analyze pedal</Button></section>
+  if (analysis.status === 'analyzing') return <section className="panel expression-state"><div><ScanSearch className="spin" /><span><small>Pedal analysis</small><strong>Mapping pedal phrases</strong><p>Pairing authored starts, changes, and releases with the aligned controller timeline.</p></span></div><StatusPill tone="violet">Processing</StatusPill></section>
+  if (analysis.status === 'error') return <section className="panel expression-state unavailable"><div><AlertCircle /><span><small>Pedal unavailable</small><strong>Analysis could not be completed</strong><p>{analysis.message}</p></span></div>{!readOnly && <Button variant="secondary" icon={RefreshCw} onClick={onAnalyze}>Retry</Button>}</section>
+  const result = analysis.result
+  const ordered = [...result.observations].sort((left, right) => left.score - right.score || left.id.localeCompare(right.id))
+  const success = [...ordered].reverse().find((item) => item.score >= 0.75)
+  const issue = ordered.find((item) => item.score < 0.75)
+  return <section className="panel pedal-analysis"><header><div><StatusPill tone={result.status === 'ready' ? 'violet' : 'neutral'}><Gauge /> {readOnly ? 'Saved pedal snapshot' : 'Pedal ready'}</StatusPill><h2>Pedal</h2><p>Damper-pedal timing is an independent dimension. It does not change Notes, Articulation, Practice Priority, or an overall score.</p></div><strong className="pedal-score">{percent(result.score)}</strong></header><div className="pedal-summary"><StatusPill tone={result.reliability === 'reliable' ? 'positive' : result.reliability === 'unavailable' ? 'neutral' : 'warning'}>{result.reliability}</StatusPill><span>{result.coverage.analyzedPhraseCount} / {result.coverage.authoredPhraseCount} authored phrases analyzed</span><span>{result.controllerEvidence.mode}</span></div>{result.status === 'unavailable' ? <div className="expression-unavailable"><AlertCircle />{result.unavailableReason}</div> : <div className="expression-findings">{success && <span className="success"><Sparkles />{success.summary}</span>}{issue && <span className="issue"><AlertCircle />{issue.summary}</span>}</div>}<Timeline analysis={result} />{result.interactions.length > 0 && <div className="pedal-interactions"><strong>Pedal / key context</strong>{result.interactions.map((interaction) => <p key={interaction.id}>{interaction.summary}</p>)}</div>}<p className="pedal-caveat">CC64 values describe controller position, not acoustic half-pedal depth or sounding duration.</p><details className="results-diagnostics"><summary>Pedal diagnostics</summary><div><span>Raw samples <strong>{result.controllerEvidence.rawSampleCount}</strong></span><span>Down / up <strong>{result.controllerEvidence.downTransitionCount} / {result.controllerEvidence.upTransitionCount}</strong></span><span>Intermediate values <strong>{result.controllerEvidence.intermediateValueCount}</strong></span><span>Unassigned transitions <strong>{result.controllerEvidence.extraUnassignedTransitionCount}</strong></span><span>Damper holds <strong>{result.damperHolds.length}</strong></span><span>Engine <strong>{result.diagnostics.pedalAnalysisEngineVersion}</strong></span></div></details></section>
+}

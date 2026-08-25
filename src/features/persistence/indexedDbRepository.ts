@@ -93,6 +93,13 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
+function isFiniteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) }
+function isNonnegativeInteger(value: unknown): value is number { return Number.isInteger(value) && (value as number) >= 0 }
+function isUnitNumberOrNull(value: unknown): boolean { return value === null || (isFiniteNumber(value) && value >= 0 && value <= 1) }
+function isMusicalTimeRecord(value: unknown): boolean {
+  return isObjectRecord(value) && Number.isInteger(value.numerator) && Number.isInteger(value.denominator) && (value.denominator as number) > 0
+}
+
 function assertWork(value: unknown): asserts value is PersistedWork {
   assertRecord(value, 'Work')
   const work = value as Partial<PersistedWork>
@@ -113,7 +120,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   assertRecord(value, 'PerformanceAttempt')
   const attempt = value as Record<string, unknown>
   if (
-    (attempt.schemaVersion !== 1 && attempt.schemaVersion !== 2)
+    (attempt.schemaVersion !== 1 && attempt.schemaVersion !== 2 && attempt.schemaVersion !== 3)
     || typeof attempt.arrangementId !== 'string'
     || typeof attempt.scoreVersionId !== 'string'
     || typeof attempt.practiceSessionId !== 'string'
@@ -176,7 +183,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has inconsistent snapshot provenance.`)
   }
-  if (attempt.schemaVersion === 2) {
+  if (attempt.schemaVersion === 2 || attempt.schemaVersion === 3) {
     const expression = attempt.expressionAnalysis
     const validExpressionMetric = (metric: Record<string, unknown>): boolean => {
       const score = metric.score
@@ -234,6 +241,90 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       || versions.expressionAnalysis !== expression.diagnostics.expressionAnalysisEngineVersion
     ) {
       throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent expression provenance.`)
+    }
+  }
+  if (attempt.schemaVersion === 3) {
+    const pedalValue = attempt.pedalAnalysis
+    const expression = attempt.expressionAnalysis
+    if (!isObjectRecord(pedalValue) || !isObjectRecord(expression) || !isObjectRecord(expression.diagnostics)) {
+      throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent pedal provenance.`)
+    }
+    const pedal = pedalValue
+    const validScore = pedal.score === null || (typeof pedal.score === 'number' && Number.isFinite(pedal.score) && pedal.score >= 0 && pedal.score <= 1)
+    const initialSustain = recording.initialSustain
+    const validInitialSustain = isObjectRecord(initialSustain)
+      && typeof initialSustain.observed === 'boolean'
+      && (initialSustain.down === null || typeof initialSustain.down === 'boolean')
+      && (initialSustain.value === null || (Number.isInteger(initialSustain.value) && (initialSustain.value as number) >= 0 && (initialSustain.value as number) <= 127))
+      && (initialSustain.observed ? typeof initialSustain.down === 'boolean' && typeof initialSustain.value === 'number' : initialSustain.down === null && initialSustain.value === null)
+    const validController = (controller: Record<string, unknown>): boolean =>
+      ['unknown', 'binary-like', 'continuous-evidence'].includes(typeof controller.mode === 'string' ? controller.mode : '')
+      && typeof controller.initialStateKnown === 'boolean'
+      && (controller.initialDown === null || typeof controller.initialDown === 'boolean')
+      && (controller.initialValue === null || Number.isInteger(controller.initialValue))
+      && isNonnegativeInteger(controller.rawSampleCount) && isNonnegativeInteger(controller.downTransitionCount) && isNonnegativeInteger(controller.upTransitionCount)
+      && isNonnegativeInteger(controller.distinctValueCount) && isNonnegativeInteger(controller.intermediateValueCount)
+      && isFiniteNumber(controller.knownStateDurationMs) && controller.knownStateDurationMs >= 0
+      && isUnitNumberOrNull(controller.knownStateCoverage) && isNonnegativeInteger(controller.extraUnassignedTransitionCount)
+    if (
+      !isObjectRecord(pedal.scope)
+      || !isObjectRecord(pedal.coverage)
+      || !isObjectRecord(pedal.controllerEvidence)
+      || !isObjectRecord(pedal.timeline)
+      || !isObjectRecord(pedal.diagnostics)
+      || !Array.isArray(pedal.targets)
+      || !Array.isArray(pedal.observations)
+      || !Array.isArray(pedal.phraseResults)
+      || !Array.isArray(pedal.damperHolds)
+      || !Array.isArray(pedal.interactions)
+      || !Array.isArray(pedal.exclusions)
+      || !Array.isArray(pedal.warnings)
+      || !Array.isArray(pedal.timeline.rawSamples)
+      || !Array.isArray(pedal.timeline.transitions)
+      || !isObjectRecord(pedal.timeline.controllerEvidence)
+      || !validInitialSustain
+      || (pedal.status !== 'ready' && pedal.status !== 'unavailable')
+      || !['reliable', 'limited', 'provisional', 'unavailable'].includes(typeof pedal.reliability === 'string' ? pedal.reliability : '')
+      || !validScore
+      || (pedal.scope.type !== 'full-plan' && pedal.scope.type !== 'aligned-span')
+      || !isNullableInteger(pedal.scope.expectedStartIndex)
+      || !isNullableInteger(pedal.scope.expectedEndIndex)
+      || !isNullableString(pedal.scope.expectedStartGroupId)
+      || !isNullableString(pedal.scope.expectedEndGroupId)
+      || !isNonnegativeInteger(pedal.coverage.authoredPhraseCount)
+      || !isNonnegativeInteger(pedal.coverage.analyzedPhraseCount)
+      || !isUnitNumberOrNull(pedal.coverage.ratio)
+      || !validController(pedal.controllerEvidence)
+      || !validController(pedal.timeline.controllerEvidence)
+      || pedal.controllerEvidence.mode !== pedal.timeline.controllerEvidence.mode
+      || !pedal.timeline.rawSamples.every((sample) => isObjectRecord(sample) && typeof sample.id === 'string' && isNonnegativeInteger(sample.sequence) && isFiniteNumber(sample.relativeMs) && sample.relativeMs >= 0 && Number.isInteger(sample.channel) && Number.isInteger(sample.value) && (sample.value as number) >= 0 && (sample.value as number) <= 127 && typeof sample.down === 'boolean')
+      || !pedal.timeline.transitions.every((transition) => isObjectRecord(transition) && typeof transition.id === 'string' && (transition.kind === 'down' || transition.kind === 'up') && isFiniteNumber(transition.relativeMs) && transition.relativeMs >= 0 && isNonnegativeInteger(transition.sequence) && Number.isInteger(transition.value) && typeof transition.sourceSampleId === 'string')
+      || !pedal.targets.every((target) => isObjectRecord(target) && typeof target.id === 'string' && Array.isArray(target.sourceEventIds) && typeof target.partId === 'string' && isMusicalTimeRecord(target.startPosition) && isMusicalTimeRecord(target.endPosition) && Array.isArray(target.events) && target.events.every((event) => isObjectRecord(event) && typeof event.id === 'string' && ['start', 'change', 'stop'].includes(typeof event.kind === 'string' ? event.kind : '') && isMusicalTimeRecord(event.position) && isFiniteNumber(event.expectedPerformedMs)))
+      || !pedal.observations.every((observation) => isObjectRecord(observation) && typeof observation.id === 'string' && typeof observation.phraseTargetId === 'string' && ['start', 'change', 'stop'].includes(typeof observation.kind === 'string' ? observation.kind : '') && isFiniteNumber(observation.score) && observation.score >= 0 && observation.score <= 1 && Array.isArray(observation.transitionIds) && ['transition', 'predepressed', 'missing'].includes(typeof observation.evidence === 'string' ? observation.evidence : ''))
+      || !pedal.phraseResults.every((phrase) => isObjectRecord(phrase) && typeof phrase.id === 'string' && typeof phrase.targetId === 'string' && isFiniteNumber(phrase.score) && phrase.score >= 0 && phrase.score <= 1 && Array.isArray(phrase.observationIds))
+      || !pedal.damperHolds.every((hold) => isObjectRecord(hold) && typeof hold.id === 'string' && isFiniteNumber(hold.physicalReleaseMs) && isUnitNumberOrNull(hold.pedalDownAtPhysicalRelease === null ? null : hold.pedalDownAtPhysicalRelease ? 1 : 0) && typeof hold.openAtRecordingEnd === 'boolean')
+      || !pedal.interactions.every((interaction) => isObjectRecord(interaction) && (interaction.kind === 'pedal-connects-detached-keys' || interaction.kind === 'pedal-bridges-key-gap') && Array.isArray(interaction.matchedObservationIds))
+      || !pedal.exclusions.every(isObjectRecord)
+      || !pedal.warnings.every(isObjectRecord)
+      || typeof pedal.diagnostics.pedalAnalysisEngineVersion !== 'string'
+      || typeof pedal.diagnostics.musicXmlParserVersion !== 'string'
+      || typeof pedal.diagnostics.expressionAnalysisEngineVersion !== 'string'
+      || pedal.scoreId !== plan.scoreId
+      || pedal.expectedPlanId !== plan.id
+      || pedal.recordingId !== recording.id
+      || pedal.alignmentId !== alignment.id
+      || pedal.noteGradingId !== noteGrading.id
+      || pedal.expressionAnalysisId !== expression.id
+      || pedal.scope.type !== noteGrading.scope.type
+      || pedal.scope.expectedStartIndex !== noteGrading.scope.expectedStartIndex
+      || pedal.scope.expectedEndIndex !== noteGrading.scope.expectedEndIndex
+      || pedal.scope.expectedStartGroupId !== noteGrading.scope.expectedStartGroupId
+      || pedal.scope.expectedEndGroupId !== noteGrading.scope.expectedEndGroupId
+      || typeof versions.pedalAnalysis !== 'string'
+      || versions.pedalAnalysis !== pedal.diagnostics.pedalAnalysisEngineVersion
+      || pedal.diagnostics.expressionAnalysisEngineVersion !== expression.diagnostics.expressionAnalysisEngineVersion
+    ) {
+      throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent pedal provenance.`)
     }
   }
 }

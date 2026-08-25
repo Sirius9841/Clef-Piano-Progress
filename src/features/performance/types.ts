@@ -19,6 +19,13 @@ export interface RecordingPracticeContext {
 export interface StartRecordingOptions {
   device: RecordedDeviceInfo
   practiceContext?: RecordingPracticeContext
+  initialSustain?: InitialSustainState
+}
+
+export interface InitialSustainState {
+  readonly observed: boolean
+  readonly down: boolean | null
+  readonly value: number | null
 }
 
 export interface RecordedMidiEvent {
@@ -65,6 +72,8 @@ export interface PerformanceRecording {
   readonly stopReason: RecordingStopReason
   readonly device: Readonly<RecordedDeviceInfo>
   readonly practiceContext: Readonly<RecordingPracticeContext>
+  /** Missing only on historical Phase 1–9 recordings. */
+  readonly initialSustain?: Readonly<InitialSustainState>
   readonly events: readonly RecordedMidiEvent[]
   readonly keyPresses: readonly RecordedKeyPress[]
   readonly statistics: Readonly<RecordingStatistics>

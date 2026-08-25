@@ -7,7 +7,7 @@ import { useMidi } from './MidiContext'
 function describeEvent(event: MidiEvent): { label: string; detail: string } {
   if (event.type === 'note-on') return { label: 'Note On', detail: `${midiNoteName(event.note)} · velocity ${event.velocity}` }
   if (event.type === 'note-off') return { label: 'Note Off', detail: midiNoteName(event.note) }
-  return { label: 'Pedal', detail: event.down ? 'Down' : 'Up' }
+  return { label: 'Pedal', detail: `${event.down ? 'Down' : 'Up'} · CC64 ${event.value}` }
 }
 
 export function MidiDiagnostics() {
@@ -23,7 +23,7 @@ export function MidiDiagnostics() {
         <div><span>Support</span><strong>{midi.supported ? 'Available' : 'Unavailable'}</strong></div>
         <div><span>Input</span><strong>{midi.selectedDevice?.name ?? 'None selected'}</strong></div>
         <div><span>Active notes</span><strong>{midi.activeNotes.length}</strong></div>
-        <div><span>Sustain</span><StatusPill tone={midi.sustainDown ? 'violet' : 'neutral'}>{midi.sustainDown ? 'Down' : 'Up'}</StatusPill></div>
+        <div><span>Sustain</span><StatusPill tone={midi.sustainObserved && midi.sustainDown ? 'violet' : 'neutral'}>{midi.sustainObserved ? `${midi.sustainDown ? 'Down' : 'Up'} · ${midi.sustainValue}` : 'Not observed'}</StatusPill></div>
       </div>
       {midi.activeNotes.length > 0 && <div className="active-note-list"><span>Currently playing</span>{midi.activeNotes.map(({ note, velocity }) => <b key={note}>{midiNoteName(note)} <small>{velocity}</small></b>)}</div>}
       <div className="event-feed">

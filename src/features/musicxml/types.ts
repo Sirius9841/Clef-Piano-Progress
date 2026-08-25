@@ -199,9 +199,12 @@ export interface WedgeEvent {
 export interface PedalEvent {
   id: string
   position: MusicalTime
+  measureOnset: MusicalTime
   partId: string
   measureIndex: number
+  measureNumber: string
   staff: number | null
+  voice: string | null
   type: 'start' | 'stop' | 'change' | 'continue'
 }
 

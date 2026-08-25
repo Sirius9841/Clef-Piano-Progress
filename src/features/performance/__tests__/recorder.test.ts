@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MidiEvent } from '../../midi/types'
 import { PerformanceRecorder, type RecorderEnvironment } from '../recorder'
+import type { InitialSustainState } from '../types'
 
 function harness(start = 1_000) {
   let now = start
@@ -12,9 +13,10 @@ function harness(start = 1_000) {
   }
   const recorder = new PerformanceRecorder(environment)
   const setNow = (value: number) => { now = value }
-  const startRecording = () => recorder.start({
+  const startRecording = (initialSustain?: InitialSustainState) => recorder.start({
     device: { id: 'midi-1', name: 'Test Piano', manufacturer: 'Tests' },
     practiceContext: { expectedPerformancePlanId: 'plan-1', includedPartIds: ['P1'], speedMultiplier: 0.75 },
+    initialSustain,
   })
   return { recorder, setNow, startRecording }
 }
@@ -28,6 +30,18 @@ function off(timestampMs: number, note = 60, velocity = 20, channel = 0): MidiEv
 }
 
 describe('PerformanceRecorder', () => {
+  it.each([
+    ['unknown', undefined, { observed: false, down: null, value: null }],
+    ['known up', { observed: true, down: false, value: 0 }, { observed: true, down: false, value: 0 }],
+    ['known down with intermediate value', { observed: true, down: true, value: 96 }, { observed: true, down: true, value: 96 }],
+  ] as const)('freezes %s initial sustain context into the take', (_label, initialSustain, expected) => {
+    const { recorder, setNow, startRecording } = harness()
+    startRecording(initialSustain)
+    setNow(1_100)
+    const recording = recorder.stop()!
+    expect(recording.initialSustain).toEqual(expected)
+    expect(Object.isFrozen(recording.initialSustain)).toBe(true)
+  })
   it('moves through idle, recording, and an immutable stopped snapshot', () => {
     const { recorder, setNow, startRecording } = harness()
     expect(recorder.state.status).toBe('idle')
@@ -105,6 +119,7 @@ describe('PerformanceRecorder', () => {
 
     expect(recording.keyPresses[0]?.releaseMs).toBe(30)
     expect(recording.statistics.sustainChangeCount).toBe(2)
+    expect(recording.initialSustain).toEqual({ observed: false, down: null, value: null })
   })
 
   it('stops safely with disconnect context and preserves captured statistics', () => {

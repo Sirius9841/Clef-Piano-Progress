@@ -37,7 +37,7 @@ export function SettingsPage() {
       <section className="settings-section reveal delay-1">
         <SectionHeading title="MIDI instrument" subtitle="Connect and test a digital piano using the browser's Web MIDI API" action={<StatusPill tone={midi.selectedDevice ? 'positive' : 'neutral'}><Cable size={12} />{midi.selectedDevice ? 'Connected' : 'Not connected'}</StatusPill>} />
         <div className="settings-midi-grid"><div className="panel"><MidiControls /></div><MidiDiagnostics /></div>
-        <PianoKeyboard activeNotes={midi.activeNotes} sustainDown={midi.sustainDown} />
+        <PianoKeyboard activeNotes={midi.activeNotes} sustainDown={midi.sustainDown} sustainObserved={midi.sustainObserved} />
       </section>
       <section className="settings-section reveal delay-2">
         <SectionHeading title="Local data" subtitle="Stored only in this browser's IndexedDB; no account or cloud sync is active" action={<StatusPill tone="positive"><Database size={12} /> Browser local</StatusPill>} />
@@ -53,11 +53,11 @@ export function SettingsPage() {
         <SectionHeading title="Future configuration" subtitle="These controls will become available as their supporting systems are built" />
         <div className="future-setting-grid">
           <button disabled><span><Gauge /></span><div><strong>Optional velocity calibration</strong><p>Future calibration may improve cross-device and cross-session comparison. Current dynamics use performance-relative velocity.</p><StatusPill>Future option</StatusPill></div><ChevronRight /></button>
-          <button disabled><span><SlidersHorizontal /></span><div><strong>Pedal configuration</strong><p>Configure polarity, thresholds and continuous pedal behavior.</p><StatusPill>Phase 10+</StatusPill></div><ChevronRight /></button>
+          <button disabled><span><SlidersHorizontal /></span><div><strong>Advanced pedal calibration</strong><p>Authored damper notation and standard CC64 work now. Polarity overrides and acoustic continuous-pedal calibration remain future options.</p><StatusPill>Future option</StatusPill></div><ChevronRight /></button>
           <button disabled><span><Eye /></span><div><strong>Visual preferences</strong><p>Keyboard labels, density and progress display preferences.</p><StatusPill>Coming later</StatusPill></div><ChevronRight /></button>
         </div>
       </section>
-      <div className="settings-note"><Info /><p>MIDI access and saved performance history stay on this device in browser-local storage. There is no cloud backup, account sync, or upload in Phase 9.</p></div>
+      <div className="settings-note"><Info /><p>MIDI access and saved performance history stay on this device in browser-local storage. There is no cloud backup, account sync, or upload in Phase 10.</p></div>
     </div>
   )
 }

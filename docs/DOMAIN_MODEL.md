@@ -43,7 +43,7 @@ Phase 2 produces a `NormalizedScore` from validated canonical MusicXML. Phase 8 
 
 ## PerformanceAttempt and Performance Score
 
-A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. V1 retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Phase 9 V2 additionally retains the exact ExpressionAnalysisResult. Notes, Rhythm, Tempo, Dynamics, and Articulation remain separate; no overall Performance Score is calculated.
+A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. V1 retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Phase 9 V2 additionally retains the exact ExpressionAnalysisResult. Phase 10 V3 additionally retains the exact PedalAnalysisResult. Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal remain separate; no overall Performance Score is calculated.
 
 ## Mastery
 
@@ -90,6 +90,10 @@ Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rh
 ## Expression analysis result
 
 `ExpressionAnalysisResult` is the immutable, versioned Phase 9 interpretation of authored expression for the same exact score, plan, recording, alignment, note grade, and grading scope. Its Dynamics result uses one performance-relative robust velocity context for explicit changes, wedges, and accents. Its separate Articulation result measures tempo-aware physical key duration and conservative slur transitions. Only correct note matches contribute; pitch mistakes reduce coverage rather than receiving another penalty. Both dimensions retain independent score, reliability, coverage, targets, exclusions, and diagnostics and never alter Phase 7 Practice Priority.
+
+## Pedal analysis result
+
+`PedalAnalysisResult` is the immutable, versioned Phase 10 interpretation of complete authored damper-pedal phrases against lossless MIDI CC64 evidence. It retains raw controller samples, effective binary transitions, exact scope and provenance, equal-weight phrase scores, independent reliability, controller-based damper-hold intervals, and neutral pedal/key interaction context. Unknown controller state remains unavailable; intermediate values never become invented acoustic half-pedal depth. Pedal never rewrites Phase 9 Articulation or Phase 7 Practice Priority.
 
 ## PracticeSession and RepertoireEntry
 

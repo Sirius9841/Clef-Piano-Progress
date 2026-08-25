@@ -51,11 +51,16 @@ export function usePerformanceRecording(practiceContext: RecordingPracticeContex
     const next = recorder.start({
       device: { id: midi.selectedDevice.id, name: midi.selectedDevice.name, manufacturer: midi.selectedDevice.manufacturer },
       practiceContext,
+      initialSustain: {
+        observed: midi.sustainObserved,
+        down: midi.sustainObserved ? midi.sustainDown : null,
+        value: midi.sustainObserved ? midi.sustainValue : null,
+      },
     })
     setElapsedMs(0)
     setState(next)
     return true
-  }, [midi.selectedDevice, practiceContext, recorder])
+  }, [midi.selectedDevice, midi.sustainDown, midi.sustainObserved, midi.sustainValue, practiceContext, recorder])
 
   const stop = useCallback(() => {
     const recording = recorder.stop('user')

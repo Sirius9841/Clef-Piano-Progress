@@ -7,6 +7,7 @@ import type { DynamicEvent, NormalizedNote, NormalizedScore, WedgeEvent } from '
 import type { ExpectedTargetResult, ExpectedKeyTarget, NoteGradingResult } from '../note-grading/types'
 import type { PerformanceRecording, RecordedKeyPress } from '../performance/types'
 import { EXPRESSION_ANALYSIS_ENGINE_VERSION, resolveExpressionAnalysisOptions, type ExpressionAnalysisOptions } from './options'
+import { notationLaneCompatible, notationLaneKey } from './notationLane'
 import type {
   ArticulationAnalysis,
   ArticulationObservation,
@@ -85,19 +86,7 @@ function scopeCopy(noteGrading: NoteGradingResult): ExpressionScope {
 }
 
 function laneKey(partId: string, staff: number | null, voice: string | null, suffix = ''): string {
-  return `${partId}|${staff ?? '*'}|${voice ?? '*'}|${suffix}`
-}
-
-interface NotationLane {
-  readonly partId: string
-  readonly staff: number | null
-  readonly voice: string | null
-}
-
-function notationLaneCompatible(left: NotationLane, right: NotationLane): boolean {
-  return left.partId === right.partId
-    && (left.staff === null || right.staff === null || left.staff === right.staff)
-    && (left.voice === null || right.voice === null || left.voice === right.voice)
+  return notationLaneKey({ partId, staff, voice }, suffix)
 }
 
 function observationInLane(observation: MatchedPerformanceObservation, partId: string, staff: number | null, voice: string | null): boolean {

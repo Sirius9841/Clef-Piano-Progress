@@ -2,8 +2,9 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { makeResultPlan, recordingForPlan, analyzeResult } from '../../performance-results/__tests__/fixtures'
 import { analyzeExpression } from '../../expression-analysis/analyzeExpression'
+import { analyzePedal } from '../../pedal-analysis/analyzePedal'
 import { clearCurrentTake } from '../../practice/takeWorkspace'
-import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PracticeSessionRecord } from '../types'
+import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PerformanceAttemptRecordV3, type PracticeSessionRecord } from '../types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
 
 function ids() {
@@ -77,6 +78,22 @@ function v2AttemptFixture(arrangementId: string, scoreVersionId: string, session
     schemaVersion: 2,
     engineVersions: { ...fixture.attempt.engineVersions, expressionAnalysis: expressionAnalysis.diagnostics.expressionAnalysisEngineVersion },
     expressionAnalysis,
+  }
+  return { ...fixture, attempt }
+}
+
+function v3AttemptFixture(arrangementId: string, scoreVersionId: string, sessionId = 'practice-v3') {
+  const fixture = v2AttemptFixture(arrangementId, scoreVersionId, sessionId)
+  const recording = { ...fixture.attempt.recording, initialSustain: { observed: false, down: null, value: null } as const }
+  const expressionAnalysis = { ...fixture.attempt.expressionAnalysis, recordingId: recording.id }
+  const pedalAnalysis = analyzePedal({ normalizedScore: fixture.score, expectedPlan: fixture.attempt.expectedPerformancePlan, recording, alignment: fixture.attempt.alignment, noteGrading: fixture.attempt.noteGrading, expressionAnalysis })
+  const attempt: PerformanceAttemptRecordV3 = {
+    ...fixture.attempt,
+    recording,
+    expressionAnalysis,
+    schemaVersion: 3,
+    engineVersions: { ...fixture.attempt.engineVersions, pedalAnalysis: pedalAnalysis.diagnostics.pedalAnalysisEngineVersion },
+    pedalAnalysis,
   }
   return { ...fixture, attempt }
 }
@@ -417,6 +434,20 @@ describe('IndexedDbPianoProgressRepository', () => {
     if (loaded?.schemaVersion === 2) expect(loaded.expressionAnalysis).toEqual(fixture.attempt.expressionAnalysis)
   })
 
+  it('transactionally round-trips a V3 pedal snapshot while summaries stay Notes/Rhythm/Tempo-only', async () => {
+    const repo = repository('attempt-v3-db')
+    const imported = await repo.importScore(importInput())
+    const fixture = v3AttemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    const saved = await repo.saveAttempt(fixture)
+    expect(saved.summary).not.toHaveProperty('pedal')
+    expect(saved.summary).not.toHaveProperty('dynamics')
+    expect(saved.summary).not.toHaveProperty('articulation')
+    await expect(repo.saveAttempt(fixture)).resolves.toMatchObject({ created: false })
+    const loaded = await repo.getAttempt(fixture.attempt.id)
+    expect(loaded).toEqual(fixture.attempt)
+    if (loaded?.schemaVersion === 3) expect(loaded.pedalAnalysis).toEqual(fixture.attempt.pedalAnalysis)
+  })
+
   it('accepts canonically equivalent reordered attempt and plan part selections', async () => {
     const repo = repository('attempt-reordered-parts-db')
     const imported = await repo.importScore({ ...importInput(), arrangement: { ...importInput().arrangement, includedPartIds: ['P1', 'P2'] } })
@@ -622,6 +653,31 @@ describe('IndexedDbPianoProgressRepository', () => {
         scope: { ...fixture.attempt.expressionAnalysis.scope, [field]: value },
       },
     })
+    await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it('reads an exact V3 unavailable pedal snapshot without changing the IndexedDB schema', async () => {
+    const name = 'valid-v3-pedal'
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v3AttemptFixture('arrangement', 'score')
+    await putRawAttempt(name, fixture.attempt)
+    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toMatchObject({ schemaVersion: 3, pedalAnalysis: { status: 'unavailable', score: null } })
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+  })
+
+  it.each([
+    ['missing pedal snapshot', (attempt: PerformanceAttemptRecordV3) => { const copy: Record<string, unknown> = { ...attempt }; delete copy.pedalAnalysis; return copy }],
+    ['wrong pedal expression identity', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, expressionAnalysisId: 'wrong-expression' } })],
+    ['wrong pedal scope boundary', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, scope: { ...attempt.pedalAnalysis.scope, expectedEndGroupId: 'wrong-group' } } })],
+    ['wrong pedal engine version', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, engineVersions: { ...attempt.engineVersions, pedalAnalysis: 'wrong-engine' } })],
+    ['malformed pedal timeline', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, timeline: null } })],
+  ])('returns a typed corruption error for V3 %s', async (_label, corrupt) => {
+    const name = `corrupt-v3-${_label}`
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v3AttemptFixture('arrangement', 'score')
+    await putRawAttempt(name, corrupt(fixture.attempt))
     await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
   })
 })

@@ -12,14 +12,19 @@ function selectedState() {
 }
 
 describe('MIDI runtime connection state', () => {
+  it('tracks raw CC64 value and observed identity only after a real controller message', () => {
+    const state = reduceMidiRuntimeState(INITIAL_MIDI_RUNTIME_STATE, { type: 'event-received', event: { type: 'sustain', down: true, value: 91, channel: 0, timestampMs: 2 } })
+    expect(state).toMatchObject({ sustainDown: true, sustainValue: 91, sustainObserved: true })
+    expect(reduceMidiRuntimeState(state, { type: 'selection-changed', deviceId: 'new' })).toMatchObject({ sustainDown: false, sustainValue: null, sustainObserved: false })
+  })
   it('clears selection, active keys, and sustain when the selected device disappears', () => {
     const state = reduceMidiRuntimeState(selectedState(), { type: 'devices-changed', devices: [] })
-    expect(state).toMatchObject({ selectedDeviceId: null, activeNotes: [], sustainDown: false, disconnectError: 'The selected MIDI input was disconnected.' })
+    expect(state).toMatchObject({ selectedDeviceId: null, activeNotes: [], sustainDown: false, sustainValue: null, sustainObserved: false, disconnectError: 'The selected MIDI input was disconnected.' })
   })
 
   it('treats a same-ID disconnected device as a real disconnect', () => {
     const state = reduceMidiRuntimeState(selectedState(), { type: 'devices-changed', devices: [{ ...connected, state: 'disconnected' }] })
-    expect(state).toMatchObject({ selectedDeviceId: null, activeNotes: [], sustainDown: false })
+    expect(state).toMatchObject({ selectedDeviceId: null, activeNotes: [], sustainDown: false, sustainValue: null, sustainObserved: false })
     expect(state.devices[0]).toMatchObject({ id: connected.id, state: 'disconnected' })
   })
 })

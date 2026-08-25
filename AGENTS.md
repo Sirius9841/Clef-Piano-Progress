@@ -152,6 +152,17 @@ This repository builds a serious piano progress and performance-analysis applica
 - Web MIDI teardown detaches local handlers and selection before awaiting device close. Close failures and stale async operations must never restore an old input or clear a newer one.
 - MidiProvider state and errors follow only the latest async selection request; stale completions never override the service's authoritative input.
 
+## Pedal-analysis rules
+
+- Pedal is an independent dimension based on authored damper notation and MIDI CC64. Extra controller changes are diagnostics and are never automatically wrong.
+- Preserve every raw CC64 value and distinguish binary-like from continuous controller evidence without inferring acoustic half-pedal depth.
+- Unknown initial sustain state remains unknown. Never silently reinterpret a historical missing field as pedal-up.
+- Controller-derived damper intervals are not acoustic sound ends or sounding durations.
+- Pedal/key interaction context never rewrites or double-penalizes frozen Phase 9 Articulation.
+- Pedal analysis reuses both offset and scale from the Phase 4 affine clock and the effective practice-speed tempo timeline; it never independently refits timing.
+- Persist V1 and V2 attempts unchanged and never silently reanalyze their pedal. V3 retains the exact expression and pedal snapshots plus engine versions.
+- Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal remain separate. Pedal does not enter Practice Priority, personal bests, trends, Mastery, Skill Rating, or an overall score.
+
 ## Commands
 
 - Install: `npm install`

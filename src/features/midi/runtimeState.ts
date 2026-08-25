@@ -5,6 +5,8 @@ export interface MidiRuntimeState {
   readonly selectedDeviceId: string | null
   readonly activeNotes: readonly ActiveNote[]
   readonly sustainDown: boolean
+  readonly sustainValue: number | null
+  readonly sustainObserved: boolean
   readonly disconnectError: string | null
 }
 
@@ -18,6 +20,8 @@ export const INITIAL_MIDI_RUNTIME_STATE: MidiRuntimeState = {
   selectedDeviceId: null,
   activeNotes: [],
   sustainDown: false,
+  sustainValue: null,
+  sustainObserved: false,
   disconnectError: null,
 }
 
@@ -32,12 +36,14 @@ export function reduceMidiRuntimeState(state: MidiRuntimeState, action: MidiRunt
         selectedDeviceId: null,
         activeNotes: [],
         sustainDown: false,
+        sustainValue: null,
+        sustainObserved: false,
         disconnectError: 'The selected MIDI input was disconnected.',
       } : {}),
     }
   }
   if (action.type === 'selection-changed') {
-    return { ...state, selectedDeviceId: action.deviceId, activeNotes: [], sustainDown: false, disconnectError: null }
+    return { ...state, selectedDeviceId: action.deviceId, activeNotes: [], sustainDown: false, sustainValue: null, sustainObserved: false, disconnectError: null }
   }
   const event = action.event
   if (event.type === 'note-on') {
@@ -46,5 +52,5 @@ export function reduceMidiRuntimeState(state: MidiRuntimeState, action: MidiRunt
   if (event.type === 'note-off') {
     return { ...state, activeNotes: state.activeNotes.filter((note) => note.note !== event.note) }
   }
-  return { ...state, sustainDown: event.down }
+  return { ...state, sustainDown: event.down, sustainValue: event.value, sustainObserved: true }
 }

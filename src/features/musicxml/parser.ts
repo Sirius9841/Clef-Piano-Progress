@@ -39,7 +39,7 @@ import {
   type XmlElement,
 } from './xml'
 
-export const MUSICXML_PARSER_VERSION = 'musicxml-parser-1.1.0'
+export const MUSICXML_PARSER_VERSION = 'musicxml-parser-1.2.0'
 
 interface ParserCollections {
   warnings: ScoreWarning[]
@@ -289,7 +289,7 @@ function parseDirection(
         if (type && WEDGE_TYPES.has(type)) collections.wedgeEvents.push({ id: `${baseId}:wedge:${eventOffset}`, position, measureOnset, partId, measureIndex, measureNumber, staff, voice, type, number: child.getAttribute('number') })
       } else if (name === 'pedal') {
         const type = child.getAttribute('type') as PedalEvent['type'] | null
-        if (type && PEDAL_TYPES.has(type)) collections.pedalEvents.push({ id: `${baseId}:pedal:${eventOffset}`, position, partId, measureIndex, staff, type })
+        if (type && PEDAL_TYPES.has(type)) collections.pedalEvents.push({ id: `${baseId}:pedal:${eventOffset}`, position, measureOnset, partId, measureIndex, measureNumber, staff, voice, type })
         else collections.warnings.push({ ...context, code: 'UNSUPPORTED_PEDAL', severity: 'warning', message: `Measure ${measureNumber} contains an unsupported pedal direction.` })
       }
       eventOffset += 1
