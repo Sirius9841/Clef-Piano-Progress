@@ -26,7 +26,7 @@ Imports support a new Work, another Arrangement of an existing Work, or a separa
 
 ## Attempt transaction
 
-`saveAttempt` validates the Arrangement, exact ScoreVersion, and PracticeSession identities. Before any write or idempotent-return path, it also requires canonically equivalent included-part sets on the persisted ScoreVersion, PerformanceAttempt, and embedded ExpectedPerformancePlan. Reordered or repeated IDs follow the centralized set semantics; a mismatch aborts without an attempt, summary, or session record. It then atomically:
+`saveAttempt` validates the Arrangement, exact ScoreVersion, and PracticeSession identities. Before any write or idempotent-return path, it also requires canonically equivalent included-part sets on the persisted ScoreVersion, PerformanceAttempt, and embedded ExpectedPerformancePlan, and requires the plan `scoreId` to equal that ScoreVersion's `normalizedScoreId`. Reordered or repeated IDs follow the centralized set semantics; a mismatch aborts without an attempt, summary, or session record. It then atomically:
 
 1. adds the full PerformanceAttempt;
 2. adds its lightweight summary;
@@ -34,7 +34,7 @@ Imports support a new Work, another Arrangement of an existing Work, or a separa
 
 An existing attempt ID is a successful idempotent retry and creates no duplicate. Any intermediate failure aborts every write. Typed errors distinguish unavailable storage, corrupt records, broken references, immutable-identity conflicts, and transaction failures.
 
-Historical attempt reads defensively validate each nested snapshot object and its diagnostics before checking provenance. Missing or malformed alignment, note-grading, timing, or result structures therefore surface as a typed `CORRUPT_RECORD`, never as a leaked JavaScript property-access error. V1 attempts preserve the Notes/Rhythm/Tempo-era shape. V2 attempts additionally require an exact `ExpressionAnalysisResult`, matching score/plan/recording/alignment/note-grade/scope identities, and `engineVersions.expressionAnalysis`. A malformed V2 snapshot is also `CORRUPT_RECORD`.
+Historical attempt reads defensively validate each nested snapshot object and its diagnostics before checking provenance. Missing or malformed alignment, note-grading, timing, or result structures therefore surface as a typed `CORRUPT_RECORD`, never as a leaked JavaScript property-access error. V1 attempts preserve the Notes/Rhythm/Tempo-era shape. V2 attempts additionally require an exact `ExpressionAnalysisResult`, matching score/plan/recording/alignment/note-grade/scope identities, and `engineVersions.expressionAnalysis`. Expression scope must match NoteGrading across type, expected start/end indexes, and expected start/end group IDs; a type-only match is insufficient. A malformed V2 snapshot is also `CORRUPT_RECORD`.
 
 Attempt schema V2 changes only the value stored in the existing `performanceAttempts` object store. It creates no store or index, so the IndexedDB schema remains version 3. V1 records are not rewritten or reanalyzed; historical UI reports that expression was not analyzed. Attempt summaries remain Notes/Rhythm/Tempo-only and are unchanged.
 

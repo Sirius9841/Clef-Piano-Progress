@@ -1,4 +1,4 @@
-export const EXPRESSION_ANALYSIS_ENGINE_VERSION = 'expression-analysis-1.0.0'
+export const EXPRESSION_ANALYSIS_ENGINE_VERSION = 'expression-analysis-1.1.0'
 
 export interface ExpressionAnalysisOptions {
   readonly velocityLowQuantile: number

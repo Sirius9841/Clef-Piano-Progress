@@ -10,6 +10,7 @@ import { gradeNotes } from '../../note-grading/gradeNotes'
 import type { PerformanceRecording } from '../../performance/types'
 import { makeScore } from '../../performance-results/__tests__/fixtures'
 import { analyzeExpression } from '../analyzeExpression'
+import type { ExpressionAnalysisOptions } from '../options'
 
 function expressionScore(plan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))) {
   return makeScore(plan)
@@ -47,10 +48,10 @@ function performance(
   }
 }
 
-function analyze(score: NormalizedScore, plan: ReturnType<typeof makePlan>, recording: PerformanceRecording) {
+function analyze(score: NormalizedScore, plan: ReturnType<typeof makePlan>, recording: PerformanceRecording, options?: Partial<ExpressionAnalysisOptions>) {
   const alignment = alignPerformance(plan, recording)
   const noteGrading = gradeNotes({ expectedPlan: plan, recording, alignment, options: { gradingScope: 'full-plan' } })
-  return analyzeExpression({ normalizedScore: score, expectedPlan: plan, recording, alignment, noteGrading })
+  return analyzeExpression({ normalizedScore: score, expectedPlan: plan, recording, alignment, noteGrading, options })
 }
 
 function wedgeScore(plan: ReturnType<typeof makePlan>): NormalizedScore {
@@ -64,7 +65,71 @@ function wedgeScore(plan: ReturnType<typeof makePlan>): NormalizedScore {
   }
 }
 
+function dynamicsAggregation(scores: readonly number[]) {
+  const lowContextCount = 3
+  const highContextCount = 3
+  const basePlan = makePlan(Array.from({ length: lowContextCount + scores.length * 2 + highContextCount }, (_, index) => [48 + index]))
+  const plan = {
+    ...basePlan,
+    attacks: basePlan.attacks.map((attack, index) => ({
+      ...attack,
+      staff: 1,
+      voice: index < lowContextCount || index >= lowContextCount + scores.length * 2 ? 'context' : `target-${Math.floor((index - lowContextCount) / 2)}`,
+    })),
+  }
+  const dynamicEvents = scores.flatMap((_, index) => {
+    const startIndex = lowContextCount + index * 2
+    const voice = `target-${index}`
+    return [
+      { id: `dynamic:${index}:p`, position: musicalTime(startIndex), measureOnset: musicalTime(0), partId: 'P1', measureIndex: startIndex, measureNumber: String(startIndex + 1), staff: 1, voice, marking: 'p' as const },
+      { id: `dynamic:${index}:f`, position: musicalTime(startIndex + 1), measureOnset: musicalTime(0), partId: 'P1', measureIndex: startIndex + 1, measureNumber: String(startIndex + 2), staff: 1, voice, marking: 'f' as const },
+    ]
+  })
+  const targetVelocities = scores.flatMap((score) => [70, 70 + (score * 0.35 - 0.04) * 100])
+  const velocities = [...Array(lowContextCount).fill(20), ...targetVelocities, ...Array(highContextCount).fill(120)]
+  return analyze(
+    { ...expressionScore(plan), dynamicEvents },
+    plan,
+    performance(plan, velocities),
+    { dynamicContextNotes: 1, minimumDynamicWindowNotes: 1 },
+  )
+}
+
+function articulationAggregation(scores: readonly number[]) {
+  const plan = makePlan(Array.from({ length: Math.max(6, scores.length) }, (_, index) => [60 + index]))
+  const score = withNotation(expressionScore(plan), (note, index) => index < scores.length ? { ...note, articulations: ['staccato'] } : note)
+  const gateRatios = plan.attacks.map((_, index) => index < scores.length ? 0.65 + (1 - scores[index]!) * 0.4 : 0.6)
+  return analyze(score, plan, performance(plan, plan.attacks.map((_, index) => 40 + index * 10), gateRatios))
+}
+
+function voiceAwareScore(plan: ReturnType<typeof makePlan>, wedgeVoice: string | null, dynamicVoice: string | null): NormalizedScore {
+  return {
+    ...expressionScore(plan),
+    dynamicEvents: [
+      { id: 'dynamic:p', position: musicalTime(0), measureOnset: musicalTime(0), partId: 'P1', measureIndex: 0, measureNumber: '1', staff: 1, voice: dynamicVoice, marking: 'p' },
+      { id: 'dynamic:f', position: musicalTime(4), measureOnset: musicalTime(0), partId: 'P1', measureIndex: 4, measureNumber: '5', staff: 1, voice: dynamicVoice, marking: 'f' },
+    ],
+    wedgeEvents: [
+      { id: 'wedge:start', position: musicalTime(0), measureOnset: musicalTime(0), partId: 'P1', measureIndex: 0, measureNumber: '1', staff: 1, voice: wedgeVoice, type: 'crescendo', number: '1' },
+      { id: 'wedge:stop', position: musicalTime(7), measureOnset: musicalTime(0), partId: 'P1', measureIndex: 7, measureNumber: '8', staff: 1, voice: wedgeVoice, type: 'stop', number: '1' },
+    ],
+  }
+}
+
 describe('expression analysis', () => {
+  it.each([
+    ['five targets', [1, 1, 1, 0, 0], 0.6],
+    ['one target', [0.8], 0.8],
+    ['four targets', [0.2, 0.4, 0.6, 0.8], 0.5],
+  ] as const)('uses an equal authored-event arithmetic mean for %s in both dimensions', (_label, scores, expected) => {
+    const dynamics = dynamicsAggregation(scores)
+    const articulation = articulationAggregation(scores)
+    expect(dynamics.dynamics.observations.map((observation) => observation.score)).toEqual(scores.map((score) => expect.closeTo(score, 8)))
+    expect(dynamics.dynamics.score).toBeCloseTo(expected, 8)
+    expect(articulation.articulation.observations.map((observation) => observation.score)).toEqual(scores.map((score) => expect.closeTo(score, 8)))
+    expect(articulation.articulation.score).toBeCloseTo(expected, 8)
+  })
+
   it('scores a clear authored crescendo above a flat/reversed shape without using absolute velocity', () => {
     const plan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))
     const score = wedgeScore(plan)
@@ -120,6 +185,41 @@ describe('expression analysis', () => {
     expect(clear.articulation).toMatchObject({ status: 'unavailable', score: null })
   })
 
+  it('excludes every authored accent target from every other accent baseline', () => {
+    const plan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))
+    const score = withNotation(expressionScore(plan), (note, index) => index === 1 || index === 3 ? { ...note, articulations: ['accent'] } : note)
+    const result = analyze(score, plan, performance(plan, [55, 78, 57, 80, 56, 60, 65, 70]))
+    const accentTargets = result.dynamics.targets.filter((target) => target.kind === 'accent')
+    const allAccentIds = new Set(accentTargets.flatMap((target) => target.expectedTargetIds))
+    expect(accentTargets).toHaveLength(2)
+    for (const observation of result.dynamics.observations) {
+      const target = accentTargets.find((candidate) => candidate.id === observation.targetId)!
+      const matchedExpectedIds = observation.matchedObservationIds.map((id) => result.matchedObservations.find((match) => match.id === id)!.expectedTargetId)
+      expect(matchedExpectedIds.filter((id) => allAccentIds.has(id))).toEqual(target.expectedTargetIds)
+    }
+  })
+
+  it('leaves dense accents ungraded when too little non-accent local evidence remains', () => {
+    const plan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))
+    const score = withNotation(expressionScore(plan), (note, index) => index < 6 ? { ...note, articulations: ['accent'] } : note)
+    const result = analyze(score, plan, performance(plan, [60, 75, 62, 78, 64, 80, 58, 59]))
+    expect(result.dynamics.targets.filter((target) => target.kind === 'accent')).toHaveLength(6)
+    expect(result.dynamics.observations).toEqual([])
+    expect(result.dynamics.exclusions.filter((item) => item.reason.includes('enough nearby non-accent'))).toHaveLength(6)
+  })
+
+  it('suppresses wedge endpoint transitions only in a compatible notation voice lane', () => {
+    const basePlan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))
+    const plan = { ...basePlan, attacks: basePlan.attacks.map((attack, index) => ({ ...attack, staff: 1, voice: index < 4 ? '1' : '2' })) }
+    const recording = performance(plan, [40, 45, 50, 55, 65, 70, 75, 80])
+    const sameVoice = analyze(voiceAwareScore(plan, '1', '1'), plan, recording)
+    const differentVoice = analyze(voiceAwareScore(plan, '1', '2'), plan, recording)
+    const unknownVoice = analyze(voiceAwareScore(plan, null, '2'), plan, recording)
+    expect(sameVoice.dynamics.targets.map((target) => target.kind)).toEqual(['wedge'])
+    expect(differentVoice.dynamics.targets.map((target) => target.kind).sort()).toEqual(['dynamic-change', 'wedge'])
+    expect(unknownVoice.dynamics.targets.map((target) => target.kind)).toEqual(['wedge'])
+  })
+
   it('uses only correct note correspondences and reports lost expression coverage instead of a second penalty', () => {
     const plan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))
     const recording = performance(plan, [40, 45, 50, 55, 60, 65, 70, 75], undefined, [60, 61, 62, 63, 80, 65, 66, 67])
@@ -163,6 +263,17 @@ describe('expression analysis', () => {
     expect(separated.articulation.score).toBeLessThan(connected.articulation.score!)
   })
 
+  it('leaves a legato transition unanalyzed when its physical release evidence is incomplete', () => {
+    const plan = makePlan([[60], [62], [64], [65], [67], [69]])
+    const score = withNotation(expressionScore(plan), (note, index) => ({ ...note, slurs: index === 0 ? [{ type: 'start', number: '1' }] : index === 1 ? [{ type: 'stop', number: '1' }] : [] }))
+    const complete = performance(plan, [40, 50, 60, 70, 80, 90])
+    const recording = { ...complete, keyPresses: complete.keyPresses.map((press, index) => index === 0 ? { ...press, releaseMs: null, releaseSequence: null } : press) }
+    const result = analyze(score, plan, recording)
+    expect(result.articulation.coverage).toMatchObject({ authoredTargetCount: 1, analyzedTargetCount: 0, ratio: 0 })
+    expect(result.articulation.diagnostics.missingReleaseCount).toBe(1)
+    expect(result.articulation.exclusions).toContainEqual(expect.objectContaining({ reason: 'This legato transition lacks complete correct attack and physical-release evidence.' }))
+  })
+
   it('uses gate ratios consistently across tempo and differentiates staccatissimo and tenuto', () => {
     const fastPlan = makePlan(Array.from({ length: 6 }, (_, index) => [60 + index]))
     const slowPlan = makePlan(Array.from({ length: 6 }, (_, index) => [60 + index]), { id: 'plan:slow', tempoPoints: [{ position: 0, bpm: 60 }] })
@@ -201,6 +312,50 @@ describe('expression analysis', () => {
     const result = analyze(score, plan, recording)
     expect(result.articulation.coverage).toMatchObject({ authoredTargetCount: 4, analyzedTargetCount: 4, ratio: 1 })
     expect(result.articulation.targets).toHaveLength(plan.onsetGroups.length)
+  })
+
+  it('does not analyze a chord articulation target with a missing physical release', () => {
+    const plan = makePlan([[60, 64, 67], [62], [63], [65], [66], [68]])
+    const score = withNotation(expressionScore(plan), (note, index) => index < 3 ? { ...note, articulations: ['staccato'] } : note)
+    const attacks = plan.onsetGroups.flatMap((group, groupIndex) => group.attackIds.map((id) => ({ midi: plan.attacks.find((attack) => attack.id === id)!.midi, ms: 1_000 + groupIndex * 500, velocity: 40 + groupIndex * 10 })))
+    const base = makeRecording(attacks, { planId: plan.id })
+    const recording = { ...base, keyPresses: base.keyPresses.map((press, index) => ({ ...press, releaseMs: index === 2 ? null : press.attackMs + 225, releaseSequence: index === 2 ? null : 30 + index })) }
+    const result = analyze(score, plan, recording)
+    expect(result.articulation.coverage).toMatchObject({ authoredTargetCount: 1, analyzedTargetCount: 0, ratio: 0 })
+    expect(result.articulation.observations).toEqual([])
+    expect(result.articulation.diagnostics.missingReleaseCount).toBe(1)
+    expect(result.articulation.exclusions).toContainEqual(expect.objectContaining({ reason: 'This articulation target lacks complete correct key-release evidence.' }))
+  })
+
+  it('leaves a partially pitch-correct chord to Notes instead of adding an Articulation penalty', () => {
+    const plan = makePlan([[60, 64, 67], [62], [63], [65], [66], [68]])
+    const score = withNotation(expressionScore(plan), (note, index) => index < 3 ? { ...note, articulations: ['staccato'] } : note)
+    let attackIndex = 0
+    const attacks = plan.onsetGroups.flatMap((group, groupIndex) => group.attackIds.map((id) => {
+      const attack = plan.attacks.find((candidate) => candidate.id === id)!
+      const item = { midi: attackIndex === 2 ? 68 : attack.midi, ms: 1_000 + groupIndex * 500, velocity: 40 + attackIndex * 8 }
+      attackIndex += 1
+      return item
+    }))
+    const base = makeRecording(attacks, { planId: plan.id })
+    const recording = { ...base, keyPresses: base.keyPresses.map((press, index) => ({ ...press, releaseMs: press.attackMs + 225, releaseSequence: 30 + index })) }
+    const alignment = alignPerformance(plan, recording)
+    const noteGrading = gradeNotes({ expectedPlan: plan, recording, alignment, options: { gradingScope: 'full-plan' } })
+    const result = analyzeExpression({ normalizedScore: score, expectedPlan: plan, recording, alignment, noteGrading })
+    expect(noteGrading.counts).toMatchObject({ correct: 7, wrongPitch: 1 })
+    expect(result.articulation.coverage).toMatchObject({ authoredTargetCount: 1, analyzedTargetCount: 0, ratio: 0 })
+    expect(result.articulation.observations).toEqual([])
+  })
+
+  it('counts only complete chord articulation targets in coverage and reliability', () => {
+    const plan = makePlan([[60, 64, 67], [62, 65, 69], [63], [66], [68], [70]])
+    const score = withNotation(expressionScore(plan), (note, index) => index < 6 ? { ...note, articulations: ['staccato'] } : note)
+    const attacks = plan.onsetGroups.flatMap((group, groupIndex) => group.attackIds.map((id) => ({ midi: plan.attacks.find((attack) => attack.id === id)!.midi, ms: 1_000 + groupIndex * 500, velocity: 40 + groupIndex * 10 })))
+    const base = makeRecording(attacks, { planId: plan.id })
+    const recording = { ...base, keyPresses: base.keyPresses.map((press, index) => ({ ...press, releaseMs: index === 5 ? null : press.attackMs + 225, releaseSequence: index === 5 ? null : 30 + index })) }
+    const result = analyze(score, plan, recording)
+    expect(result.articulation.coverage).toMatchObject({ authoredTargetCount: 2, analyzedTargetCount: 1, ratio: 0.5 })
+    expect(result.articulation.reliability).toBe('limited')
   })
 
   it('keeps a tie continuation inside one physical articulation target', () => {

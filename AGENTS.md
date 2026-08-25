@@ -121,7 +121,9 @@ This repository builds a serious piano progress and performance-analysis applica
 - Only correctly matched, in-scope physical-key targets contribute expression observations. Wrong, missed, additional, excluded, and outside-scope notes reduce expression coverage and never receive a second grading penalty.
 - Normalize velocity once per attempt/scope from the full correct-match population with robust quantiles and explicit low-sample/distinct-value/range guardrails. Never map raw MIDI velocity to absolute `p`/`mf`/`f`, normalize lanes separately, or add manufacturer rules.
 - Dynamics targets are authored events: ordinal explicit changes, paired wedges, and local-lane accents. Suppress overlapping wedge/endpoint double-counting and bound chord weight by musical event rather than note count.
+- Final Dynamics and Articulation scores are arithmetic means of successfully analyzed authored targets; robust within-target medians do not change that equal event weighting. Other authored accents never enter an accent's local baseline, and wedge overlap ownership uses compatible part/staff/voice provenance with unknown staff or voice treated as a conservative wildcard.
 - Articulation measures physical attack-to-key-release duration. Sustain is diagnostic only and never extends release; pedal-aware sounding duration and pedal grading remain future work.
+- A grouped articulation target is analyzed only when every required physical key has a correct match and complete safe release evidence. Incomplete targets lower coverage instead of receiving a second score penalty.
 - Gate ratios use exact score duration through the existing tempo/practice-speed timeline and alignment scale. Slur transitions require an unambiguous part/staff/voice/number lane, with distinct repeated-pitch semantics.
 - Expression results keep independent status, reliability, coverage, exclusions, warnings, and evidence for Dynamics and Articulation. Unavailable evidence is null, deterministic, deeply immutable, versioned, and never a fake zero.
 
@@ -132,7 +134,9 @@ This repository builds a serious piano progress and performance-analysis applica
 - ScoreVersion duplicate identity includes the canonical deduplicated part-selection set. Changing that set creates a new immutable version, and Arrangement part metadata mirrors the latest active version.
 - PerformanceAttempt save, lightweight summary save, and PracticeSession linkage are one transaction and retries are idempotent by attempt ID.
 - Before attempt persistence writes, the ScoreVersion, PerformanceAttempt, and ExpectedPerformancePlan must have canonically equivalent included-part sets.
+- Before attempt persistence writes, the ExpectedPerformancePlan `scoreId` must match the exact persisted ScoreVersion `normalizedScoreId`.
 - Preserve V1 attempts unchanged. New V2 attempts add an exact `ExpressionAnalysisResult` and expression engine version; validate score/plan/recording/alignment/note-grade/scope provenance and never reanalyze historical V1 records.
+- V2 Expression scope provenance must exactly match NoteGrading scope type, expected indexes, and expected group IDs; malformed history is corrupt and is never repaired or reanalyzed.
 - Keep raw MIDI lossless, including arrival order, velocities, releases, sustain, timestamps, device context, warnings, and statistics.
 - Summary projections may accelerate queries but are rebuildable and never replace the authoritative attempt snapshot.
 - Practice time sums completed PracticeSessions, not attempts. One session may contain multiple takes.

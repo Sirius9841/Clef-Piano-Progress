@@ -28,6 +28,24 @@ function resultFixture() {
   return analyzeExpression({ normalizedScore, expectedPlan: plan, recording, alignment, noteGrading })
 }
 
+function resultWithDynamicsFindings(scores: readonly number[]) {
+  const result = resultFixture()
+  const template = result.dynamics.observations[0]!
+  const observations = scores.map((score, index) => ({ ...template, id: `finding:${index}`, targetId: `target:${index}`, score, summary: `finding ${index} at ${score}` }))
+  return {
+    ...result,
+    dynamics: {
+      ...result.dynamics,
+      status: scores.length ? 'ready' as const : 'unavailable' as const,
+      reliability: scores.length ? 'limited' as const : 'unavailable' as const,
+      unavailableReason: scores.length ? null : 'No safe authored target evidence.',
+      score: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
+      observations,
+      coverage: { authoredTargetCount: scores.length, analyzedTargetCount: scores.length, ratio: scores.length ? 1 : null },
+    },
+  }
+}
+
 describe('ExpressionAnalysisPanel', () => {
   it('renders honest idle, processing, and error states', () => {
     expect(renderToStaticMarkup(<ExpressionAnalysisPanel analysis={{ status: 'idle' }} onAnalyze={noOp} />)).toContain('Analyze dynamics and articulation')
@@ -45,6 +63,36 @@ describe('ExpressionAnalysisPanel', () => {
     expect(html).toContain('normalized once')
     expect(html).toContain('Sustain pedal can change the audible result')
     expect(html).toContain('No supported authored key-articulation targets')
+  })
+
+  it('shows a strong-only finding without inventing an issue', () => {
+    const html = renderToStaticMarkup(<ExpressionAnalysisPanel analysis={{ status: 'ready', result: resultWithDynamicsFindings([0.9]) }} onAnalyze={noOp} />)
+    expect(html).toContain('class="success"')
+    expect(html).toContain('finding 0 at 0.9')
+    expect(html).not.toContain('class="issue"')
+  })
+
+  it('shows a weak-only finding without inventing a success', () => {
+    const html = renderToStaticMarkup(<ExpressionAnalysisPanel analysis={{ status: 'ready', result: resultWithDynamicsFindings([0.3]) }} onAnalyze={noOp} />)
+    expect(html).toContain('class="issue"')
+    expect(html).toContain('finding 0 at 0.3')
+    expect(html).not.toContain('class="success"')
+  })
+
+  it('shows distinct strongest-success and weakest-issue findings for mixed evidence', () => {
+    const html = renderToStaticMarkup(<ExpressionAnalysisPanel analysis={{ status: 'ready', result: resultWithDynamicsFindings([0.9, 0.2, 0.8]) }} onAnalyze={noOp} />)
+    expect(html).toContain('finding 0 at 0.9')
+    expect(html).toContain('finding 1 at 0.2')
+    expect(html).not.toContain('finding 2 at 0.8')
+    expect(html.match(/class="success"/g)).toHaveLength(1)
+    expect(html.match(/class="issue"/g)).toHaveLength(1)
+  })
+
+  it('renders unavailable evidence without fake success or issue findings', () => {
+    const html = renderToStaticMarkup(<ExpressionAnalysisPanel analysis={{ status: 'ready', result: resultWithDynamicsFindings([]) }} onAnalyze={noOp} />)
+    expect(html).toContain('No safe authored target evidence.')
+    expect(html).not.toContain('class="success"')
+    expect(html).not.toContain('class="issue"')
   })
 
   it('shows a truthful V1 historical state and uses an exact supplied V2 snapshot', () => {

@@ -85,6 +85,14 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object'
 }
 
+function isNullableInteger(value: unknown): value is number | null {
+  return value === null || Number.isInteger(value)
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string'
+}
+
 function assertWork(value: unknown): asserts value is PersistedWork {
   assertRecord(value, 'Work')
   const work = value as Partial<PersistedWork>
@@ -194,6 +202,11 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       || !isObjectRecord(expression.dynamics.diagnostics)
       || !isObjectRecord(expression.articulation.coverage)
       || !isObjectRecord(expression.articulation.diagnostics)
+      || (expression.scope.type !== 'full-plan' && expression.scope.type !== 'aligned-span')
+      || !isNullableInteger(expression.scope.expectedStartIndex)
+      || !isNullableInteger(expression.scope.expectedEndIndex)
+      || !isNullableString(expression.scope.expectedStartGroupId)
+      || !isNullableString(expression.scope.expectedEndGroupId)
       || !Array.isArray(expression.matchedObservations)
       || !Array.isArray(expression.dynamics.targets)
       || !Array.isArray(expression.dynamics.observations)
@@ -212,7 +225,11 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       || expression.recordingId !== recording.id
       || expression.alignmentId !== alignment.id
       || expression.noteGradingId !== noteGrading.id
-      || expression.scope.type !== attempt.gradingScope
+      || expression.scope.type !== noteGrading.scope.type
+      || expression.scope.expectedStartIndex !== noteGrading.scope.expectedStartIndex
+      || expression.scope.expectedEndIndex !== noteGrading.scope.expectedEndIndex
+      || expression.scope.expectedStartGroupId !== noteGrading.scope.expectedStartGroupId
+      || expression.scope.expectedEndGroupId !== noteGrading.scope.expectedEndGroupId
       || typeof versions.expressionAnalysis !== 'string'
       || versions.expressionAnalysis !== expression.diagnostics.expressionAnalysisEngineVersion
     ) {
@@ -729,6 +746,9 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
         throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt references an unavailable Arrangement or ScoreVersion.')
       }
       assertScoreVersion(version)
+      if (version.normalizedScoreId !== attempt.expectedPerformancePlan.scoreId) {
+        throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt normalized score does not match its persisted ScoreVersion.')
+      }
       if (
         !samePartSelection(version.includedPartIds, attempt.includedPartIds)
         || !samePartSelection(version.includedPartIds, attempt.expectedPerformancePlan.includedPartIds)

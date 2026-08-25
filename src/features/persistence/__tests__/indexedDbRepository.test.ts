@@ -17,7 +17,7 @@ function importInput(xml = '<score-partwise version="4.0"><part-list /></score-p
     work: { title: 'Test Work', composer: 'Test Composer' },
     arrangement: { name: 'Piano solo', difficulty: 'Intermediate' as const, includedPartIds: ['P1'] },
     loaded: { fileName: 'test.musicxml', sourceFormat: 'musicxml' as const, musicXmlText: xml, sourceBytes: xml.length, uncompressedBytes: xml.length },
-    normalizedScoreId: 'normalized-score-1',
+    normalizedScoreId: 'score:test',
     parserVersion: 'test-parser-1',
     status: 'Learning' as const,
   }
@@ -452,6 +452,16 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(await repo.listSessions(imported.arrangement.id)).toEqual([])
   })
 
+  it('rejects a plan from a different normalized score before writing attempt, summary, or session records', async () => {
+    const repo = repository('attempt-normalized-score-mismatch-db')
+    const imported = await repo.importScore({ ...importInput(), normalizedScoreId: 'different-normalized-score' })
+    const fixture = attemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    await expect(repo.saveAttempt(fixture)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY', message: 'The attempt normalized score does not match its persisted ScoreVersion.' })
+    expect(await repo.getAttempt(fixture.attempt.id)).toBeNull()
+    expect(await repo.listAttemptSummaries(imported.arrangement.id)).toEqual([])
+    expect(await repo.listSessions(imported.arrangement.id)).toEqual([])
+  })
+
   it('keeps a saved attempt queryable when the current Practice take is cleared', async () => {
     const repo = repository('saved-take-clear-db')
     const imported = await repo.importScore(importInput())
@@ -592,6 +602,26 @@ describe('IndexedDbPianoProgressRepository', () => {
     await repo.initialize()
     const fixture = v2AttemptFixture('arrangement', 'score')
     await putRawAttempt(name, corrupt(fixture.attempt))
+    await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it.each([
+    ['expectedStartIndex', 999],
+    ['expectedEndIndex', 999],
+    ['expectedStartGroupId', 'wrong-start-group'],
+    ['expectedEndGroupId', 'wrong-end-group'],
+  ] as const)('rejects a historical V2 expression snapshot with a different %s', async (field, value) => {
+    const name = `corrupt-v2-scope-${field}`
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v2AttemptFixture('arrangement', 'score')
+    await putRawAttempt(name, {
+      ...fixture.attempt,
+      expressionAnalysis: {
+        ...fixture.attempt.expressionAnalysis,
+        scope: { ...fixture.attempt.expressionAnalysis.scope, [field]: value },
+      },
+    })
     await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
   })
 })

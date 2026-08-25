@@ -66,6 +66,10 @@ function quantile(values: readonly number[], probability: number): number | null
 
 function median(values: readonly number[]): number | null { return quantile(values, 0.5) }
 
+function meanScore(values: readonly number[]): number | null {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+}
+
 function coverage(targetCount: number, observationCount: number): ExpressionCoverage {
   return { authoredTargetCount: targetCount, analyzedTargetCount: observationCount, ratio: targetCount ? observationCount / targetCount : null }
 }
@@ -84,10 +88,25 @@ function laneKey(partId: string, staff: number | null, voice: string | null, suf
   return `${partId}|${staff ?? '*'}|${voice ?? '*'}|${suffix}`
 }
 
+interface NotationLane {
+  readonly partId: string
+  readonly staff: number | null
+  readonly voice: string | null
+}
+
+function notationLaneCompatible(left: NotationLane, right: NotationLane): boolean {
+  return left.partId === right.partId
+    && (left.staff === null || right.staff === null || left.staff === right.staff)
+    && (left.voice === null || right.voice === null || left.voice === right.voice)
+}
+
 function observationInLane(observation: MatchedPerformanceObservation, partId: string, staff: number | null, voice: string | null): boolean {
-  return observation.partIds.includes(partId)
-    && (staff === null || observation.staffs.includes(staff))
-    && (voice === null || observation.voices.includes(voice))
+  const staffs: readonly (number | null)[] = observation.staffs.length ? observation.staffs : [null]
+  const voices: readonly (string | null)[] = observation.voices.length ? observation.voices : [null]
+  return observation.partIds.some((observationPartId) => staffs.some((observationStaff) => voices.some((observationVoice) => notationLaneCompatible(
+    { partId: observationPartId, staff: observationStaff, voice: observationVoice },
+    { partId, staff, voice },
+  ))))
 }
 
 function scorePositionInScope(position: MusicalTime, alignment: AlignmentResult, scope: ExpressionScope): boolean {
@@ -260,8 +279,7 @@ function buildDynamics(
       const to = lane[index]!
       const expectedDirection = direction(from.marking, to.marking)
       if (!expectedDirection) continue
-      const overlapsWedge = pairedWedges.spans.some(({ start, end }) => start.partId === to.partId
-        && (start.staff === null || to.staff === null || start.staff === to.staff)
+      const overlapsWedge = pairedWedges.spans.some(({ start, end }) => notationLaneCompatible(start, to)
         && compareTime(start.position, from.position) <= 0 && compareTime(end.position, to.position) >= 0)
       if (overlapsWedge) {
         exclusions.push({ id: `expression-exclusion:${stableHash(`${from.id}|${to.id}`)}`, sourceId: to.id, reason: 'This dynamic transition is owned by an overlapping authored wedge to prevent double-counting.', measureNumber: to.measureNumber })
@@ -313,6 +331,9 @@ function buildDynamics(
     })
   }
 
+  const allAccentExpectedTargetIds = new Set(targets
+    .filter((target) => target.kind === 'accent')
+    .flatMap((target) => target.expectedTargetIds))
   const dynamicsObservations: DynamicsObservation[] = []
   if (normalization.evidenceSufficient) for (const target of targets) {
     const lane = observations.filter((observation) => observation.normalizedIntensity !== null && observationInLane(observation, target.partId, target.staff, target.voice))
@@ -345,7 +366,7 @@ function buildDynamics(
       dynamicsObservations.push({ id: `dynamics-observation:${stableHash(target.id)}`, targetId: target.id, score: resultScore, matchedObservationIds: span.map((item) => item.id), beforeMedian, afterMedian, normalizedChange: change, trend: slope, summary: resultScore >= 0.75 ? 'The hairpin showed a convincing relative shape.' : resultScore >= 0.4 ? 'The hairpin moved in the expected direction with limited clarity.' : 'The hairpin was flat or moved against the authored direction.' })
     } else {
       const accented = lane.filter((item) => target.expectedTargetIds.includes(item.expectedTargetId))
-      const nearby = lane.filter((item) => !target.expectedTargetIds.includes(item.expectedTargetId)).sort((left, right) => Math.abs(timeToNumber(subtractTime(left.scorePosition, target.position))) - Math.abs(timeToNumber(subtractTime(right.scorePosition, target.position)))).slice(0, options.dynamicContextNotes)
+      const nearby = lane.filter((item) => !allAccentExpectedTargetIds.has(item.expectedTargetId)).sort((left, right) => Math.abs(timeToNumber(subtractTime(left.scorePosition, target.position))) - Math.abs(timeToNumber(subtractTime(right.scorePosition, target.position)))).slice(0, options.dynamicContextNotes)
       if (!accented.length || nearby.length < options.minimumAccentBaselineNotes) {
         exclusions.push({ id: `expression-exclusion:${stableHash(`${target.id}|baseline`)}`, sourceId: target.id, reason: 'The accent lacks a correct attack or enough nearby non-accent notes in the same lane.', measureNumber: target.measureNumber })
         continue
@@ -359,7 +380,7 @@ function buildDynamics(
   }
   if (targets.length && !normalization.evidenceSufficient) exclusions.push({ id: `expression-exclusion:${stableHash('velocity-normalization')}`, sourceId: 'velocity-normalization', reason: 'Velocity evidence is too sparse or compressed for trustworthy relative dynamics.', measureNumber: null })
   const dynamicsCoverage = coverage(targets.length, dynamicsObservations.length)
-  const resultScore = median(dynamicsObservations.map((observation) => observation.score))
+  const resultScore = meanScore(dynamicsObservations.map((observation) => observation.score))
   const unavailableReason = !targets.length ? 'No supported authored dynamics are present in this grading scope.' : resultScore === null ? 'Supported dynamics exist, but the correct matched velocity evidence is insufficient.' : null
   const reliability = metricReliability(alignment, noteGrading, targets.length, dynamicsObservations.length, options)
   const warnings: ExpressionWarning[] = []
@@ -507,23 +528,37 @@ function buildArticulation(
       const observation = byTarget.get(id)
       return observation ? [observation] : []
     })
-    if (matched.length !== target.expectedTargetIds.length) continue
+    if (matched.length !== target.expectedTargetIds.length) {
+      built.exclusions.push({ id: `expression-exclusion:${stableHash(`${target.id}|incomplete-evidence`)}`, sourceId: target.id, reason: 'This articulation target lacks complete correct key-release evidence.', measureNumber: target.measureNumber })
+      continue
+    }
     if (target.kind !== 'legato-transition') {
       const scored: { observation: MatchedPerformanceObservation; keyPress: RecordedKeyPress; nominal: number; ratio: number; score: number }[] = []
+      let incompleteReason: string | null = null
       for (const observation of matched) {
         if (new Set(observation.expectedDurations.map((duration) => `${duration.numerator}/${duration.denominator}`)).size > 1) {
-          built.exclusions.push({ id: `expression-exclusion:${stableHash(`${target.id}|duration`)}`, sourceId: target.id, reason: 'Collapsed simultaneous notation voices disagree about expected physical key duration.', measureNumber: target.measureNumber })
+          incompleteReason = 'Collapsed simultaneous notation voices disagree about expected physical key duration.'
           continue
         }
         const keyPress = keyPresses.get(observation.recordedKeyPressId)
-        if (!keyPress || keyPress.releaseMs === null) { missingReleaseCount += 1; continue }
+        if (!keyPress || keyPress.releaseMs === null) {
+          if (keyPress?.releaseMs === null) missingReleaseCount += 1
+          incompleteReason = 'This articulation target lacks complete correct key-release evidence.'
+          continue
+        }
         const reference = durationBetweenScorePositionsToMilliseconds(observation.scorePosition, addTime(observation.scorePosition, observation.expectedDuration), plan.tempoTimeline, alignment.practiceSpeedMultiplier)
         const nominal = reference * alignment.timeTransform.scale
-        if (nominal <= 0) continue
+        if (nominal <= 0) {
+          incompleteReason = 'This articulation target has no safe positive nominal duration.'
+          continue
+        }
         const ratio = (keyPress.releaseMs - keyPress.attackMs) / nominal
         scored.push({ observation, keyPress, nominal, ratio, score: gateScore(target.kind, ratio, options) })
       }
-      if (!scored.length) continue
+      if (incompleteReason || scored.length !== target.expectedTargetIds.length) {
+        built.exclusions.push({ id: `expression-exclusion:${stableHash(`${target.id}|incomplete-evidence`)}`, sourceId: target.id, reason: incompleteReason ?? 'This articulation target lacks complete correct key-release evidence.', measureNumber: target.measureNumber })
+        continue
+      }
       const resultScore = median(scored.map((item) => item.score))!
       const gateRatio = median(scored.map((item) => item.ratio))!
       const nominal = median(scored.map((item) => item.nominal))!
@@ -535,7 +570,11 @@ function buildArticulation(
       const next = matched[1]!
       const currentPress = keyPresses.get(current.recordedKeyPressId)
       const nextPress = keyPresses.get(next.recordedKeyPressId)
-      if (!currentPress || !nextPress || currentPress.releaseMs === null || !target.nextPosition) { missingReleaseCount += 1; continue }
+      if (!currentPress || !nextPress || currentPress.releaseMs === null || !target.nextPosition) {
+        if (currentPress?.releaseMs === null) missingReleaseCount += 1
+        built.exclusions.push({ id: `expression-exclusion:${stableHash(`${target.id}|incomplete-evidence`)}`, sourceId: target.id, reason: 'This legato transition lacks complete correct attack and physical-release evidence.', measureNumber: target.measureNumber })
+        continue
+      }
       const expectedIoi = durationBetweenScorePositionsToMilliseconds(target.position, target.nextPosition, plan.tempoTimeline, alignment.practiceSpeedMultiplier) * alignment.timeTransform.scale
       if (expectedIoi <= 0) continue
       const tolerance = Math.max(options.legatoMinimumToleranceMs, expectedIoi * options.legatoRelativeTolerance)
@@ -548,13 +587,13 @@ function buildArticulation(
     }
   }
   const articulationCoverage = coverage(built.targets.length, articulationObservations.length)
-  const resultScore = median(articulationObservations.map((observation) => observation.score))
+  const resultScore = meanScore(articulationObservations.map((observation) => observation.score))
   const unavailableReason = !built.targets.length ? 'No supported authored key-articulation targets are present in this grading scope.' : resultScore === null ? 'Supported articulation exists, but correct matched attacks and key releases are insufficient.' : null
   const pedalAffectedCount = articulationObservations.filter((observation) => observation.pedalAffected).length
   let reliability = metricReliability(alignment, noteGrading, built.targets.length, articulationObservations.length, options)
   if (reliability === 'reliable' && pedalAffectedCount > 0) reliability = 'limited'
   const warnings: ExpressionWarning[] = []
-  if (missingReleaseCount) warnings.push({ code: 'MISSING_KEY_RELEASE', severity: 'info', message: `${missingReleaseCount} articulation observation${missingReleaseCount === 1 ? '' : 's'} lacked a physical key release and were not scored.` })
+  if (missingReleaseCount) warnings.push({ code: 'MISSING_KEY_RELEASE', severity: 'info', message: `${missingReleaseCount} physical key${missingReleaseCount === 1 ? '' : 's'} required by articulation targets lacked a release and were not scored.` })
   if (pedalAffectedCount) warnings.push({ code: 'PEDAL_AFFECTED', severity: 'info', message: 'Sustain was active around some physical key releases. Pedal may change the audible articulation and is not graded in Phase 9.' })
   if (reliability === 'provisional') warnings.push({ code: 'PROVISIONAL_CORRESPONDENCE', severity: 'warning', message: 'Articulation is provisional because the underlying note correspondence is ambiguous.' })
   return {

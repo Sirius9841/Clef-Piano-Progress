@@ -26,9 +26,9 @@ Supported authored targets are:
 
 - ordinal explicit dynamic changes, evaluated from robust before/after contrast;
 - paired crescendo and diminuendo wedges, evaluated from robust endpoint separation and Theil–Sen trend without requiring a linear curve;
-- accent and strong-accent attacks, evaluated against nearby non-accent notes in the same part/staff/voice lane.
+- accent and strong-accent attacks, evaluated against nearby non-accent notes in the same part/staff/voice lane. Every expected physical target owned by any authored accent is excluded from every accent's ordinary local baseline.
 
-An isolated dynamic marking has no absolute MIDI reference and is preserved as ungradeable. Wedges own overlapping endpoint changes so the same authored event is not counted twice. Dynamics aggregate authored musical events, not raw note count; chords therefore cannot gain arbitrary weight.
+An isolated dynamic marking has no absolute MIDI reference and is preserved as ungradeable. Wedges own overlapping endpoint changes so the same authored event is not counted twice. Ownership requires compatible part, staff, and voice provenance: explicit values must agree, while an unknown staff or voice is a conservative wildcard. A Voice 1 wedge therefore does not suppress an explicitly Voice 2 transition. Dynamics aggregate authored musical events, not raw note count; chords therefore cannot gain arbitrary weight.
 
 ## Articulation
 
@@ -42,7 +42,11 @@ gate ratio = physical attack-to-release duration / predicted nominal performed d
 
 Versioned conservative starting heuristics use strong regions near gate ratio `≤ 0.65` for staccato, `≤ 0.45` for staccatissimo, and `0.85–1.20` for tenuto. Scores transition continuously through tolerance bands; these are implementation heuristics, not universal laws of piano playing.
 
-Slur transitions are built only in an unambiguous part/staff/voice/number lane. The positive-gap tolerance is `max(35 ms, 5% of expected local IOI)`. Repeated pitches use a short controlled re-articulation model because one piano key cannot physically overlap itself while being attacked again. Chords, overlapping slurs, conflicting collapsed-key markings, ambiguous tie-chain markings, and missing releases are excluded rather than guessed. Accent belongs only to Dynamics; fermata remains unsupported for physical articulation.
+Slur transitions are built only in an unambiguous part/staff/voice/number lane. The positive-gap tolerance is `max(35 ms, 5% of expected local IOI)`. Repeated pitches use a short controlled re-articulation model because one piano key cannot physically overlap itself while being attacked again. A grouped chord articulation target is analyzed only when every physical expected key has a correct match and safe release; one missing release leaves the whole authored target unanalyzed and lowers coverage without adding a second note penalty. Legato transitions likewise require both correct attacks and the current physical release. Chords, overlapping slurs, conflicting collapsed-key markings, ambiguous tie-chain markings, and missing releases are excluded rather than guessed. Accent belongs only to Dynamics; fermata remains unsupported for physical articulation.
+
+## Authored-event aggregation
+
+Each successfully analyzed authored musical target receives one bounded vote in its dimension. Final Dynamics and Articulation scores are the arithmetic mean of those target scores. This is authored-event weighting, not raw-note weighting: a chord does not outweigh a single note, and a long wedge does not gain weight from every contained attack. Robust medians remain in use inside targets for local windows, wedge endpoints, and grouped-key evidence.
 
 ## Coverage and reliability
 
@@ -57,7 +61,7 @@ Unavailable evidence is `null`, never a fabricated zero. One analyzed target out
 
 ## Persistence and versioning
 
-The engine version is `expression-analysis-1.0.0`. Parser provenance is recorded from the centralized MusicXML parser version; Phase 9 extends dynamic/wedge measure and lane provenance and uses `musicxml-parser-1.1.0`.
+The Phase 9.1 engine version is `expression-analysis-1.1.0`. Parser provenance is recorded from the centralized MusicXML parser version; Phase 9 extends dynamic/wedge measure and lane provenance and uses `musicxml-parser-1.1.0`.
 
 New attempts use `PerformanceAttemptRecordV2` and preserve the exact `ExpressionAnalysisResult` plus expression engine version. Existing V1 attempts remain unchanged and display “not analyzed”; they are never silently regraded. This object-format extension does not alter IndexedDB stores or indexes, so database schema version 3 remains current.
 
