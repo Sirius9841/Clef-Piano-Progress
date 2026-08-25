@@ -7,7 +7,7 @@ import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
 import { scoreVersionNumberForAttempt } from '../features/persistence/history'
-import { removeRepertoireSafely, updateRepertoireStatusSafely } from '../features/persistence/mutations'
+import { removeRepertoireSafely, setInterpretationReferenceSafely, updateRepertoireStatusSafely } from '../features/persistence/mutations'
 import type { AttemptSummary, PersistedScoreVersion, RepertoireListItem } from '../features/persistence/types'
 import { comparableAttemptKey, derivePersonalBests, formatPercent, selectLatestHeadlineAttempt } from '../features/progress/model'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
@@ -100,6 +100,14 @@ export function PieceDetailPage() {
     if (!result.ok) setActionError(`Status update failed: ${result.error.message} Your existing status was preserved.`)
   }
 
+  const setReference = async (attempt: AttemptSummary) => {
+    if (!item || !persistence.repository) return
+    setActionError(null); setMutationState('saving')
+    const result = await setInterpretationReferenceSafely(persistence.repository, item.arrangement.id, item.scoreVersion.id, attempt.id)
+    setMutationState('idle')
+    if (!result.ok) setActionError(result.error.message)
+  }
+
   if (state.status === 'loading') return <div className="page"><div className="route-loader"><strong>Opening arrangement history…</strong></div></div>
   if (state.status === 'error') return <div className="page"><PersistenceErrorState title="Arrangement could not be opened" error={state.error} /></div>
   if (!item) return <div className="page"><div className="empty-state"><FileMusic /><h2>Arrangement not found</h2><p>It may have been removed from your active repertoire.</p><Link className="button primary" to="/repertoire">Back to Repertoire</Link></div></div>
@@ -121,7 +129,7 @@ export function PieceDetailPage() {
 
       <section className="panel history-panel reveal delay-2">
         <SectionHeading title="Performance history" subtitle="Saved attempts retain the exact score, MIDI recording, and analysis snapshots" />
-        {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <div className="attempt-history-list">{attempts.map((attempt) => { const version = scoreVersionNumberForAttempt(attempt, data?.scoreVersions ?? []); return <Link key={attempt.id} to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>{version === null ? 'Score version unavailable' : `Score v${version}`} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link> })}</div>}
+        {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <div className="attempt-history-list">{attempts.map((attempt) => { const version = scoreVersionNumberForAttempt(attempt, data?.scoreVersions ?? []); const compatible = attempt.scoreVersionId === item.scoreVersion.id; const selected = item.arrangement.analysisPreferences?.referenceByScoreVersion[item.scoreVersion.id] === attempt.id; return <div key={attempt.id} className="attempt-history-shell"><Link to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>{version === null ? 'Score version unavailable' : `Score v${version}`} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link><Button variant="ghost" disabled={!compatible || mutationState === 'saving'} onClick={() => void setReference(attempt)}>{selected ? 'Current reference' : compatible ? 'Use as interpretation reference' : 'Different ScoreVersion'}</Button></div> })}</div>}
       </section>
 
       <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire status</strong><p>This user-controlled status changes only active Repertoire membership metadata; score versions and history remain immutable.</p></div><label className="select-field"><span>Current status</span><select value={item.repertoire.status} disabled={mutationState === 'saving'} onChange={(event) => void updateStatus(event.target.value as RepertoireStatus)}>{REPERTOIRE_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label></section>

@@ -43,7 +43,7 @@ Phase 2 produces a `NormalizedScore` from validated canonical MusicXML. Phase 8 
 
 ## PerformanceAttempt and Performance Score
 
-A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. V1 retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Phase 9 V2 additionally retains the exact ExpressionAnalysisResult. Phase 10 V3 additionally retains the exact PedalAnalysisResult. Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal remain separate; no overall Performance Score is calculated.
+A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. V1 retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Phase 9 V2 additionally retains the exact ExpressionAnalysisResult. Phase 10 V3 additionally retains the exact PedalAnalysisResult. Phase 11 V4 additionally freezes exact VoicingAnalysisResult and ReferenceComparisonResult snapshots. Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and Voicing remain separate; no overall Performance Score is calculated.
 
 ## Mastery
 
@@ -94,6 +94,10 @@ Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rh
 ## Pedal analysis result
 
 `PedalAnalysisResult` is the immutable, versioned Phase 10 interpretation of complete authored damper-pedal phrases against lossless MIDI CC64 evidence. It retains raw controller samples, effective binary transitions, exact scope and provenance, equal-weight phrase scores, independent reliability, controller-based damper-hold intervals, and neutral pedal/key interaction context. Unknown controller state remains unavailable; intermediate values never become invented acoustic half-pedal depth. Pedal never rewrites Phase 9 Articulation or Phase 7 Practice Priority.
+
+## Voicing and reference comparison
+
+`VoicingAnalysisResult` is Phase 11 evidence about performance-relative MIDI attack balance across deterministic part/staff/voice lanes. A score exists only for explicit, region-specific foreground/support intent. `ReferenceComparisonResult` compares two immutable interpretation profiles across exact score overlap and has no correctness or similarity score. Arrangement preferences choose intent and a default saved reference per ScoreVersion; V4 attempts freeze the exact preferences and reference metadata used, so later preference changes cannot alter history.
 
 ## PracticeSession and RepertoireEntry
 

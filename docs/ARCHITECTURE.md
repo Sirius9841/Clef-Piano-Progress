@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 10.2 is a React, strict TypeScript, Vite, and Tailwind local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
+Phase 11 is a React, strict TypeScript, Vite, and Tailwind local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -37,6 +37,15 @@ browser MIDI boundary       score import boundary
                       PedalAnalysisResult
                      ↙                     ↘
              authored CC64 timing      damper/key context
+
+ Normalized score + plan + correct matches + normalized intensity + explicit intent
+                                ↓
+                       VoicingAnalysisResult
+
+ two immutable attempt profiles with compatible score identity and overlap
+                                ↓
+                    ReferenceComparisonResult
+            (neutral dimension differences; no aggregate score)
 ```
 
 The expected and observed Phase 3 outputs remain independent truth layers. Phase 4 produces neutral correspondence and its canonical affine clock. Phase 5 interprets pitch-only semantics. Phase 6 consumes the same alignment plus Phase 5 scope/provenance and produces separate rhythm and tempo analyses. Phase 7 aggregates those immutable snapshots into measure and section evidence without realignment or a composite overall score. OSMD remains a sibling renderer and is not an engine input.
@@ -57,6 +66,8 @@ The expected and observed Phase 3 outputs remain independent truth layers. Phase
 - `src/features/performance-results`: pure measure/section aggregation, evidence and confidence, Practice Priority ranking, deterministic mistake and notation mapping, application-owned highlight models, result view state, and presentation.
 - `src/features/expression-analysis`: correct-match observation mapping, robust performance-relative velocity normalization, authored dynamics targets, tempo-aware physical key articulation, independent evidence/reliability, and presentation.
 - `src/features/pedal-analysis`: authored pedal-phrase pairing, exact/tempo-interpolated/residual-transfer local timing anchors with affine fallback, channel-specific raw/effective CC64 timelines, bounded monotonic transition matching, event-level coverage/reliability, damper-hold and key-interaction context, and presentation.
+- `src/features/voicing-analysis`: deterministic score voice lanes, validated ScoreVersion-specific foreground/support regions, same-onset correct-key balance analysis using the existing normalized intensity population, immutable evidence, and intent editing/presentation.
+- `src/features/reference-comparison`: immutable interpretation profiles and neutral overlap-only comparisons for tempo shape, Dynamics, Articulation, Pedal, and Voicing. It has no aggregate similarity or quality score.
 - `src/features/persistence`: repository contract, serializable records, typed storage errors, local-calendar keys, SHA-256 score fingerprinting, indexed range queries, and the isolated versioned IndexedDB adapter.
 - `src/features/progress`: pure personal-best, comparability, rolling-average, and trend derivations.
 - `src/features/repertoire`: deterministic presentation sorting for persisted Repertoire entries.
@@ -86,7 +97,7 @@ Once an alignment snapshot exists, Practice can dynamically load the note-gradin
 
 After note scope is established, Practice can dynamically load timing analysis. Rhythm uses structurally continuous matched-onset intervals normalized by a robust local scale, while Tempo compares the alignment/global and local speed ratios with the effective practice timeline. Numeric tempo changes remain authoritative; preserved qualitative words produce directional observations without fabricated targets. Notes, Rhythm, and Tempo remain separate session-only metrics.
 
-Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute downstream snapshots but reuse the score, recording, and alignment. Phase 9 independently analyzes authored Dynamics and Articulation from the same immutable truths. Phase 10.2 compares authored damper phrases with channel-specific CC64 through trustworthy local Phase 4 correspondences: exact onsets, tempo-aware bracketing interpolation, one-sided local-residual transfer, then affine fallback. It adds neutral pedal/key interaction context without rewriting Articulation. Neither layer changes the Phase 7 measure map or Practice Priority. An explicit Save action writes the raw recording, plan, every analysis snapshot, engine versions, and PracticeSession linkage in one IndexedDB transaction. Summary-driven pages never deserialize raw MIDI. Piece history batch-loads the Arrangement's ScoreVersions so every row names its attempt's actual version; Historical Results read that exact canonical ScoreVersion and snapshots without regrading. See `PERFORMANCE_RESULTS.md`, `EXPRESSION_ANALYSIS.md`, `PEDAL_ANALYSIS.md`, `PERSISTENCE.md`, and `PROGRESS_MODEL.md`.
+Practice can then dynamically build `PerformanceResults` from the existing normalized score, plan, alignment, note grade, and timing result. Scope changes recompute downstream snapshots but reuse the score, recording, and alignment. Phase 9 independently analyzes authored Dynamics and Articulation from the same immutable truths. Phase 10.2 compares authored damper phrases with channel-specific CC64 through trustworthy local Phase 4 correspondences: exact onsets, tempo-aware bracketing interpolation, one-sided local-residual transfer, then affine fallback. Phase 11 adds explicit-intent Voicing and optional comparison with one manually selected compatible saved Clef take. Reference dimensions compare only their shared score span and normalize each take to its own local anchors; the reference is an interpretive alternative, never an answer key. None of these layers changes the Phase 7 measure map or Practice Priority. An explicit Save action writes the raw recording, plan, every analysis snapshot, engine versions, and PracticeSession linkage in one IndexedDB transaction. Summary-driven pages never deserialize raw MIDI. Piece history batch-loads the Arrangement's ScoreVersions so every row names its attempt's actual version; Historical Results read that exact canonical ScoreVersion and snapshots without regrading. See `PERFORMANCE_RESULTS.md`, `EXPRESSION_ANALYSIS.md`, `PEDAL_ANALYSIS.md`, `VOICING_ANALYSIS.md`, `REFERENCE_COMPARISON.md`, `PERSISTENCE.md`, and `PROGRESS_MODEL.md`.
 
 ## Fidelity, performance, and interpretation boundaries
 
@@ -103,6 +114,6 @@ Artistic quality       not reducible to one objective numeric truth
 
 Score fidelity is not musical quality. Literal conformity may be relevant evidence, but coherent rubato, phrasing, dynamics, articulation, and pedaling can legitimately depart from a globally affine realization. Timing/Tempo owns temporal-shape evidence; Pedal asks whether CC64 coordinated with the resulting aligned musical structure so one expressive timing decision is not independently punished twice. Dynamics describes authored contrast/direction fidelity, not one mandatory emotional curve. Articulation remains physical key behavior.
 
-Future reference performances must remain examples, style references, and interpretive alternatives. Clef may report that a performance differs from a reference, but the reference is never the absolute expressive answer. No Emotion, Musicality, or Expressiveness score is implied by this architecture.
+Saved reference performances remain examples, style references, and interpretive alternatives. Clef reports dimension-specific differences, but the reference is never the absolute expressive answer and no composite closeness score is calculated. No Emotion, Musicality, or Expressiveness score is implied by this architecture.
 
 Technique Lab and Library remain honest future-state previews. Technique exposes no fabricated personal ratings or history, and Library exposes metadata only with unavailable score actions plus a link to the real import flow. Validation-only GitHub Actions runs tests, strict type-checking, lint, build, and dependency audit with read-only repository permissions.

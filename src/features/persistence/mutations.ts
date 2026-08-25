@@ -2,6 +2,8 @@ import type { RepertoireStatus } from '../../domain/music'
 import { asPianoStorageError, type PianoStorageError } from './errors'
 import type { PianoProgressRepository } from './repository'
 import type { RepertoireEntry } from './types'
+import type { VoiceLane, VoicingIntentProfile } from '../voicing-analysis/types'
+import type { PersistedArrangement } from './types'
 
 export type PersistenceMutationResult<T> =
   | { readonly ok: true; readonly value: T; readonly error: null }
@@ -34,4 +36,12 @@ export async function clearLocalDataAndPracticeSafely(
 
 export function updateRepertoireStatusSafely(repository: Pick<PianoProgressRepository, 'updateRepertoireStatus'>, arrangementId: string, status: RepertoireStatus): Promise<PersistenceMutationResult<RepertoireEntry>> {
   return safely(() => repository.updateRepertoireStatus(arrangementId, status))
+}
+
+export function setVoicingIntentSafely(repository: Pick<PianoProgressRepository, 'setVoicingIntentProfile'>, arrangementId: string, scoreVersionId: string, profile: VoicingIntentProfile | null, lanes: readonly Pick<VoiceLane, 'id' | 'ambiguous'>[]): Promise<PersistenceMutationResult<PersistedArrangement>> {
+  return safely(() => repository.setVoicingIntentProfile(arrangementId, scoreVersionId, profile, lanes))
+}
+
+export function setInterpretationReferenceSafely(repository: Pick<PianoProgressRepository, 'setInterpretationReference'>, arrangementId: string, scoreVersionId: string, attemptId: string | null): Promise<PersistenceMutationResult<PersistedArrangement>> {
+  return safely(() => repository.setInterpretationReference(arrangementId, scoreVersionId, attemptId))
 }

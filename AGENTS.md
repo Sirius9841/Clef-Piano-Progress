@@ -175,6 +175,17 @@ This repository builds a serious piano progress and performance-analysis applica
 - Persist V1 and V2 attempts unchanged and never silently reanalyze their pedal. V3 retains the exact expression and pedal snapshots plus engine versions.
 - Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal remain separate. Pedal does not enter Practice Priority, personal bests, trends, Mastery, Skill Rating, or an overall score.
 
+## Voicing and reference-comparison rules
+
+- Never infer melody or foreground from highest pitch, staff, hand, voice number, or performed loudness. Scored Voicing requires explicit user foreground/support intent tied to one exact ScoreVersion.
+- Voicing measures performance-relative MIDI attack balance at safe simultaneous cross-lane events, not acoustic loudness, timbre, or tonal projection. Wrong or missed notes reduce coverage and never receive another Voicing penalty; one musical onset gets one vote regardless of chord size.
+- Lane-specific authored dynamics, accents, or wedges that conflict with generic projection are exclusions, never double-graded evidence.
+- A reference performance is a manually selected interpretive example, never expressive ground truth. Reference comparison has no aggregate score, accuracy, quality grade, Musicality score, or correctness color semantics.
+- Different global practice speed never makes an interpretation worse. Reference Tempo centers local tempo shape separately from global speed, and Pedal compares timing relative to each take's own aligned musical anchor.
+- References require the same Arrangement, exact ScoreVersion, and canonical part selection. Comparisons use only exact scope overlap.
+- Historical reference evidence uses frozen Timing, Expression, Pedal, and V4 Voicing snapshots without regrading or mutating old attempts. Comparison-only Voicing derivation for V2/V3 never changes their historical presentation.
+- Future professional or imported reference performances remain alternative realizations, not the correct answer.
+
 ## Commands
 
 - Install: `npm install`

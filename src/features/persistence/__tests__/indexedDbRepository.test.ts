@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { makeResultPlan, recordingForPlan, analyzeResult } from '../../performance-results/__tests__/fixtures'
 import { analyzeExpression } from '../../expression-analysis/analyzeExpression'
 import { analyzePedal } from '../../pedal-analysis/analyzePedal'
+import { analyzeVoicing } from '../../voicing-analysis/analyzeVoicing'
+import { buildInterpretationProfile } from '../../reference-comparison/interpretationProfile'
+import { compareInterpretations } from '../../reference-comparison/compareInterpretations'
 import type { PedalAnalysisResult } from '../../pedal-analysis/types'
 import { clearCurrentTake } from '../../practice/takeWorkspace'
-import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PerformanceAttemptRecordV3, type PracticeSessionRecord } from '../types'
+import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PerformanceAttemptRecordV3, type PerformanceAttemptRecordV4, type PracticeSessionRecord } from '../types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
 
 function ids() {
@@ -141,6 +144,15 @@ function historicalV11AttemptFixture(arrangementId: string, scoreVersionId: stri
     engineVersions: { ...fixture.attempt.engineVersions, pedalAnalysis: 'pedal-analysis-1.1.0' },
     pedalAnalysis,
   }
+  return { ...fixture, attempt }
+}
+
+function v4AttemptFixture(arrangementId: string, scoreVersionId: string, sessionId = 'practice-v4') {
+  const fixture = v3AttemptFixture(arrangementId, scoreVersionId, sessionId)
+  const voicingAnalysis = analyzeVoicing({ normalizedScore: fixture.score, scoreVersionId, expectedPlan: fixture.attempt.expectedPerformancePlan, recording: fixture.attempt.recording, alignment: fixture.attempt.alignment, noteGrading: fixture.attempt.noteGrading, expressionAnalysis: fixture.attempt.expressionAnalysis, intentProfile: null })
+  const current = buildInterpretationProfile({ attemptId: fixture.attempt.id, arrangementId, scoreVersionId, includedPartIds: fixture.attempt.includedPartIds, performedAt: fixture.attempt.performedAt, practiceSpeed: fixture.attempt.practiceSpeedMultiplier, schemaVersion: 4, recordingId: fixture.attempt.recording.id, expectedGroupPositions: fixture.attempt.expectedPerformancePlan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: fixture.attempt.timingAnalysis, expressionAnalysis: fixture.attempt.expressionAnalysis, pedalAnalysis: fixture.attempt.pedalAnalysis, voicingAnalysis, engineVersions: { ...fixture.attempt.engineVersions, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion } })
+  const referenceComparison = compareInterpretations({ current, reference: null, currentVoicingAnalysisId: voicingAnalysis.id })
+  const attempt: PerformanceAttemptRecordV4 = { ...fixture.attempt, schemaVersion: 4, engineVersions: { ...fixture.attempt.engineVersions, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion, referenceComparison: referenceComparison.diagnostics.referenceComparisonEngineVersion }, voicingAnalysis, referenceComparison }
   return { ...fixture, attempt }
 }
 
@@ -492,6 +504,48 @@ describe('IndexedDbPianoProgressRepository', () => {
     const loaded = await repo.getAttempt(fixture.attempt.id)
     expect(loaded).toEqual(fixture.attempt)
     if (loaded?.schemaVersion === 3) expect(loaded.pedalAnalysis).toEqual(fixture.attempt.pedalAnalysis)
+  })
+
+  it('transactionally round-trips exact V4 Voicing and Reference snapshots without an IndexedDB migration', async () => {
+    const repo = repository('attempt-v4-db')
+    const imported = await repo.importScore(importInput())
+    const fixture = v4AttemptFixture(imported.arrangement.id, imported.scoreVersion.id)
+    const saved = await repo.saveAttempt(fixture)
+    expect(saved.summary).not.toHaveProperty('voicing')
+    expect(saved.summary).not.toHaveProperty('referenceComparison')
+    const loaded = await repo.getAttempt(fixture.attempt.id)
+    expect(loaded).toEqual(fixture.attempt)
+    expect(loaded).toMatchObject({ schemaVersion: 4, engineVersions: { voicingAnalysis: 'voicing-analysis-1.0.0', referenceComparison: 'reference-comparison-1.0.0' } })
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+  })
+
+  it.each([
+    ['missing Voicing snapshot', (attempt: PerformanceAttemptRecordV4) => { const copy: Record<string, unknown> = { ...attempt }; delete copy.voicingAnalysis; return copy }],
+    ['missing Reference snapshot', (attempt: PerformanceAttemptRecordV4) => { const copy: Record<string, unknown> = { ...attempt }; delete copy.referenceComparison; return copy }],
+    ['wrong Voicing recording', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, voicingAnalysis: { ...attempt.voicingAnalysis, recordingId: 'wrong' } })],
+    ['wrong Voicing scope', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, voicingAnalysis: { ...attempt.voicingAnalysis, scope: { ...attempt.voicingAnalysis.scope, expectedEndGroupId: 'wrong' } } })],
+    ['wrong Reference ScoreVersion', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, referenceComparison: { ...attempt.referenceComparison, scoreVersionId: 'wrong' } })],
+    ['wrong Reference engine version', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, engineVersions: { ...attempt.engineVersions, referenceComparison: 'wrong' } })],
+  ])('returns typed corruption for V4 %s', async (label, corrupt) => {
+    const name = `corrupt-v4-${label}`; const repo = repository(name); await repo.initialize(); const fixture = v4AttemptFixture('arrangement', 'score'); await putRawAttempt(name, corrupt(fixture.attempt)); await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it('persists score-version-specific Voicing and reference preferences and validates reference integrity', async () => {
+    const repo = repository('phase11-preferences')
+    const imported = await repo.importScore(importInput())
+    const lanes = [{ id: 'lane:a', ambiguous: false }, { id: 'lane:b', ambiguous: false }]
+    const profile = { id: 'intent', scoreVersionId: imported.scoreVersion.id, updatedAt: '2026-08-25T12:00:00.000Z', regions: [{ id: 'region', startMeasureIndex: 0, endMeasureIndex: 2, foregroundLaneIds: ['lane:a'], supportLaneIds: ['lane:b'] }] }
+    await repo.setVoicingIntentProfile(imported.arrangement.id, imported.scoreVersion.id, profile, lanes)
+    expect((await repo.getArrangement(imported.arrangement.id))?.analysisPreferences?.voicingByScoreVersion[imported.scoreVersion.id]).toEqual(profile)
+    await expect(repo.setVoicingIntentProfile(imported.arrangement.id, imported.scoreVersion.id, { ...profile, regions: [{ ...profile.regions[0]!, supportLaneIds: ['missing'] }] }, lanes)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    const reference = v3AttemptFixture(imported.arrangement.id, imported.scoreVersion.id, 'reference-session')
+    await repo.saveAttempt(reference)
+    await repo.setInterpretationReference(imported.arrangement.id, imported.scoreVersion.id, reference.attempt.id)
+    expect((await repo.getArrangement(imported.arrangement.id))?.analysisPreferences?.referenceByScoreVersion[imported.scoreVersion.id]).toBe(reference.attempt.id)
+    await expect(repo.setInterpretationReference(imported.arrangement.id, imported.scoreVersion.id, 'missing')).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    await repo.setInterpretationReference(imported.arrangement.id, imported.scoreVersion.id, null)
+    await repo.setVoicingIntentProfile(imported.arrangement.id, imported.scoreVersion.id, null, lanes)
+    expect((await repo.getArrangement(imported.arrangement.id))?.analysisPreferences).toEqual({ voicingByScoreVersion: {}, referenceByScoreVersion: {} })
   })
 
   it('accepts canonically equivalent reordered attempt and plan part selections', async () => {

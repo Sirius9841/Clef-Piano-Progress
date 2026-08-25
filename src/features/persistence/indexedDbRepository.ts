@@ -4,6 +4,8 @@ import { localCalendarDateKey } from './localCalendar'
 import { canonicalizePartSelection, exactPartOrder, samePartSelection } from './partSelection'
 import { isRepertoireStatus, type RepertoireStatus } from '../../domain/music'
 import type { PianoProgressRepository } from './repository'
+import { validateVoicingIntentProfile } from '../voicing-analysis/voicingIntent'
+import type { VoiceLane, VoicingIntentProfile } from '../voicing-analysis/types'
 import {
   PERSISTENCE_SCHEMA_VERSION,
   PIANO_PROGRESS_DB_NAME,
@@ -108,6 +110,18 @@ function assertWork(value: unknown): asserts value is PersistedWork {
   }
 }
 
+function assertArrangement(value: unknown): asserts value is PersistedArrangement {
+  assertRecord(value, 'Arrangement')
+  const arrangement = value as Partial<PersistedArrangement>
+  if (typeof arrangement.workId !== 'string' || typeof arrangement.name !== 'string' || !Array.isArray(arrangement.includedPartIds) || !isCanonicalIsoTimestamp(arrangement.createdAt) || !isCanonicalIsoTimestamp(arrangement.updatedAt)) throw new PianoStorageError('CORRUPT_RECORD', `Stored Arrangement ${arrangement.id} is missing required fields.`)
+  if (arrangement.analysisPreferences !== undefined) {
+    const preferences = arrangement.analysisPreferences
+    const validRegion = (region: unknown): boolean => isObjectRecord(region) && typeof region.id === 'string' && Number.isInteger(region.startMeasureIndex) && Number.isInteger(region.endMeasureIndex) && Array.isArray(region.foregroundLaneIds) && region.foregroundLaneIds.every((id) => typeof id === 'string') && Array.isArray(region.supportLaneIds) && region.supportLaneIds.every((id) => typeof id === 'string')
+    const validVoicingProfiles = isObjectRecord(preferences) && isObjectRecord(preferences.voicingByScoreVersion) && Object.entries(preferences.voicingByScoreVersion).every(([scoreVersionId, profile]) => isObjectRecord(profile) && typeof profile.id === 'string' && profile.scoreVersionId === scoreVersionId && isCanonicalIsoTimestamp(profile.updatedAt) && Array.isArray(profile.regions) && profile.regions.length > 0 && profile.regions.every(validRegion))
+    if (!validVoicingProfiles || !isObjectRecord(preferences.referenceByScoreVersion) || !Object.values(preferences.referenceByScoreVersion).every((id) => typeof id === 'string' && id.length > 0)) throw new PianoStorageError('CORRUPT_RECORD', `Stored Arrangement ${arrangement.id} has malformed analysis preferences.`)
+  }
+}
+
 function assertScoreVersion(value: unknown): asserts value is PersistedScoreVersion {
   assertRecord(value, 'ScoreVersion')
   const version = value as Partial<PersistedScoreVersion>
@@ -120,7 +134,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   assertRecord(value, 'PerformanceAttempt')
   const attempt = value as Record<string, unknown>
   if (
-    (attempt.schemaVersion !== 1 && attempt.schemaVersion !== 2 && attempt.schemaVersion !== 3)
+    (attempt.schemaVersion !== 1 && attempt.schemaVersion !== 2 && attempt.schemaVersion !== 3 && attempt.schemaVersion !== 4)
     || typeof attempt.arrangementId !== 'string'
     || typeof attempt.scoreVersionId !== 'string'
     || typeof attempt.practiceSessionId !== 'string'
@@ -183,7 +197,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has inconsistent snapshot provenance.`)
   }
-  if (attempt.schemaVersion === 2 || attempt.schemaVersion === 3) {
+  if (attempt.schemaVersion === 2 || attempt.schemaVersion === 3 || attempt.schemaVersion === 4) {
     const expression = attempt.expressionAnalysis
     const validExpressionMetric = (metric: Record<string, unknown>): boolean => {
       const score = metric.score
@@ -243,7 +257,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent expression provenance.`)
     }
   }
-  if (attempt.schemaVersion === 3) {
+  if (attempt.schemaVersion === 3 || attempt.schemaVersion === 4) {
     const pedalValue = attempt.pedalAnalysis
     const expression = attempt.expressionAnalysis
     if (!isObjectRecord(pedalValue) || !isObjectRecord(expression) || !isObjectRecord(expression.diagnostics)) {
@@ -360,6 +374,26 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
     ) {
       throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent pedal provenance.`)
     }
+  }
+  if (attempt.schemaVersion === 4) {
+    const voicing = attempt.voicingAnalysis
+    const reference = attempt.referenceComparison
+    const expression = attempt.expressionAnalysis
+    if (
+      !isObjectRecord(expression) || !isObjectRecord(voicing) || !isObjectRecord(voicing.scope) || !isObjectRecord(voicing.coverage) || !isObjectRecord(voicing.diagnostics)
+      || !Array.isArray(voicing.lanes) || !Array.isArray(voicing.targets) || !Array.isArray(voicing.observations) || !Array.isArray(voicing.regionResults) || !Array.isArray(voicing.laneStatistics) || !Array.isArray(voicing.exclusions) || !Array.isArray(voicing.warnings)
+      || (voicing.status !== 'ready' && voicing.status !== 'unavailable') || (voicing.mode !== 'descriptive' && voicing.mode !== 'configured')
+      || !['reliable', 'limited', 'provisional', 'unavailable'].includes(typeof voicing.reliability === 'string' ? voicing.reliability : '') || !isUnitNumberOrNull(voicing.score)
+      || voicing.scoreId !== plan.scoreId || voicing.scoreVersionId !== attempt.scoreVersionId || voicing.expectedPlanId !== plan.id || voicing.recordingId !== recording.id || voicing.alignmentId !== alignment.id || voicing.noteGradingId !== noteGrading.id || voicing.expressionAnalysisId !== expression.id
+      || voicing.scope.type !== noteGrading.scope.type || voicing.scope.expectedStartIndex !== noteGrading.scope.expectedStartIndex || voicing.scope.expectedEndIndex !== noteGrading.scope.expectedEndIndex || voicing.scope.expectedStartGroupId !== noteGrading.scope.expectedStartGroupId || voicing.scope.expectedEndGroupId !== noteGrading.scope.expectedEndGroupId
+      || typeof voicing.diagnostics.voicingAnalysisEngineVersion !== 'string' || versions.voicingAnalysis !== voicing.diagnostics.voicingAnalysisEngineVersion
+      || !isObjectRecord(reference) || !isObjectRecord(reference.overlapScope) || !isObjectRecord(reference.diagnostics)
+      || !isObjectRecord(reference.tempo) || !isObjectRecord(reference.dynamics) || !isObjectRecord(reference.articulation) || !isObjectRecord(reference.pedal) || !isObjectRecord(reference.voicing) || !Array.isArray(reference.warnings)
+      || (reference.status !== 'ready' && reference.status !== 'unavailable') || !['reliable', 'limited', 'provisional', 'unavailable'].includes(typeof reference.reliability === 'string' ? reference.reliability : '')
+      || reference.scoreVersionId !== attempt.scoreVersionId || (reference.currentAttemptOrRecordingId !== attempt.id && reference.currentAttemptOrRecordingId !== recording.id) || reference.currentVoicingAnalysisId !== voicing.id
+      || typeof reference.diagnostics.referenceComparisonEngineVersion !== 'string' || versions.referenceComparison !== reference.diagnostics.referenceComparisonEngineVersion
+      || (reference.referenceAttemptId !== null && typeof reference.referenceAttemptId !== 'string') || (reference.referencePerformedAt !== null && !isCanonicalIsoTimestamp(reference.referencePerformedAt))
+    ) throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed or inconsistent Phase 11 provenance.`)
   }
 }
 
@@ -779,7 +813,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     })
     const arrangementIds = entries.map((entry) => entry.arrangementId)
     const arrangements = await this.getManyById<PersistedArrangement>(STORE.arrangements, arrangementIds)
-    arrangements.forEach((arrangement) => assertRecord(arrangement, 'Arrangement'))
+    arrangements.forEach(assertArrangement)
     const [works, versions, summaries, sessions] = await Promise.all([
       this.getManyById<PersistedWork>(STORE.works, arrangements.map((arrangement) => arrangement.workId)),
       this.getAllForIndexKeys<PersistedScoreVersion>(STORE.scoreVersions, 'arrangementId', arrangementIds),
@@ -806,7 +840,12 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     }).sort((a, b) => (b.lastPracticedAt ?? b.repertoire.addedAt).localeCompare(a.lastPracticedAt ?? a.repertoire.addedAt) || a.arrangement.id.localeCompare(b.arrangement.id))
   }
 
-  getArrangement(id: string): Promise<PersistedArrangement | null> { return this.getById(STORE.arrangements, id) }
+  async getArrangement(id: string): Promise<PersistedArrangement | null> {
+    const value = await this.getById<unknown>(STORE.arrangements, id)
+    if (value === null) return null
+    assertArrangement(value)
+    return value
+  }
   async getScoreVersion(id: string): Promise<PersistedScoreVersion | null> {
     const value = await this.getById<unknown>(STORE.scoreVersions, id)
     if (value === null) return null
@@ -880,6 +919,14 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       ) {
         throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The attempt part selection does not match its persisted ScoreVersion.')
       }
+      if (attempt.schemaVersion === 4 && attempt.referenceComparison.referenceAttemptId !== null) {
+        const referenceId = attempt.referenceComparison.referenceAttemptId
+        if (referenceId === attempt.id) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'A performance attempt cannot use itself as its interpretation reference.')
+        const referenceValue = await requestValue(attempts.get(referenceId))
+        if (!referenceValue) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The selected interpretation reference attempt is unavailable.')
+        assertAttempt(referenceValue)
+        if (referenceValue.arrangementId !== attempt.arrangementId || referenceValue.scoreVersionId !== attempt.scoreVersionId || !samePartSelection(referenceValue.includedPartIds, attempt.includedPartIds)) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The selected interpretation reference is incompatible with this Arrangement, ScoreVersion, or part selection.')
+      }
       if (existingAttempt) {
         const existingSummary = await requestValue(summaries.get(attempt.id)) as AttemptSummary | undefined
         if (!existingSummary) throw new PianoStorageError('CORRUPT_RECORD', 'The saved attempt is missing its lightweight summary.')
@@ -909,6 +956,65 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       try { transaction.abort() } catch { /* already completed or aborted */ }
       try { await completion } catch { /* preserve original error */ }
       throw asPianoStorageError(cause, 'The performance attempt could not be saved.')
+    }
+  }
+
+  async setVoicingIntentProfile(arrangementId: string, scoreVersionId: string, profile: VoicingIntentProfile | null, lanes: readonly Pick<VoiceLane, 'id' | 'ambiguous'>[]): Promise<PersistedArrangement> {
+    if (profile && !isCanonicalIsoTimestamp(profile.updatedAt)) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The Voicing profile timestamp is invalid.')
+    if (profile) {
+      const errors = validateVoicingIntentProfile(profile, lanes, scoreVersionId)
+      if (errors.length) throw new PianoStorageError('REFERENTIAL_INTEGRITY', errors.join(' '))
+    }
+    const database = await this.openDatabase()
+    const transaction = database.transaction([STORE.arrangements, STORE.scoreVersions], 'readwrite')
+    const completion = transactionComplete(transaction)
+    try {
+      const arrangements = transaction.objectStore(STORE.arrangements)
+      const versions = transaction.objectStore(STORE.scoreVersions)
+      const [arrangementValue, versionValue] = await Promise.all([requestValue(arrangements.get(arrangementId)), requestValue(versions.get(scoreVersionId))])
+      if (!arrangementValue || !versionValue) throw new PianoStorageError('NOT_FOUND', 'The Arrangement or ScoreVersion is unavailable.')
+      assertArrangement(arrangementValue); assertScoreVersion(versionValue)
+      if (versionValue.arrangementId !== arrangementId || (profile !== null && profile.scoreVersionId !== scoreVersionId)) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The Voicing profile does not belong to this exact ScoreVersion.')
+      const preferences = arrangementValue.analysisPreferences ?? { voicingByScoreVersion: {}, referenceByScoreVersion: {} }
+      const voicingByScoreVersion = { ...preferences.voicingByScoreVersion }
+      if (profile) voicingByScoreVersion[scoreVersionId] = profile
+      else delete voicingByScoreVersion[scoreVersionId]
+      const updated: PersistedArrangement = { ...arrangementValue, analysisPreferences: { ...preferences, voicingByScoreVersion }, updatedAt: this.now().toISOString() }
+      arrangements.put(updated)
+      await completion; this.notify(); return updated
+    } catch (cause) {
+      try { transaction.abort() } catch { /* already complete */ }
+      try { await completion } catch { /* preserve cause */ }
+      throw asPianoStorageError(cause, 'The Voicing preference could not be saved.')
+    }
+  }
+
+  async setInterpretationReference(arrangementId: string, scoreVersionId: string, attemptId: string | null): Promise<PersistedArrangement> {
+    const database = await this.openDatabase()
+    const transaction = database.transaction([STORE.arrangements, STORE.scoreVersions, STORE.attempts], 'readwrite')
+    const completion = transactionComplete(transaction)
+    try {
+      const arrangements = transaction.objectStore(STORE.arrangements); const versions = transaction.objectStore(STORE.scoreVersions); const attempts = transaction.objectStore(STORE.attempts)
+      const [arrangementValue, versionValue, attemptValue] = await Promise.all([requestValue(arrangements.get(arrangementId)), requestValue(versions.get(scoreVersionId)), attemptId ? requestValue(attempts.get(attemptId)) : Promise.resolve(undefined)])
+      if (!arrangementValue || !versionValue) throw new PianoStorageError('NOT_FOUND', 'The Arrangement or ScoreVersion is unavailable.')
+      assertArrangement(arrangementValue); assertScoreVersion(versionValue)
+      if (versionValue.arrangementId !== arrangementId) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The ScoreVersion does not belong to this Arrangement.')
+      if (attemptId) {
+        if (!attemptValue) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The selected reference attempt does not exist.')
+        assertAttempt(attemptValue)
+        if (attemptValue.arrangementId !== arrangementId || attemptValue.scoreVersionId !== scoreVersionId || !samePartSelection(attemptValue.includedPartIds, versionValue.includedPartIds)) throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The selected reference attempt is incompatible with this exact ScoreVersion and part selection.')
+      }
+      const preferences = arrangementValue.analysisPreferences ?? { voicingByScoreVersion: {}, referenceByScoreVersion: {} }
+      const referenceByScoreVersion = { ...preferences.referenceByScoreVersion }
+      if (attemptId) referenceByScoreVersion[scoreVersionId] = attemptId
+      else delete referenceByScoreVersion[scoreVersionId]
+      const updated: PersistedArrangement = { ...arrangementValue, analysisPreferences: { ...preferences, referenceByScoreVersion }, updatedAt: this.now().toISOString() }
+      arrangements.put(updated)
+      await completion; this.notify(); return updated
+    } catch (cause) {
+      try { transaction.abort() } catch { /* already complete */ }
+      try { await completion } catch { /* preserve cause */ }
+      throw asPianoStorageError(cause, 'The interpretation reference could not be saved.')
     }
   }
 

@@ -8,6 +8,8 @@ import type { PerformanceRecording } from '../performance/types'
 import type { PedalAnalysisResult } from '../pedal-analysis/types'
 import type { PerformanceResults } from '../performance-results/types'
 import type { TimingAnalysisResult } from '../timing-analysis/types'
+import type { VoicingAnalysisResult, VoicingIntentProfile } from '../voicing-analysis/types'
+import type { ReferenceComparisonResult } from '../reference-comparison/types'
 
 export const PERSISTENCE_SCHEMA_VERSION = 3
 export const PIANO_PROGRESS_DB_NAME = 'clef-piano-progress'
@@ -19,8 +21,14 @@ export interface PersistedWork extends Work {
 
 export interface PersistedArrangement extends Arrangement {
   readonly includedPartIds: readonly string[]
+  readonly analysisPreferences?: ArrangementAnalysisPreferences
   readonly createdAt: string
   readonly updatedAt: string
+}
+
+export interface ArrangementAnalysisPreferences {
+  readonly voicingByScoreVersion: Readonly<Record<string, VoicingIntentProfile>>
+  readonly referenceByScoreVersion: Readonly<Record<string, string>>
 }
 
 export interface PersistedScoreVersion {
@@ -72,6 +80,11 @@ export interface AnalysisEngineVersionsV3 extends AnalysisEngineVersionsV2 {
   readonly pedalAnalysis: string
 }
 
+export interface AnalysisEngineVersionsV4 extends AnalysisEngineVersionsV3 {
+  readonly voicingAnalysis: string
+  readonly referenceComparison: string
+}
+
 interface PerformanceAttemptRecordBase {
   readonly id: string
   readonly arrangementId: string
@@ -107,7 +120,16 @@ export interface PerformanceAttemptRecordV3 extends PerformanceAttemptRecordBase
   readonly pedalAnalysis: PedalAnalysisResult
 }
 
-export type PerformanceAttemptRecord = PerformanceAttemptRecordV1 | PerformanceAttemptRecordV2 | PerformanceAttemptRecordV3
+export interface PerformanceAttemptRecordV4 extends PerformanceAttemptRecordBase {
+  readonly schemaVersion: 4
+  readonly engineVersions: AnalysisEngineVersionsV4
+  readonly expressionAnalysis: ExpressionAnalysisResult
+  readonly pedalAnalysis: PedalAnalysisResult
+  readonly voicingAnalysis: VoicingAnalysisResult
+  readonly referenceComparison: ReferenceComparisonResult
+}
+
+export type PerformanceAttemptRecord = PerformanceAttemptRecordV1 | PerformanceAttemptRecordV2 | PerformanceAttemptRecordV3 | PerformanceAttemptRecordV4
 
 export interface AttemptSummary {
   readonly id: string

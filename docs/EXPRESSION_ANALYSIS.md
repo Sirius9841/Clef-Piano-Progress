@@ -65,7 +65,9 @@ Unavailable evidence is `null`, never a fabricated zero. One analyzed target out
 
 The Phase 9.1 engine version is `expression-analysis-1.1.0`. Parser provenance is recorded from the centralized MusicXML parser version. Historical Phase 9 imports retain `musicxml-parser-1.1.0`; new Phase 10 imports use `musicxml-parser-1.2.0`, whose added pedal provenance does not change dynamics or wedge semantics.
 
-Phase 9 attempts use `PerformanceAttemptRecordV2` and preserve the exact `ExpressionAnalysisResult` plus expression engine version. New Phase 10 V3 attempts preserve that same exact expression snapshot beside Pedal. Existing V1 attempts remain unchanged and display “not analyzed”; they are never silently regraded. These object-format extensions do not alter IndexedDB stores or indexes, so database schema version 3 remains current.
+Phase 9 attempts use `PerformanceAttemptRecordV2` and preserve the exact `ExpressionAnalysisResult` plus expression engine version. Phase 10 V3 attempts preserve that same exact expression snapshot beside Pedal, and Phase 11 V4 attempts retain it beside Voicing and reference comparison. Existing versions remain unchanged and are never silently regraded. These object-format extensions do not alter IndexedDB stores or indexes, so database schema version 3 remains current.
+
+Phase 11 Voicing reuses each correct match's already-computed performance-wide `normalizedIntensity`; it never renormalizes foreground and support lanes separately. Reference comparison then interprets Dynamics and Articulation relative to each take's own stable anchors. Neither consumer changes this frozen Phase 9 result.
 
 ## Phase 10 relationship
 
@@ -75,4 +77,4 @@ Phase 10.1's rubato-aware Pedal anchors do not change Dynamics or Articulation s
 
 ## Explicit limitations
 
-Phase 9 provides no audio/tone analysis, acoustic loudness, melody voicing, manufacturer-specific rules, instrument calibration, acoustic sounding duration, expression personal bests/trends, Practice Priority changes, or overall score. Phase 10 adds separate authored CC64 pedal analysis without changing those limits. Future optional calibration may improve cross-device or cross-session comparison, but current dynamics work performance-relatively without it.
+Phase 9 provides no audio/tone analysis, acoustic loudness, manufacturer-specific rules, instrument calibration, acoustic sounding duration, expression personal bests/trends, Practice Priority changes, or overall score. Phase 10 adds separate authored CC64 pedal analysis without changing those limits. Phase 11 adds explicit-intent performance-relative Voicing without guessing melody from register or pitch. Future optional calibration may improve cross-device or cross-session comparison, but current dynamics work performance-relatively without it.

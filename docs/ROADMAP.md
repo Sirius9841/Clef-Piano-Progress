@@ -48,12 +48,16 @@ Musical-integrity hardening: rubato-aware local pedal anchors, channel-safe CC64
 
 Final local timing-anchor correctness: tempo-aware interpolation between bracketing onsets and one-sided transfer of nearby onset residuals without collapsing distinct score positions. Phase 10 is closed.
 
-## Phase 11+
+## Phase 11 — complete
 
-Phase 11 begins interpretation-aware reference performances and advanced voicing. Later work includes Technique Lab exercises and transferable skill measurement.
+Advanced configured Voicing from real score lanes and interpretation-aware comparison with user-selected saved local takes, including V4 frozen snapshots and ScoreVersion-specific preferences.
+
+## Phase 12+
+
+Phase 12 begins Technique Lab exercises and transferable skill measurement.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
-Phase 10 keeps Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal separate. Dynamics, Articulation, and Pedal do not enter personal bests, trends, or Practice Priority. Acoustic tone/loudness, calibrated half-pedal depth, voicing, an overall Performance Score, Mastery, cloud sync, and accounts remain unimplemented.
+Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, or Practice Priority. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, Mastery, cloud sync, and accounts remain unimplemented.
 
 The pre-Phase-9 hardening pass adds same-ID MIDI disconnect safety, truthful Library and Technique previews, conservative PB reliability eligibility, captured-speed locking, user-controlled Repertoire status and sorting, defensive persistence mutation/corruption handling, and validation CI. It does not add expressive grading.

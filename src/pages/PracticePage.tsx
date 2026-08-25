@@ -25,13 +25,47 @@ import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { capturedTakeSpeed, isPracticeSpeedLocked, resolvePracticeSpeedChange } from '../features/practice/speedPolicy'
 import { clearCurrentTake, takeClearActionCopy } from '../features/practice/takeWorkspace'
 import { usePersistence } from '../features/persistence/PersistenceContext'
-import type { PerformanceAttemptRecordV3, PracticeSessionRecord } from '../features/persistence/types'
+import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
+import { setInterpretationReferenceSafely, setVoicingIntentSafely } from '../features/persistence/mutations'
+import type { AttemptSummary, PerformanceAttemptRecord, PerformanceAttemptRecordV4, PersistedArrangement, PracticeSessionRecord } from '../features/persistence/types'
 import { detectPersonalBestEvents, formatPercent, type PersonalBestEvent } from '../features/progress/model'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
 import { TimingAnalysisPanel } from '../features/timing-analysis/TimingAnalysisPanel'
 import { useTimingAnalysis } from '../features/timing-analysis/useTimingAnalysis'
+import { VoicingAnalysisPanel } from '../features/voicing-analysis/VoicingAnalysisPanel'
+import type { VoiceLane, VoicingAnalysisResult, VoicingIntentProfile } from '../features/voicing-analysis/types'
+import { useVoicingAnalysis } from '../features/voicing-analysis/useVoicingAnalysis'
+import { buildVoiceLanes } from '../features/voicing-analysis/voiceLanes'
+import { buildInterpretationProfile } from '../features/reference-comparison/interpretationProfile'
+import { ReferenceComparisonPanel } from '../features/reference-comparison/ReferenceComparisonPanel'
+import type { InterpretationProfile } from '../features/reference-comparison/types'
+import { useReferenceComparison } from '../features/reference-comparison/useReferenceComparison'
 
 const speeds = [0.5, 0.75, 1, 1.25]
+
+interface Phase11PreferenceData {
+  readonly arrangement: PersistedArrangement | null
+  readonly candidates: readonly AttemptSummary[]
+  readonly referenceProfile: InterpretationProfile | null
+}
+
+function pedalForAttempt(attempt: PerformanceAttemptRecord) { return attempt.schemaVersion === 3 || attempt.schemaVersion === 4 ? attempt.pedalAnalysis : undefined }
+function expressionForAttempt(attempt: PerformanceAttemptRecord) { return attempt.schemaVersion === 1 ? undefined : attempt.expressionAnalysis }
+async function historicalVoicing(attempt: PerformanceAttemptRecord, score: NonNullable<ReturnType<typeof usePracticeSession>['session']>['score'], intent: VoicingIntentProfile | null): Promise<VoicingAnalysisResult | undefined> {
+  if (attempt.schemaVersion === 4) return attempt.voicingAnalysis
+  const expressionAnalysis = expressionForAttempt(attempt)
+  if (!expressionAnalysis) return undefined
+  const { analyzeVoicing } = await import('../features/voicing-analysis/analyzeVoicing')
+  return analyzeVoicing({ normalizedScore: score, scoreVersionId: attempt.scoreVersionId, expectedPlan: attempt.expectedPerformancePlan, recording: attempt.recording, alignment: attempt.alignment, noteGrading: attempt.noteGrading, expressionAnalysis, intentProfile: intent })
+}
+
+async function profileForAttempt(attempt: PerformanceAttemptRecord, score: NonNullable<ReturnType<typeof usePracticeSession>['session']>['score'], intent: VoicingIntentProfile | null): Promise<InterpretationProfile> {
+  return buildInterpretationProfile({
+    attemptId: attempt.id, arrangementId: attempt.arrangementId, scoreVersionId: attempt.scoreVersionId, includedPartIds: attempt.includedPartIds, performedAt: attempt.performedAt, practiceSpeed: attempt.practiceSpeedMultiplier, schemaVersion: attempt.schemaVersion, recordingId: attempt.recording.id,
+    expectedGroupPositions: attempt.expectedPerformancePlan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: attempt.timingAnalysis,
+    expressionAnalysis: expressionForAttempt(attempt), pedalAnalysis: pedalForAttempt(attempt), voicingAnalysis: await historicalVoicing(attempt, score, intent), engineVersions: { ...attempt.engineVersions },
+  })
+}
 
 function formatDuration(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000))
@@ -62,6 +96,20 @@ export function PracticePage() {
   const practiceSessionStartedAt = useRef<string | null>(null)
   const [savedRecordingId, setSavedRecordingId] = useState<string | null>(null)
   const session = arrangementId === 'session' ? practice.session : null
+  const preferenceState = useRepositoryQuery<Phase11PreferenceData>(async (repository) => {
+    if (!session?.arrangementId || !session.scoreVersionId) return { arrangement: null, candidates: [], referenceProfile: null }
+    const [arrangement, summaries] = await Promise.all([repository.getArrangement(session.arrangementId), repository.listAttemptSummaries(session.arrangementId)])
+    const candidates = summaries.filter((summary) => summary.scoreVersionId === session.scoreVersionId)
+    const referenceId = arrangement?.analysisPreferences?.referenceByScoreVersion[session.scoreVersionId] ?? null
+    const referenceAttempt = referenceId ? await repository.getAttempt(referenceId) : null
+    const intent = arrangement?.analysisPreferences?.voicingByScoreVersion[session.scoreVersionId] ?? null
+    const referenceProfile = referenceAttempt ? await profileForAttempt(referenceAttempt, session.score, intent) : null
+    return { arrangement, candidates, referenceProfile }
+  }, `phase11:${session?.arrangementId ?? 'none'}:${session?.scoreVersionId ?? 'none'}`)
+  const phase11Data = preferenceState.status === 'ready' ? preferenceState.data : null
+  const intentProfile = session?.scoreVersionId ? phase11Data?.arrangement?.analysisPreferences?.voicingByScoreVersion[session.scoreVersionId] ?? null : null
+  const selectedReferenceId = session?.scoreVersionId ? phase11Data?.arrangement?.analysisPreferences?.referenceByScoreVersion[session.scoreVersionId] ?? null : null
+  const detectedLanes = useMemo<readonly VoiceLane[]>(() => session ? buildVoiceLanes(session.score, session.plan.includedPartIds) : [], [session])
 
   const recordingContext = useMemo(() => ({
     expectedPerformancePlanId: session?.plan.id,
@@ -81,6 +129,16 @@ export function PracticePage() {
   const expression = useExpressionAnalysis(session?.score ?? null, session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
   const expressionResult = expression.state.status === 'ready' ? expression.state.result : null
   const pedal = usePedalAnalysis(session?.score ?? null, session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult, expressionResult)
+  const pedalResult = pedal.state.status === 'ready' ? pedal.state.result : null
+  const voicing = useVoicingAnalysis(session?.score ?? null, session?.scoreVersionId ?? null, session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult, expressionResult, intentProfile)
+  const voicingResult = voicing.state.status === 'ready' ? voicing.state.result : null
+  const currentProfile = useMemo(() => session?.arrangementId && session.scoreVersionId && capture.recording && timingResult && expressionResult && pedalResult && voicingResult ? buildInterpretationProfile({
+    attemptId: `attempt:${capture.recording.id}`, arrangementId: session.arrangementId, scoreVersionId: session.scoreVersionId, includedPartIds: session.plan.includedPartIds, performedAt: capture.recording.startedAt, practiceSpeed: capture.recording.practiceContext.speedMultiplier ?? session.speedMultiplier, schemaVersion: 4, recordingId: capture.recording.id,
+    expectedGroupPositions: session.plan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: timingResult, expressionAnalysis: expressionResult, pedalAnalysis: pedalResult, voicingAnalysis: voicingResult,
+    engineVersions: { alignment: alignmentResult?.diagnostics.alignmentEngineVersion ?? '', noteGrading: noteGradingResult?.diagnostics.noteGradingEngineVersion ?? '', timingAnalysis: timingResult.diagnostics.timingAnalysisEngineVersion, expressionAnalysis: expressionResult.diagnostics.expressionAnalysisEngineVersion, pedalAnalysis: pedalResult.diagnostics.pedalAnalysisEngineVersion, voicingAnalysis: voicingResult.diagnostics.voicingAnalysisEngineVersion },
+  }) : null, [alignmentResult, capture.recording, expressionResult, noteGradingResult, pedalResult, session, timingResult, voicingResult])
+  const referenceProfile = phase11Data?.referenceProfile ?? null
+  const referenceComparison = useReferenceComparison(currentProfile, referenceProfile, voicingResult?.id ?? null)
 
   const analyzeTiming = async (scope: GradingScopeType) => {
     const grading = noteGradingResult?.scope.type === scope ? noteGradingResult : await noteGrading.analyze(scope)
@@ -93,7 +151,14 @@ export function PracticePage() {
     const nextTiming = timingResult?.noteGradingId === grading.id ? timingResult : await timing.analyze(grading)
     if (!nextTiming) return
     const [, nextExpression] = await Promise.all([performanceResults.analyze(grading, nextTiming), expression.analyze(grading)])
-    if (nextExpression) await pedal.analyze(nextExpression, grading)
+    if (!nextExpression) return
+    const nextPedal = await pedal.analyze(nextExpression, grading)
+    if (!nextPedal || !session?.arrangementId || !session.scoreVersionId || !capture.recording) return
+    const nextVoicing = await voicing.analyze(nextExpression, grading, intentProfile)
+    if (!nextVoicing) return
+    const nextCurrentProfile = buildInterpretationProfile({ attemptId: `attempt:${capture.recording.id}`, arrangementId: session.arrangementId, scoreVersionId: session.scoreVersionId, includedPartIds: session.plan.includedPartIds, performedAt: capture.recording.startedAt, practiceSpeed: capture.recording.practiceContext.speedMultiplier ?? session.speedMultiplier, schemaVersion: 4, recordingId: capture.recording.id, expectedGroupPositions: session.plan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: nextTiming, expressionAnalysis: nextExpression, pedalAnalysis: nextPedal, voicingAnalysis: nextVoicing, engineVersions: { alignment: alignmentResult?.diagnostics.alignmentEngineVersion ?? '', noteGrading: grading.diagnostics.noteGradingEngineVersion, timingAnalysis: nextTiming.diagnostics.timingAnalysisEngineVersion, expressionAnalysis: nextExpression.diagnostics.expressionAnalysisEngineVersion, pedalAnalysis: nextPedal.diagnostics.pedalAnalysisEngineVersion, voicingAnalysis: nextVoicing.diagnostics.voicingAnalysisEngineVersion } })
+    const nextReferenceProfile = phase11Data?.referenceProfile ?? null
+    await referenceComparison.analyze(nextCurrentProfile, nextReferenceProfile, nextVoicing.id)
   }
   const updateScoreHighlights = useCallback((model: ScoreHighlightModel | null) => setScoreHighlights(model), [])
   const startCapture = () => {
@@ -113,8 +178,27 @@ export function PracticePage() {
     setSavedRecordingId(null)
   }
 
+  const saveVoicingProfile = async (profile: VoicingIntentProfile | null) => {
+    if (!session?.arrangementId || !session.scoreVersionId || !persistence.repository) throw new Error('A persisted ScoreVersion is required.')
+    const result = await setVoicingIntentSafely(persistence.repository, session.arrangementId, session.scoreVersionId, profile, detectedLanes)
+    if (!result.ok) throw result.error
+    if (expressionResult && noteGradingResult) await voicing.analyze(expressionResult, noteGradingResult, profile)
+  }
+
+  const selectReference = async (attemptId: string | null) => {
+    if (!session?.arrangementId || !session.scoreVersionId || !persistence.repository) return
+    const result = await setInterpretationReferenceSafely(persistence.repository, session.arrangementId, session.scoreVersionId, attemptId)
+    if (!result.ok) { setSaveMessage(result.error.message); setSaveStatus('error'); return }
+    setSaveMessage(attemptId ? 'Using this take as interpretation reference.' : 'Interpretation reference cleared.')
+    setSaveStatus('idle')
+    if (currentProfile && voicingResult) {
+      const attempt = attemptId ? await persistence.repository.getAttempt(attemptId) : null
+      await referenceComparison.analyze(currentProfile, attempt ? await profileForAttempt(attempt, session.score, intentProfile) : null, voicingResult.id)
+    }
+  }
+
   const saveAttempt = async () => {
-    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult || !noteGradingResult || !timingResult || performanceResults.state.status !== 'ready' || expression.state.status !== 'ready' || pedal.state.status !== 'ready' || !persistence.repository) return
+    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult || !noteGradingResult || !timingResult || performanceResults.state.status !== 'ready' || expression.state.status !== 'ready' || pedal.state.status !== 'ready' || voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' || !persistence.repository) return
     setSaveStatus('saving'); setSaveMessage(null); setPersonalBestEvents([])
     const recording = capture.recording
     const result = performanceResults.state.result
@@ -122,9 +206,9 @@ export function PracticePage() {
     const startedAt = practiceSessionStartedAt.current ?? recording.startedAt
     practiceSessionStartedAt.current = startedAt
     const endedAt = new Date(new Date(recording.startedAt).getTime() + recording.durationMs).toISOString()
-    const attempt: PerformanceAttemptRecordV3 = {
+    const attempt: PerformanceAttemptRecordV4 = {
       id: attemptId,
-      schemaVersion: 3,
+      schemaVersion: 4,
       arrangementId: session.arrangementId,
       scoreVersionId: session.scoreVersionId,
       practiceSessionId: practiceSessionId.current,
@@ -139,6 +223,8 @@ export function PracticePage() {
         resultAggregation: result.diagnostics.resultAggregationVersion,
         expressionAnalysis: expression.state.result.diagnostics.expressionAnalysisEngineVersion,
         pedalAnalysis: pedal.state.result.diagnostics.pedalAnalysisEngineVersion,
+        voicingAnalysis: voicing.state.result.diagnostics.voicingAnalysisEngineVersion,
+        referenceComparison: referenceComparison.state.result.diagnostics.referenceComparisonEngineVersion,
       },
       expectedPerformancePlan: session.plan,
       recording,
@@ -148,6 +234,8 @@ export function PracticePage() {
       performanceResults: result,
       expressionAnalysis: expression.state.result,
       pedalAnalysis: pedal.state.result,
+      voicingAnalysis: voicing.state.result,
+      referenceComparison: referenceComparison.state.result,
     }
     const persistentSession: PracticeSessionRecord = {
       id: practiceSessionId.current,
@@ -196,6 +284,8 @@ export function PracticePage() {
   const activeEventCount = capture.state.status === 'recording' ? capture.state.eventCount : capture.recording?.statistics.eventCount ?? 0
   const activeAttackCount = capture.recording?.statistics.noteAttackCount ?? midi.activeNotes.length
   const clearActionCopy = takeClearActionCopy(capture.recording?.id ?? null, savedRecordingId)
+  const maxMeasureIndex = Math.max(0, ...session.score.parts.flatMap((part) => part.measures.map((measure) => measure.index)))
+  const referenceCandidates = (phase11Data?.candidates ?? []).filter((candidate) => candidate.id !== `attempt:${capture.recording?.id ?? ''}`)
 
   return (
     <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice phase-seven-practice ${capture.state.status}`}>
@@ -239,7 +329,9 @@ export function PracticePage() {
         <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />
         <ExpressionAnalysisPanel analysis={expression.state} onAnalyze={() => void expression.analyze()} />
         <PedalAnalysisPanel analysis={pedal.state} onAnalyze={() => void pedal.analyze()} />
-        <section className="panel save-attempt-panel"><div><span className="step-label">Local performance history</span><h2>{savedRecordingId === capture.recording?.id ? 'Take saved' : 'Keep this analysis'}</h2><p>{session.isDemo ? 'Demo takes remain temporary and are never mixed into your real progress.' : pedal.state.status !== 'ready' ? 'Complete pedal analysis before saving this Phase 10 snapshot.' : 'Saving preserves the raw MIDI recording, exact ScoreVersion, and every analysis snapshot in one transaction.'}</p>{saveMessage && <span className={saveStatus === 'error' ? 'practice-build-error' : 'save-confirmation'}>{saveStatus === 'saved' ? <CheckCircle2 /> : <AlertCircle />}{saveMessage}</span>}{personalBestEvents.length > 0 && <div className="personal-best-events">{personalBestEvents.map((event) => <span key={event.metric}><Sparkles /> {event.kind === 'first-full-result' ? `First full-score ${event.metric} result` : `New ${event.metric} personal best`}: {formatPercent(event.value)}</span>)}</div>}</div><Button icon={savedRecordingId === capture.recording?.id ? CheckCircle2 : Save} disabled={session.isDemo || saveStatus === 'saving' || savedRecordingId === capture.recording?.id || pedal.state.status !== 'ready'} onClick={() => void saveAttempt()}>{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry save' : savedRecordingId === capture.recording?.id ? 'Saved' : pedal.state.status !== 'ready' ? 'Analyze pedal first' : 'Save attempt'}</Button></section>
+        <VoicingAnalysisPanel analysis={voicing.state} lanes={detectedLanes} profile={intentProfile} scoreVersionId={session.scoreVersionId ?? 'demo'} maxMeasureIndex={maxMeasureIndex} onSaveProfile={saveVoicingProfile} onAnalyze={() => void voicing.analyze()} />
+        <ReferenceComparisonPanel analysis={referenceComparison.state} candidates={referenceCandidates} selectedReferenceId={selectedReferenceId} onSelectReference={selectReference} />
+        <section className="panel save-attempt-panel"><div><span className="step-label">Local performance history</span><h2>{savedRecordingId === capture.recording?.id ? 'Take saved' : 'Keep this analysis'}</h2><p>{session.isDemo ? 'Demo takes remain temporary and are never mixed into your real progress.' : voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' ? 'Complete Phase 11 analysis before saving this frozen snapshot.' : 'Saving preserves the raw MIDI recording, exact ScoreVersion, and every analysis snapshot in one transaction.'}</p>{saveMessage && <span className={saveStatus === 'error' ? 'practice-build-error' : 'save-confirmation'}>{saveStatus === 'saved' ? <CheckCircle2 /> : <AlertCircle />}{saveMessage}</span>}{personalBestEvents.length > 0 && <div className="personal-best-events">{personalBestEvents.map((event) => <span key={event.metric}><Sparkles /> {event.kind === 'first-full-result' ? `First full-score ${event.metric} result` : `New ${event.metric} personal best`}: {formatPercent(event.value)}</span>)}</div>}</div><Button icon={savedRecordingId === capture.recording?.id ? CheckCircle2 : Save} disabled={session.isDemo || saveStatus === 'saving' || savedRecordingId === capture.recording?.id || voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready'} onClick={() => void saveAttempt()}>{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry save' : savedRecordingId === capture.recording?.id ? 'Saved' : voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' ? 'Complete Phase 11 first' : 'Save attempt'}</Button></section>
         <details className="technical-analysis-stack"><summary>Technical analysis</summary><div>{capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}{capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}{capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}</div></details>
       </> : <>
         {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}

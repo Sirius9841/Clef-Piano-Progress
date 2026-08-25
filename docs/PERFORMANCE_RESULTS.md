@@ -1,5 +1,7 @@
 # Performance results
 
+Phase 11 does not change Phase 7 aggregation. Voicing and saved-reference comparisons are separate immutable analysis snapshots; they are not folded into measure Practice Priority, section rankings, mistakes, or renderer highlights. Reference comparison has no overall score, and unavailable Phase 11 evidence remains absent rather than becoming zero.
+
 Phase 7 turns the immutable Phase 4–6 analysis snapshots into a deterministic, measure-grounded practice map. It does not realign MIDI, regrade pitch, or reinterpret score notation.
 
 ```text
