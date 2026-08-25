@@ -2,19 +2,14 @@ import { compareTime, type MusicalTime } from '../musicxml/musicalTime'
 import type { InterpretationProfile, InterpretationProfileInput } from './types'
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T { if (value === null || typeof value !== 'object' || seen.has(value)) return value; seen.add(value); Object.values(value as Record<string, unknown>).forEach((child) => deepFreeze(child, seen)); return Object.freeze(value) }
-function median(values: readonly number[]): number | null { if (!values.length) return null; const sorted = [...values].sort((a, b) => a - b); const i = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[i]! : (sorted[i - 1]! + sorted[i]!) / 2 }
 function timeKey(value: MusicalTime): string { return `${value.numerator}/${value.denominator}` }
 
 export function buildInterpretationProfile(input: InterpretationProfileInput): InterpretationProfile {
   const scopeSource = input.timingAnalysis.scope
   const groupById = new Map(input.expectedGroupPositions.map((group) => [group.id, group.position]))
-  const first = input.expectedGroupPositions[0]?.position ?? null
-  const last = input.expectedGroupPositions.at(-1)?.position ?? null
-  const start = scopeSource.type === 'full-plan' ? first : scopeSource.expectedStartGroupId ? groupById.get(scopeSource.expectedStartGroupId) ?? null : null
-  const end = scopeSource.type === 'full-plan' ? last : scopeSource.expectedEndGroupId ? groupById.get(scopeSource.expectedEndGroupId) ?? null : null
-  const ratios = input.timingAnalysis.tempo.localSamples.map((sample) => sample.tempoRatio).filter((value) => value > 0)
-  const center = median(ratios.map(Math.log))
-  const tempoShape = center === null ? [] : input.timingAnalysis.tempo.localSamples.filter((sample) => sample.tempoRatio > 0).map((sample) => ({ key: `${timeKey(sample.position)}:${timeKey(sample.windowScoreDuration)}`, position: { ...sample.position }, measureNumbers: [...sample.measureNumbers], centeredLogShape: Math.log(sample.tempoRatio) - center, performedQuarterBpm: sample.performedQuarterBpm }))
+  const start = scopeSource.type === 'full-plan' ? input.fullPlanStart : scopeSource.expectedStartGroupId ? groupById.get(scopeSource.expectedStartGroupId) ?? null : null
+  const end = scopeSource.type === 'full-plan' ? input.fullPlanEnd : scopeSource.expectedEndGroupId ? groupById.get(scopeSource.expectedEndGroupId) ?? null : null
+  const tempoShape = input.timingAnalysis.tempo.localSamples.filter((sample) => sample.tempoRatio > 0).map((sample) => ({ key: `${timeKey(sample.position)}:${timeKey(sample.windowScoreDuration)}`, position: { ...sample.position }, measureNumbers: [...sample.measureNumbers], logTempoRatio: Math.log(sample.tempoRatio), performedQuarterBpm: sample.performedQuarterBpm }))
   const expression = input.expressionAnalysis
   const dynamicsGestures = expression ? expression.dynamics.observations.flatMap((observation) => {
     const target = expression.dynamics.targets.find((candidate) => candidate.id === observation.targetId)

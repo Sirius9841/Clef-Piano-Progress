@@ -1,4 +1,4 @@
-export const REFERENCE_COMPARISON_ENGINE_VERSION = 'reference-comparison-1.0.0'
+export const REFERENCE_COMPARISON_ENGINE_VERSION = 'reference-comparison-1.1.0'
 
 export interface ReferenceComparisonOptions {
   readonly similarLogTempoDifference: number

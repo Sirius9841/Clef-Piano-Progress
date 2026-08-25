@@ -6,6 +6,7 @@ import { isRepertoireStatus, type RepertoireStatus } from '../../domain/music'
 import type { PianoProgressRepository } from './repository'
 import { validateVoicingIntentProfile } from '../voicing-analysis/voicingIntent'
 import type { VoiceLane, VoicingIntentProfile } from '../voicing-analysis/types'
+import { compareTime } from '../musicxml/musicalTime'
 import {
   PERSISTENCE_SCHEMA_VERSION,
   PIANO_PROGRESS_DB_NAME,
@@ -100,6 +101,119 @@ function isNonnegativeInteger(value: unknown): value is number { return Number.i
 function isUnitNumberOrNull(value: unknown): boolean { return value === null || (isFiniteNumber(value) && value >= 0 && value <= 1) }
 function isMusicalTimeRecord(value: unknown): boolean {
   return isObjectRecord(value) && Number.isInteger(value.numerator) && Number.isInteger(value.denominator) && (value.denominator as number) > 0
+}
+
+function isStringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every((item) => typeof item === 'string') }
+function isStringRecord(value: unknown): value is Record<string, string> { return isObjectRecord(value) && Object.values(value).every((item) => typeof item === 'string') }
+function approximately(left: number, right: number): boolean { return Math.abs(left - right) <= 1e-9 }
+function validRatio(ratio: unknown, numerator: number, denominator: number): boolean { return denominator === 0 ? ratio === null : isFiniteNumber(ratio) && approximately(ratio, numerator / denominator) }
+function validReliability(value: unknown): boolean { return value === 'reliable' || value === 'limited' || value === 'provisional' || value === 'unavailable' }
+function validStatus(value: unknown): boolean { return value === 'ready' || value === 'unavailable' }
+function validWarning(value: unknown): boolean { return isObjectRecord(value) && typeof value.code === 'string' && typeof value.message === 'string' }
+function sameStringRecord(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftEntries = Object.entries(left).sort(([a], [b]) => a.localeCompare(b))
+  const rightEntries = Object.entries(right).sort(([a], [b]) => a.localeCompare(b))
+  return leftEntries.length === rightEntries.length && leftEntries.every(([key, value], index) => rightEntries[index]?.[0] === key && rightEntries[index]?.[1] === value)
+}
+
+function validIntentSnapshot(value: unknown): boolean {
+  if (value === null) return true
+  return isObjectRecord(value) && typeof value.id === 'string' && typeof value.scoreVersionId === 'string' && isCanonicalIsoTimestamp(value.updatedAt)
+    && Array.isArray(value.regions) && value.regions.length > 0 && value.regions.every((region) => isObjectRecord(region) && typeof region.id === 'string'
+      && isNonnegativeInteger(region.startMeasureIndex) && isNonnegativeInteger(region.endMeasureIndex) && region.endMeasureIndex >= region.startMeasureIndex
+      && isStringArray(region.foregroundLaneIds) && region.foregroundLaneIds.length > 0 && isStringArray(region.supportLaneIds) && region.supportLaneIds.length > 0)
+}
+
+function validVoicingSnapshot(voicing: Record<string, unknown>): boolean {
+  if (!validStatus(voicing.status) || (voicing.mode !== 'descriptive' && voicing.mode !== 'configured') || !validReliability(voicing.reliability)
+    || !isUnitNumberOrNull(voicing.score) || !isNullableString(voicing.unavailableReason) || !validIntentSnapshot(voicing.intentProfileSnapshot)
+    || !Array.isArray(voicing.lanes) || !Array.isArray(voicing.targets) || !Array.isArray(voicing.observations) || !Array.isArray(voicing.regionResults)
+    || !Array.isArray(voicing.laneStatistics) || !Array.isArray(voicing.exclusions) || !Array.isArray(voicing.warnings)
+    || !isObjectRecord(voicing.coverage) || !isObjectRecord(voicing.diagnostics)) return false
+  const targets = voicing.targets
+  const observations = voicing.observations
+  const lanesValid = voicing.lanes.every((lane) => isObjectRecord(lane) && typeof lane.id === 'string' && typeof lane.partId === 'string'
+    && isNullableString(lane.partName) && isNullableInteger(lane.staff) && isNullableString(lane.voice) && isNonnegativeInteger(lane.noteCount)
+    && Array.isArray(lane.measureCoverage) && lane.measureCoverage.every(isNonnegativeInteger)
+    && typeof lane.ambiguous === 'boolean' && typeof lane.label === 'string')
+  const laneIds = new Set(voicing.lanes.flatMap((lane) => isObjectRecord(lane) && typeof lane.id === 'string' ? [lane.id] : []))
+  const intentRegionIds = new Set(isObjectRecord(voicing.intentProfileSnapshot) && Array.isArray(voicing.intentProfileSnapshot.regions)
+    ? voicing.intentProfileSnapshot.regions.flatMap((region) => isObjectRecord(region) && typeof region.id === 'string' ? [region.id] : []) : [])
+  const targetsValid = targets.every((target) => isObjectRecord(target) && typeof target.id === 'string' && typeof target.regionId === 'string'
+    && isMusicalTimeRecord(target.position) && isNonnegativeInteger(target.measureIndex) && typeof target.measureNumber === 'string'
+    && isStringArray(target.foregroundLaneIds) && isStringArray(target.supportLaneIds) && isStringArray(target.foregroundExpectedTargetIds)
+    && isStringArray(target.supportExpectedTargetIds) && isStringArray(target.sourceNoteIds)
+    && [...target.foregroundLaneIds, ...target.supportLaneIds].every((laneId) => laneIds.has(laneId))
+    && (voicing.mode !== 'configured' || intentRegionIds.has(target.regionId)))
+  const targetById = new Map(targets.flatMap((target) => isObjectRecord(target) && typeof target.id === 'string' ? [[target.id, target] as const] : []))
+  const observationsValid = observations.every((observation) => isObjectRecord(observation) && typeof observation.id === 'string'
+    && typeof observation.targetId === 'string' && targetById.has(observation.targetId) && typeof observation.regionId === 'string'
+    && isMusicalTimeRecord(observation.position) && isNonnegativeInteger(observation.measureIndex) && typeof observation.measureNumber === 'string'
+    && isStringArray(observation.foregroundObservationIds) && isStringArray(observation.supportObservationIds)
+    && isFiniteNumber(observation.foregroundIntensity) && observation.foregroundIntensity >= 0 && observation.foregroundIntensity <= 1
+    && isFiniteNumber(observation.supportIntensity) && observation.supportIntensity >= 0 && observation.supportIntensity <= 1
+    && isFiniteNumber(observation.focusAdvantage) && approximately(observation.focusAdvantage, observation.foregroundIntensity - observation.supportIntensity)
+    && isFiniteNumber(observation.score) && observation.score >= 0 && observation.score <= 1 && typeof observation.summary === 'string'
+    && (() => { const target = targetById.get(observation.targetId as string); return !!target && target.regionId === observation.regionId && target.measureIndex === observation.measureIndex && target.measureNumber === observation.measureNumber && isObjectRecord(target.position) && compareTime(target.position as { numerator: number; denominator: number }, observation.position as { numerator: number; denominator: number }) === 0 })())
+  const regionsValid = voicing.regionResults.every((region) => isObjectRecord(region) && typeof region.regionId === 'string' && intentRegionIds.has(region.regionId)
+    && isNonnegativeInteger(region.targetCount) && region.targetCount === targets.filter((target) => isObjectRecord(target) && target.regionId === region.regionId).length
+    && isNonnegativeInteger(region.analyzedTargetCount) && region.analyzedTargetCount === observations.filter((observation) => isObjectRecord(observation) && observation.regionId === region.regionId).length
+    && region.analyzedTargetCount <= region.targetCount && isUnitNumberOrNull(region.score))
+  const laneStatsValid = voicing.laneStatistics.every((lane) => isObjectRecord(lane) && typeof lane.laneId === 'string' && laneIds.has(lane.laneId)
+    && isNonnegativeInteger(lane.sampleCount) && isUnitNumberOrNull(lane.medianNormalizedIntensity))
+  const exclusionsValid = voicing.exclusions.every((item) => isObjectRecord(item) && typeof item.id === 'string' && typeof item.sourceId === 'string'
+    && isNullableString(item.measureNumber) && typeof item.reason === 'string')
+  const coverage = voicing.coverage
+  const diagnostics = voicing.diagnostics
+  const descriptiveShapeValid = voicing.mode !== 'descriptive' || (voicing.intentProfileSnapshot === null && targets.length === 0 && observations.length === 0 && voicing.regionResults.length === 0)
+  const configuredShapeValid = voicing.mode !== 'configured' || voicing.intentProfileSnapshot !== null
+  const configuredRegionCount = isObjectRecord(voicing.intentProfileSnapshot) && Array.isArray(voicing.intentProfileSnapshot.regions) ? voicing.intentProfileSnapshot.regions.length : 0
+  return lanesValid && laneIds.size === voicing.lanes.length && targetsValid && targetById.size === targets.length && observationsValid
+    && new Set(observations.flatMap((observation) => isObjectRecord(observation) && typeof observation.id === 'string' ? [observation.id] : [])).size === observations.length
+    && regionsValid && new Set(voicing.regionResults.flatMap((region) => isObjectRecord(region) && typeof region.regionId === 'string' ? [region.regionId] : [])).size === voicing.regionResults.length
+    && laneStatsValid && exclusionsValid && descriptiveShapeValid && configuredShapeValid && voicing.warnings.every(validWarning)
+    && isNonnegativeInteger(coverage.configuredTargetCount) && isNonnegativeInteger(coverage.analyzedTargetCount)
+    && coverage.analyzedTargetCount <= coverage.configuredTargetCount && validRatio(coverage.ratio, coverage.analyzedTargetCount, coverage.configuredTargetCount)
+    && typeof diagnostics.voicingAnalysisEngineVersion === 'string' && typeof diagnostics.normalizationMethod === 'string'
+    && isNonnegativeInteger(diagnostics.configuredRegionCount) && diagnostics.configuredRegionCount === configuredRegionCount && isNonnegativeInteger(diagnostics.targetCount) && isNonnegativeInteger(diagnostics.analyzedTargetCount)
+    && diagnostics.targetCount === targets.length && diagnostics.analyzedTargetCount === observations.length
+    && coverage.configuredTargetCount === targets.length && coverage.analyzedTargetCount === observations.length
+}
+
+function validReferenceDimension(value: unknown): boolean {
+  if (!isObjectRecord(value) || !validStatus(value.status) || !validReliability(value.reliability) || !isNullableString(value.unavailableReason)
+    || !isObjectRecord(value.coverage) || !Array.isArray(value.observations) || typeof value.summary !== 'string') return false
+  const coverage = value.coverage
+  if (!isNonnegativeInteger(coverage.currentCount) || !isNonnegativeInteger(coverage.referenceCount) || !isNonnegativeInteger(coverage.sharedCount)
+    || coverage.sharedCount > coverage.currentCount || coverage.sharedCount > coverage.referenceCount
+    || !validRatio(coverage.ratio, coverage.sharedCount, Math.max(coverage.currentCount, coverage.referenceCount))) return false
+  const observationsValid = value.observations.every((item) => isObjectRecord(item) && typeof item.id === 'string' && typeof item.key === 'string'
+    && isMusicalTimeRecord(item.position) && isStringArray(item.measureNumbers) && isFiniteNumber(item.currentValue) && isFiniteNumber(item.referenceValue)
+    && isFiniteNumber(item.signedDifference) && approximately(item.signedDifference, item.currentValue - item.referenceValue)
+    && isFiniteNumber(item.magnitude) && item.magnitude >= 0 && approximately(item.magnitude, Math.abs(item.signedDifference))
+    && (item.similarity === 'very-similar' || item.similarity === 'similar' || item.similarity === 'noticeably-different' || item.similarity === 'strongly-different')
+    && typeof item.description === 'string')
+  return observationsValid && value.observations.length === coverage.sharedCount
+}
+
+function validReferenceSnapshot(reference: Record<string, unknown>): boolean {
+  if (!validStatus(reference.status) || !validReliability(reference.reliability) || !isNullableString(reference.unavailableReason)
+    || !isObjectRecord(reference.overlapScope) || !validReferenceDimension(reference.tempo) || !validReferenceDimension(reference.dynamics)
+    || !validReferenceDimension(reference.articulation) || !validReferenceDimension(reference.pedal) || !validReferenceDimension(reference.voicing)
+    || !Array.isArray(reference.warnings) || !reference.warnings.every(validWarning) || !isObjectRecord(reference.diagnostics)
+    || !isStringRecord(reference.referenceEngineVersions) || !isStringRecord(reference.diagnostics.currentEngineVersions)
+    || !isStringRecord(reference.diagnostics.referenceEngineVersions) || !sameStringRecord(reference.referenceEngineVersions, reference.diagnostics.referenceEngineVersions)) return false
+  const overlap = reference.overlapScope
+  const validStart = overlap.start === null || isMusicalTimeRecord(overlap.start)
+  const validEnd = overlap.end === null || isMusicalTimeRecord(overlap.end)
+  if (!validStart || !validEnd || (isObjectRecord(overlap.start) && isObjectRecord(overlap.end) && compareTime(overlap.start as { numerator: number; denominator: number }, overlap.end as { numerator: number; denominator: number }) > 0)) return false
+  if (!isNullableString(reference.referenceAttemptId) || !isNullableString(reference.referencePerformedAt)
+    || (reference.referencePerformedAt !== null && !isCanonicalIsoTimestamp(reference.referencePerformedAt))
+    || (reference.referencePracticeSpeed !== null && (!isFiniteNumber(reference.referencePracticeSpeed) || reference.referencePracticeSpeed <= 0))
+    || (reference.referenceSchemaVersion !== null && reference.referenceSchemaVersion !== 1 && reference.referenceSchemaVersion !== 2 && reference.referenceSchemaVersion !== 3 && reference.referenceSchemaVersion !== 4)) return false
+  if (reference.referenceAttemptId === null && (reference.referencePerformedAt !== null || reference.referencePracticeSpeed !== null || reference.referenceSchemaVersion !== null)) return false
+  return reference.diagnostics.referenceComparisonEngineVersion === 'reference-comparison-1.0.0'
+    || reference.diagnostics.referenceComparisonEngineVersion === 'reference-comparison-1.1.0'
 }
 
 function assertWork(value: unknown): asserts value is PersistedWork {
@@ -380,16 +494,16 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
     const reference = attempt.referenceComparison
     const expression = attempt.expressionAnalysis
     if (
-      !isObjectRecord(expression) || !isObjectRecord(voicing) || !isObjectRecord(voicing.scope) || !isObjectRecord(voicing.coverage) || !isObjectRecord(voicing.diagnostics)
-      || !Array.isArray(voicing.lanes) || !Array.isArray(voicing.targets) || !Array.isArray(voicing.observations) || !Array.isArray(voicing.regionResults) || !Array.isArray(voicing.laneStatistics) || !Array.isArray(voicing.exclusions) || !Array.isArray(voicing.warnings)
-      || (voicing.status !== 'ready' && voicing.status !== 'unavailable') || (voicing.mode !== 'descriptive' && voicing.mode !== 'configured')
-      || !['reliable', 'limited', 'provisional', 'unavailable'].includes(typeof voicing.reliability === 'string' ? voicing.reliability : '') || !isUnitNumberOrNull(voicing.score)
+      !isObjectRecord(expression) || !isObjectRecord(voicing) || !isObjectRecord(voicing.scope) || !isObjectRecord(voicing.diagnostics) || !validVoicingSnapshot(voicing)
+      || typeof voicing.id !== 'string' || typeof voicing.scoreId !== 'string' || typeof voicing.scoreVersionId !== 'string'
+      || typeof voicing.expectedPlanId !== 'string' || typeof voicing.recordingId !== 'string' || typeof voicing.alignmentId !== 'string'
+      || typeof voicing.noteGradingId !== 'string' || typeof voicing.expressionAnalysisId !== 'string'
       || voicing.scoreId !== plan.scoreId || voicing.scoreVersionId !== attempt.scoreVersionId || voicing.expectedPlanId !== plan.id || voicing.recordingId !== recording.id || voicing.alignmentId !== alignment.id || voicing.noteGradingId !== noteGrading.id || voicing.expressionAnalysisId !== expression.id
       || voicing.scope.type !== noteGrading.scope.type || voicing.scope.expectedStartIndex !== noteGrading.scope.expectedStartIndex || voicing.scope.expectedEndIndex !== noteGrading.scope.expectedEndIndex || voicing.scope.expectedStartGroupId !== noteGrading.scope.expectedStartGroupId || voicing.scope.expectedEndGroupId !== noteGrading.scope.expectedEndGroupId
       || typeof voicing.diagnostics.voicingAnalysisEngineVersion !== 'string' || versions.voicingAnalysis !== voicing.diagnostics.voicingAnalysisEngineVersion
-      || !isObjectRecord(reference) || !isObjectRecord(reference.overlapScope) || !isObjectRecord(reference.diagnostics)
-      || !isObjectRecord(reference.tempo) || !isObjectRecord(reference.dynamics) || !isObjectRecord(reference.articulation) || !isObjectRecord(reference.pedal) || !isObjectRecord(reference.voicing) || !Array.isArray(reference.warnings)
-      || (reference.status !== 'ready' && reference.status !== 'unavailable') || !['reliable', 'limited', 'provisional', 'unavailable'].includes(typeof reference.reliability === 'string' ? reference.reliability : '')
+      || !isObjectRecord(reference) || !isObjectRecord(reference.diagnostics) || !validReferenceSnapshot(reference)
+      || typeof reference.id !== 'string' || typeof reference.scoreVersionId !== 'string' || typeof reference.currentAttemptOrRecordingId !== 'string'
+      || typeof reference.currentVoicingAnalysisId !== 'string'
       || reference.scoreVersionId !== attempt.scoreVersionId || (reference.currentAttemptOrRecordingId !== attempt.id && reference.currentAttemptOrRecordingId !== recording.id) || reference.currentVoicingAnalysisId !== voicing.id
       || typeof reference.diagnostics.referenceComparisonEngineVersion !== 'string' || versions.referenceComparison !== reference.diagnostics.referenceComparisonEngineVersion
       || (reference.referenceAttemptId !== null && typeof reference.referenceAttemptId !== 'string') || (reference.referencePerformedAt !== null && !isCanonicalIsoTimestamp(reference.referencePerformedAt))

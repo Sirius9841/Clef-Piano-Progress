@@ -1,5 +1,22 @@
 import type { VoiceLane, VoicingIntentProfile } from './types'
 
+function canonicalIntent(profile: VoicingIntentProfile): string {
+  return JSON.stringify({
+    scoreVersionId: profile.scoreVersionId,
+    regions: profile.regions.map((region) => ({
+      startMeasureIndex: region.startMeasureIndex,
+      endMeasureIndex: region.endMeasureIndex,
+      foregroundLaneIds: [...new Set(region.foregroundLaneIds)].sort(),
+      supportLaneIds: [...new Set(region.supportLaneIds)].sort(),
+    })).sort((left, right) => left.startMeasureIndex - right.startMeasureIndex || left.endMeasureIndex - right.endMeasureIndex || JSON.stringify(left).localeCompare(JSON.stringify(right))),
+  })
+}
+
+export function sameVoicingIntentMeaning(left: VoicingIntentProfile | null, right: VoicingIntentProfile | null): boolean {
+  if (left === null || right === null) return left === right
+  return canonicalIntent(left) === canonicalIntent(right)
+}
+
 export function validateVoicingIntentProfile(profile: VoicingIntentProfile, lanes: readonly Pick<VoiceLane, 'id' | 'ambiguous'>[], scoreVersionId = profile.scoreVersionId): readonly string[] {
   const errors: string[] = []
   const laneById = new Map(lanes.map((lane) => [lane.id, lane]))

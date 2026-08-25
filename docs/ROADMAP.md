@@ -52,6 +52,10 @@ Final local timing-anchor correctness: tempo-aware interpolation between bracket
 
 Advanced configured Voicing from real score lanes and interpretation-aware comparison with user-selected saved local takes, including V4 frozen snapshots and ScoreVersion-specific preferences.
 
+## Phase 11.1 — complete
+
+Interpretation-integrity hardening: current-intent reference Voicing with immutable comparison-only derivation, canonical full-plan duration bounds, exact Pedal engine compatibility, shared-pair Tempo centering, comparison provenance, and deep V4 corruption validation while preserving frozen 1.0.0 history.
+
 ## Phase 12+
 
 Phase 12 begins Technique Lab exercises and transferable skill measurement.

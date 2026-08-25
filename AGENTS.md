@@ -181,9 +181,13 @@ This repository builds a serious piano progress and performance-analysis applica
 - Voicing measures performance-relative MIDI attack balance at safe simultaneous cross-lane events, not acoustic loudness, timbre, or tonal projection. Wrong or missed notes reduce coverage and never receive another Voicing penalty; one musical onset gets one vote regardless of chord size.
 - Lane-specific authored dynamics, accents, or wedges that conflict with generic projection are exclusions, never double-graded evidence.
 - A reference performance is a manually selected interpretive example, never expressive ground truth. Reference comparison has no aggregate score, accuracy, quality grade, Musicality score, or correctness color semantics.
-- Different global practice speed never makes an interpretation worse. Reference Tempo centers local tempo shape separately from global speed, and Pedal compares timing relative to each take's own aligned musical anchor.
+- Different global practice speed never makes an interpretation worse. Reference Tempo centers local tempo shape separately from global speed only after overlap filtering and stable-key pairing; unmatched samples never influence either center. Pedal compares timing relative to each take's own aligned musical anchor.
 - References require the same Arrangement, exact ScoreVersion, and canonical part selection. Comparisons use only exact scope overlap.
-- Historical reference evidence uses frozen Timing, Expression, Pedal, and V4 Voicing snapshots without regrading or mutating old attempts. Comparison-only Voicing derivation for V2/V3 never changes their historical presentation.
+- Full-plan reference scope ends at the ExpectedPerformancePlan's canonical total score duration, not the last attack onset.
+- Pedal reference evidence is directly comparable only when both takes use the exact same pedal-analysis engine version; incompatible versions make only Pedal unavailable.
+- Reference Voicing always follows current user intent. Reuse frozen V4 Voicing only for semantically equivalent intent; otherwise derive comparison-only V2/V3/V4 Voicing in memory with explicit current-engine provenance. Null current intent means Voicing comparison is unavailable. Never mutate the attempt or change its historical panels.
+- V4 persistence reads deeply validate Voicing and every reference dimension, observation, coverage relationship, finite numeric value, overlap bound, and provenance. Preserve frozen reference-comparison 1.0.0 attempts; new attempts use 1.1.0 without a schema/store migration.
+- Historical reference evidence uses frozen Timing, Expression, and Pedal snapshots without regrading or mutating old attempts. Comparison-only Voicing derivation never changes historical presentation.
 - Future professional or imported reference performances remain alternative realizations, not the correct answer.
 
 ## Commands

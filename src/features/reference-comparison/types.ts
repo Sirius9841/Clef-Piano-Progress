@@ -15,7 +15,7 @@ export interface InterpretationScope {
   readonly expectedEndGroupId: string | null
 }
 
-export interface TempoInterpretationGesture { readonly key: string; readonly position: MusicalTime; readonly measureNumbers: readonly string[]; readonly centeredLogShape: number; readonly performedQuarterBpm: number }
+export interface TempoInterpretationGesture { readonly key: string; readonly position: MusicalTime; readonly measureNumbers: readonly string[]; readonly logTempoRatio: number; readonly performedQuarterBpm: number }
 export interface DynamicsInterpretationGesture { readonly key: string; readonly position: MusicalTime; readonly measureNumber: string; readonly kind: string; readonly value: number }
 export interface ArticulationInterpretationGesture { readonly key: string; readonly position: MusicalTime; readonly measureNumber: string; readonly kind: string; readonly value: number }
 export interface PedalInterpretationGesture { readonly key: string; readonly position: MusicalTime; readonly measureNumber: string; readonly kind: string; readonly relativeTimingMs: number; readonly engineVersion: string }
@@ -104,6 +104,8 @@ export interface InterpretationProfileInput {
   readonly practiceSpeed: number
   readonly schemaVersion: 1 | 2 | 3 | 4
   readonly recordingId: string
+  readonly fullPlanStart: MusicalTime
+  readonly fullPlanEnd: MusicalTime
   readonly expectedGroupPositions: readonly { readonly id: string; readonly position: MusicalTime }[]
   readonly timingAnalysis: import('../timing-analysis/types').TimingAnalysisResult
   readonly expressionAnalysis?: import('../expression-analysis/types').ExpressionAnalysisResult

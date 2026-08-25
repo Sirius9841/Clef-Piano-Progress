@@ -6,6 +6,7 @@ import { analyzePedal } from '../../pedal-analysis/analyzePedal'
 import { analyzeVoicing } from '../../voicing-analysis/analyzeVoicing'
 import { buildInterpretationProfile } from '../../reference-comparison/interpretationProfile'
 import { compareInterpretations } from '../../reference-comparison/compareInterpretations'
+import { ZERO_TIME } from '../../musicxml/musicalTime'
 import type { PedalAnalysisResult } from '../../pedal-analysis/types'
 import { clearCurrentTake } from '../../practice/takeWorkspace'
 import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PerformanceAttemptRecordV3, type PerformanceAttemptRecordV4, type PracticeSessionRecord } from '../types'
@@ -150,9 +151,21 @@ function historicalV11AttemptFixture(arrangementId: string, scoreVersionId: stri
 function v4AttemptFixture(arrangementId: string, scoreVersionId: string, sessionId = 'practice-v4') {
   const fixture = v3AttemptFixture(arrangementId, scoreVersionId, sessionId)
   const voicingAnalysis = analyzeVoicing({ normalizedScore: fixture.score, scoreVersionId, expectedPlan: fixture.attempt.expectedPerformancePlan, recording: fixture.attempt.recording, alignment: fixture.attempt.alignment, noteGrading: fixture.attempt.noteGrading, expressionAnalysis: fixture.attempt.expressionAnalysis, intentProfile: null })
-  const current = buildInterpretationProfile({ attemptId: fixture.attempt.id, arrangementId, scoreVersionId, includedPartIds: fixture.attempt.includedPartIds, performedAt: fixture.attempt.performedAt, practiceSpeed: fixture.attempt.practiceSpeedMultiplier, schemaVersion: 4, recordingId: fixture.attempt.recording.id, expectedGroupPositions: fixture.attempt.expectedPerformancePlan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: fixture.attempt.timingAnalysis, expressionAnalysis: fixture.attempt.expressionAnalysis, pedalAnalysis: fixture.attempt.pedalAnalysis, voicingAnalysis, engineVersions: { ...fixture.attempt.engineVersions, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion } })
+  const current = buildInterpretationProfile({ attemptId: fixture.attempt.id, arrangementId, scoreVersionId, includedPartIds: fixture.attempt.includedPartIds, performedAt: fixture.attempt.performedAt, practiceSpeed: fixture.attempt.practiceSpeedMultiplier, schemaVersion: 4, recordingId: fixture.attempt.recording.id, fullPlanStart: ZERO_TIME, fullPlanEnd: fixture.attempt.expectedPerformancePlan.statistics.totalScoreDuration, expectedGroupPositions: fixture.attempt.expectedPerformancePlan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: fixture.attempt.timingAnalysis, expressionAnalysis: fixture.attempt.expressionAnalysis, pedalAnalysis: fixture.attempt.pedalAnalysis, voicingAnalysis, engineVersions: { ...fixture.attempt.engineVersions, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion } })
   const referenceComparison = compareInterpretations({ current, reference: null, currentVoicingAnalysisId: voicingAnalysis.id })
   const attempt: PerformanceAttemptRecordV4 = { ...fixture.attempt, schemaVersion: 4, engineVersions: { ...fixture.attempt.engineVersions, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion, referenceComparison: referenceComparison.diagnostics.referenceComparisonEngineVersion }, voicingAnalysis, referenceComparison }
+  return { ...fixture, attempt }
+}
+
+function v4AttemptWithNestedEvidence(arrangementId: string, scoreVersionId: string) {
+  const fixture = v4AttemptFixture(arrangementId, scoreVersionId)
+  const target = { id: 'voicing-target', regionId: 'region', position: ZERO_TIME, measureIndex: 0, measureNumber: '1', foregroundLaneIds: ['lane:upper'], supportLaneIds: ['lane:lower'], foregroundExpectedTargetIds: ['expected:upper'], supportExpectedTargetIds: ['expected:lower'], sourceNoteIds: ['note:upper', 'note:lower'] }
+  const observation = { id: 'voicing-observation', targetId: target.id, regionId: target.regionId, position: ZERO_TIME, measureIndex: 0, measureNumber: '1', foregroundObservationIds: ['observed:upper'], supportObservationIds: ['observed:lower'], foregroundIntensity: 0.8, supportIntensity: 0.4, focusAdvantage: 0.4, score: 0.9, summary: 'Configured foreground is more projected.' }
+  const voicingAnalysis = { ...fixture.attempt.voicingAnalysis, mode: 'configured' as const, intentProfileSnapshot: { id: 'intent', scoreVersionId, updatedAt: '2026-08-25T12:00:00.000Z', regions: [{ id: 'region', startMeasureIndex: 0, endMeasureIndex: 0, foregroundLaneIds: ['lane:upper'], supportLaneIds: ['lane:lower'] }] }, targets: [target], observations: [observation], regionResults: [{ regionId: 'region', targetCount: 1, analyzedTargetCount: 1, score: 0.9 }], lanes: [{ id: 'lane:upper', partId: 'P1', partName: 'Piano', staff: 1, voice: '1', measureCoverage: [0], noteCount: 1, ambiguous: false, label: 'Upper' }, { id: 'lane:lower', partId: 'P1', partName: 'Piano', staff: 2, voice: '2', measureCoverage: [0], noteCount: 1, ambiguous: false, label: 'Lower' }], laneStatistics: [{ laneId: 'lane:upper', sampleCount: 1, medianNormalizedIntensity: 0.8 }], coverage: { configuredTargetCount: 1, analyzedTargetCount: 1, ratio: 1 }, diagnostics: { ...fixture.attempt.voicingAnalysis.diagnostics, configuredRegionCount: 1, targetCount: 1, analyzedTargetCount: 1 } }
+  const difference = { id: 'reference-tempo:one', key: 'tempo:one', position: ZERO_TIME, measureNumbers: ['1'], currentValue: 0.1, referenceValue: 0.05, signedDifference: 0.05, magnitude: 0.05, similarity: 'similar' as const, description: 'The tempo shapes are similar.' }
+  const tempo = { status: 'ready' as const, reliability: 'limited' as const, unavailableReason: null, coverage: { currentCount: 1, referenceCount: 1, sharedCount: 1, ratio: 1 }, observations: [difference], summary: 'Tempo shape is similar across the shared evidence.' }
+  const referenceComparison = { ...fixture.attempt.referenceComparison, status: 'ready' as const, reliability: 'limited' as const, unavailableReason: null, referenceAttemptId: 'attempt:reference', referencePerformedAt: '2026-08-20T12:00:00.000Z', referencePracticeSpeed: 1, referenceSchemaVersion: 4 as const, referenceEngineVersions: {}, overlapScope: { start: ZERO_TIME, end: fixture.attempt.expectedPerformancePlan.statistics.totalScoreDuration }, tempo, currentVoicingAnalysisId: voicingAnalysis.id, diagnostics: { ...fixture.attempt.referenceComparison.diagnostics, referenceEngineVersions: {} } }
+  const attempt: PerformanceAttemptRecordV4 = { ...fixture.attempt, voicingAnalysis, referenceComparison }
   return { ...fixture, attempt }
 }
 
@@ -192,6 +205,13 @@ async function putRawAttempt(name: string, value: unknown): Promise<void> {
     transaction.onerror = () => reject(transaction.error)
   })
   database.close()
+}
+
+function nestedRecord(root: Record<string, unknown>, ...path: readonly (string | number)[]): Record<string, unknown> {
+  let value: unknown = root
+  for (const segment of path) value = typeof segment === 'number' ? (value as unknown[])[segment] : (value as Record<string, unknown>)[segment]
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Expected nested test record at ${path.join('.')}.`)
+  return value as Record<string, unknown>
 }
 
 function createLegacyV1Database(name: string): Promise<void> {
@@ -515,7 +535,7 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(saved.summary).not.toHaveProperty('referenceComparison')
     const loaded = await repo.getAttempt(fixture.attempt.id)
     expect(loaded).toEqual(fixture.attempt)
-    expect(loaded).toMatchObject({ schemaVersion: 4, engineVersions: { voicingAnalysis: 'voicing-analysis-1.0.0', referenceComparison: 'reference-comparison-1.0.0' } })
+    expect(loaded).toMatchObject({ schemaVersion: 4, engineVersions: { voicingAnalysis: 'voicing-analysis-1.0.0', referenceComparison: 'reference-comparison-1.1.0' } })
     expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
   })
 
@@ -528,6 +548,41 @@ describe('IndexedDbPianoProgressRepository', () => {
     ['wrong Reference engine version', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, engineVersions: { ...attempt.engineVersions, referenceComparison: 'wrong' } })],
   ])('returns typed corruption for V4 %s', async (label, corrupt) => {
     const name = `corrupt-v4-${label}`; const repo = repository(name); await repo.initialize(); const fixture = v4AttemptFixture('arrangement', 'score'); await putRawAttempt(name, corrupt(fixture.attempt)); await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it.each([
+    ['null nested dimension', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison').tempo = null }],
+    ['missing nested observation field', (attempt: Record<string, unknown>) => { delete nestedRecord(attempt, 'referenceComparison', 'tempo', 'observations', 0).currentValue }],
+    ['malformed coverage ratio', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison', 'tempo', 'coverage').ratio = 0.25 }],
+    ['negative coverage count', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison', 'tempo', 'coverage').currentCount = -1 }],
+    ['invalid similarity descriptor', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison', 'tempo', 'observations', 0).similarity = 'identical-ish' }],
+    ['NaN observation number', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison', 'tempo', 'observations', 0).magnitude = Number.NaN }],
+    ['infinite observation number', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison', 'tempo', 'observations', 0).currentValue = Number.POSITIVE_INFINITY }],
+    ['inconsistent signed difference', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison', 'tempo', 'observations', 0).signedDifference = 0.4 }],
+    ['malformed overlap bounds', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'referenceComparison').overlapScope = { start: { numerator: 2, denominator: 1 }, end: { numerator: 1, denominator: 1 } } }],
+    ['malformed Voicing target', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'voicingAnalysis', 'targets', 0).position = { numerator: 1, denominator: 0 } }],
+    ['Voicing observation missing target', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'voicingAnalysis', 'observations', 0).targetId = 'missing' }],
+    ['malformed Voicing lane', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'voicingAnalysis', 'lanes', 0).measureCoverage = [-1] }],
+    ['invalid Voicing coverage consistency', (attempt: Record<string, unknown>) => { nestedRecord(attempt, 'voicingAnalysis', 'coverage').ratio = 0.5 }],
+  ])('rejects deeply corrupt V4 %s', async (label, corrupt) => {
+    const name = `deep-corrupt-v4-${label}`
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v4AttemptWithNestedEvidence('arrangement', 'score')
+    const copy = structuredClone(fixture.attempt) as unknown as Record<string, unknown>
+    corrupt(copy)
+    await putRawAttempt(name, copy)
+    await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it('keeps frozen V4 reference-comparison 1.0.0 snapshots readable', async () => {
+    const name = 'historical-v4-reference-1-0'
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v4AttemptFixture('arrangement', 'score')
+    const historical = { ...fixture.attempt, engineVersions: { ...fixture.attempt.engineVersions, referenceComparison: 'reference-comparison-1.0.0' }, referenceComparison: { ...fixture.attempt.referenceComparison, diagnostics: { ...fixture.attempt.referenceComparison.diagnostics, referenceComparisonEngineVersion: 'reference-comparison-1.0.0' } } }
+    await putRawAttempt(name, historical)
+    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(historical)
   })
 
   it('persists score-version-specific Voicing and reference preferences and validates reference integrity', async () => {
