@@ -10,8 +10,9 @@ import type { PerformanceResults } from '../performance-results/types'
 import type { TimingAnalysisResult } from '../timing-analysis/types'
 import type { VoicingAnalysisResult, VoicingIntentProfile } from '../voicing-analysis/types'
 import type { ReferenceComparisonResult } from '../reference-comparison/types'
+import type { TechniqueAnalysisResult, TechniqueChallengeProfile, TechniqueExerciseSnapshot, TechniqueFacetResult, TechniqueModuleId, TechniqueNovelty } from '../technique/types'
 
-export const PERSISTENCE_SCHEMA_VERSION = 3
+export const PERSISTENCE_SCHEMA_VERSION = 4
 export const PIANO_PROGRESS_DB_NAME = 'clef-piano-progress'
 
 export interface PersistedWork extends Work {
@@ -220,6 +221,57 @@ export interface StorageCounts {
   readonly repertoireEntries: number
   readonly practiceSessions: number
   readonly performanceAttempts: number
+  readonly techniqueAttempts: number
+}
+
+export interface TechniqueAttemptRecordV1 {
+  readonly schemaVersion: 1
+  readonly id: string
+  readonly moduleId: TechniqueModuleId
+  readonly templateId: string
+  readonly exerciseInstanceId: string
+  readonly performedAt: string
+  readonly exercise: TechniqueExerciseSnapshot
+  readonly expectedPerformancePlan: ExpectedPerformancePlan
+  readonly recording: PerformanceRecording
+  readonly alignment: AlignmentResult
+  readonly noteGrading: NoteGradingResult
+  readonly timingAnalysis: TimingAnalysisResult
+  readonly techniqueAnalysis: TechniqueAnalysisResult
+  readonly novelty: TechniqueNovelty
+  readonly engineVersions: {
+    readonly exercise: 'technique-exercise-1.0.0'
+    readonly parser: string
+    readonly alignment: string
+    readonly noteGrading: string
+    readonly timingAnalysis: string
+    readonly techniqueAnalysis: 'technique-analysis-1.0.0'
+  }
+}
+
+export type TechniqueAttemptRecord = TechniqueAttemptRecordV1
+
+export interface TechniqueAttemptSummary {
+  readonly id: string
+  readonly moduleId: TechniqueModuleId
+  readonly templateId: string
+  readonly exerciseInstanceId: string
+  readonly performedAt: string
+  readonly durationMs: number
+  readonly challenge: TechniqueChallengeProfile
+  readonly completionRatio: number
+  readonly facets: readonly Pick<TechniqueFacetResult, 'id' | 'label' | 'status' | 'score' | 'reliability' | 'evidenceCount' | 'coverage'>[]
+}
+
+export interface TechniqueAttemptSaveResult { readonly created: boolean; readonly summary: TechniqueAttemptSummary }
+
+export function createTechniqueAttemptSummary(attempt: TechniqueAttemptRecord): TechniqueAttemptSummary {
+  return {
+    id: attempt.id, moduleId: attempt.moduleId, templateId: attempt.templateId, exerciseInstanceId: attempt.exerciseInstanceId,
+    performedAt: attempt.performedAt, durationMs: attempt.recording.durationMs, challenge: attempt.exercise.challenge,
+    completionRatio: attempt.techniqueAnalysis.completion.ratio,
+    facets: attempt.techniqueAnalysis.facets.map(({ id, label, status, score, reliability, evidenceCount, coverage }) => ({ id, label, status, score, reliability, evidenceCount, coverage })),
+  }
 }
 
 export interface AttemptSaveResult {

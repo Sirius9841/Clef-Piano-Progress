@@ -58,7 +58,9 @@ Interpretation-integrity hardening: current-intent reference Voicing with immuta
 
 ## Phase 12+
 
-Phase 12 begins Technique Lab exercises and transferable skill measurement.
+## Phase 12 — complete
+
+Technique Lab now provides eight deterministic, notation-backed MIDI exercise modules, challenge-qualified independent facets, exact-instance sight-reading novelty, dedicated local-first TechniqueAttempt persistence, and frozen historical results. It intentionally does not create an overall score, Skill Rating, Mastery, or repertoire progress claim.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 

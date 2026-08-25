@@ -160,6 +160,16 @@ This repository builds a serious piano progress and performance-analysis applica
 - Web MIDI teardown detaches local handlers and selection before awaiting device close. Close failures and stale async operations must never restore an old input or clear a newer one.
 - MidiProvider state and errors follow only the latest async selection request; stale completions never override the service's authoritative input.
 
+## Technique Lab rules
+
+- TechniqueAttempt is a separate immutable record family; never attach it to Work, Arrangement, ScoreVersion, PracticeSession, or PerformanceAttempt.
+- Generated exercises are deterministic from an explicit spec, template, and seed, then compile through the canonical MusicXML parser and expected-performance builder.
+- Every Technique facet retains exact challenge context. Never collapse challenge into one difficulty number or combine facets into an overall score, Skill Rating, Mastery, or headline progress claim.
+- Technique analysis consumes frozen Alignment, NoteGrading, and TimingAnalysis snapshots; it never reparses, realigns, or regrades.
+- Wrong, missed, additional, and unsafe pitch evidence cannot become a second timing penalty. Sparse timing evidence is unavailable, never zero.
+- Sight-reading first-pass evidence is available only for the first saved attempt of an exact generated exercise instance. Repeats may retain ordinary facets but never recreate novelty.
+- Do not infer fingering, physical hand use, tension, relaxation, biomechanics, injury risk, acoustic tone, velocity quality, or pedal quality from Phase 12 evidence.
+
 ## Pedal-analysis rules
 
 - Pedal is an independent dimension based on authored damper notation and MIDI CC64. Extra controller changes are diagnostics and are never automatically wrong.

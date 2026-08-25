@@ -1,36 +1,24 @@
-import { Activity, ArrowRight, Blocks, CircleGauge, Eye, Gauge, Hand, Layers3, MoveHorizontal, Play, TimerReset } from 'lucide-react'
-import { Button, PageHeader, StatusPill } from '../components/ui'
+import { Activity, ArrowRight, Blocks, CircleGauge, Eye, Gauge, Layers3, MoveHorizontal, Play, TimerReset } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { PageHeader, StatusPill } from '../components/ui'
+import { TECHNIQUE_MODULES } from '../features/technique/catalog'
+import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
 
-const modules = [
-  { name: 'Sight reading', description: 'Read unfamiliar notation fluently while keeping a steady musical pulse.', focus: 'Pitch, continuity, and reading range', icon: Eye },
-  { name: 'Rhythm', description: 'Build dependable subdivision and coordination across changing patterns.', focus: 'Pulse, subdivision, and meter', icon: Activity },
-  { name: 'Chord fluency', description: 'Recognize and voice common chord shapes across the keyboard.', focus: 'Shapes, inversions, and voicing', icon: Blocks },
-  { name: 'Scales', description: 'Develop even fingering and controlled motion through every key area.', focus: 'Evenness, fingering, and control', icon: Layers3 },
-  { name: 'Arpeggios', description: 'Connect broken-chord patterns with relaxed lateral movement.', focus: 'Rotation, crossings, and continuity', icon: MoveHorizontal },
-  { name: 'Octaves', description: 'Prepare efficient repeated-octave movement without fabricated scoring.', focus: 'Release, alignment, and endurance', icon: Hand },
-  { name: 'Keyboard jumps', description: 'Train accurate spatial movement between distant registers.', focus: 'Distance, landing, and recovery', icon: ArrowRight },
-  { name: 'Tempo control', description: 'Practice stable tempo changes without conflating speed and rhythm.', focus: 'Stability, transitions, and pacing', icon: TimerReset },
-] as const
+const icons = { 'sight-reading': Eye, rhythm: Activity, 'chord-fluency': Blocks, scales: Layers3, arpeggios: MoveHorizontal, octaves: Gauge, 'keyboard-jumps': ArrowRight, 'tempo-control': TimerReset } as const
 
 export function TechniquePage() {
+  const history = useRepositoryQuery((repository) => repository.listTechniqueAttemptSummaries(), 'technique-home')
+  const attempts = history.status === 'ready' ? history.data : []
   return (
     <div className="page">
-      <PageHeader eyebrow="Transferable skills" title="Technique Lab" description="Build the fundamentals that carry across every piece." action={<StatusPill tone="violet"><CircleGauge size={13} /> Exercises arrive in Phase 10</StatusPill>} />
-      <section className="lab-overview panel reveal delay-1">
-        <div className="score-ring large"><div><CircleGauge /><span>Future lab</span></div></div>
-        <div><span>Transferable technique</span><h2>Focused exercises, grounded in real evidence.</h2><p>Skill ratings and recommendations are not calculated yet. Future exercises will measure abilities separately from repertoire results.</p></div>
-        <div className="lab-highlight"><small>Current availability</small><strong>Preview</strong><StatusPill tone="neutral">No ratings yet</StatusPill></div>
-      </section>
-      <div className="technique-grid reveal delay-2">{modules.map(({ name, description, focus, icon: Icon }) => (
-        <article className="technique-card" key={name}>
-          <div className="technique-card-top"><span className="module-icon"><Icon /></span><StatusPill>Future module</StatusPill></div>
-          <h2>{name}</h2><p>{description}</p>
-          <div className="rating-row"><span>Planned focus</span><strong>Not measured</strong></div>
-          <small>{focus}</small>
-          <Button variant="secondary" icon={Play} disabled>Exercises not available</Button>
-        </article>
-      ))}</div>
-      <div className="honest-notice"><Gauge /><div><strong>Truthful product preview</strong><p>No exercise history, skill rating, strongest-skill claim, or personalized recommendation is shown until Technique Lab sessions and measurement semantics exist.</p></div></div>
+      <PageHeader eyebrow="Transferable evidence" title="Technique Lab" description="Focused MIDI exercises with independent, challenge-qualified facets." action={<StatusPill tone="violet"><CircleGauge size={13} /> {attempts.length} saved take{attempts.length === 1 ? '' : 's'}</StatusPill>} />
+      <section className="lab-overview panel reveal delay-1"><div className="score-ring large"><div><CircleGauge /><span>Local lab</span></div></div><div><span>Measured, not ranked</span><h2>Practice one transferable demand at a time.</h2><p>Each result preserves its exact generated exercise and challenge. The Lab does not create an overall score, Mastery, or Skill Rating.</p></div><div className="lab-highlight"><small>Evidence model</small><strong>Facets</strong><StatusPill tone="neutral">Challenge shown</StatusPill></div></section>
+      <div className="technique-grid reveal delay-2">{TECHNIQUE_MODULES.map((module) => {
+        const Icon = icons[module.id]
+        const count = attempts.filter((attempt) => attempt.moduleId === module.id).length
+        return <article className="technique-card" key={module.id}><div className="technique-card-top"><span className="module-icon"><Icon /></span><StatusPill>{count} saved</StatusPill></div><h2>{module.name}</h2><p>{module.description}</p><div className="rating-row"><span>Independent evidence</span><strong>{module.facets.length} facets</strong></div><small>{module.facets.join(' · ')}</small><Link className="button secondary" to={`/technique/${module.id}`}><Play size={14} /> Open workspace</Link></article>
+      })}</div>
+      {attempts.length > 0 && <section className="panel technique-history"><div className="section-heading"><div><span>Saved locally</span><h2>Recent Technique takes</h2></div></div>{attempts.slice(0, 8).map((attempt) => <Link to={`/technique/history/${attempt.id}`} className="technique-history-row" key={attempt.id}><span><strong>{TECHNIQUE_MODULES.find((item) => item.id === attempt.moduleId)?.name}</strong><small>{new Date(attempt.performedAt).toLocaleString()}</small></span><span>{Math.round(attempt.completionRatio * 100)}% reached</span><ArrowRight size={15} /></Link>)}</section>}
     </div>
   )
 }

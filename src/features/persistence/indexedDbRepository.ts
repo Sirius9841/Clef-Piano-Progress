@@ -11,6 +11,7 @@ import {
   PERSISTENCE_SCHEMA_VERSION,
   PIANO_PROGRESS_DB_NAME,
   createAttemptSummary,
+  createTechniqueAttemptSummary,
   type AttemptSaveInput,
   type AttemptSaveResult,
   type AttemptSummary,
@@ -28,7 +29,11 @@ import {
   type RepertoireEntry,
   type RepertoireListItem,
   type StorageCounts,
+  type TechniqueAttemptRecord,
+  type TechniqueAttemptSaveResult,
+  type TechniqueAttemptSummary,
 } from './types'
+import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_MODULE_IDS } from '../technique/types'
 
 const STORE = {
   works: 'works',
@@ -38,11 +43,13 @@ const STORE = {
   sessions: 'practiceSessions',
   attempts: 'performanceAttempts',
   summaries: 'attemptSummaries',
+  techniqueAttempts: 'techniqueAttempts',
+  techniqueSummaries: 'techniqueAttemptSummaries',
 } as const
 
 type StoreName = (typeof STORE)[keyof typeof STORE]
 
-export type PersistenceFaultStage = 'after-attempt-write'
+export type PersistenceFaultStage = 'after-attempt-write' | 'after-technique-attempt-write'
 
 export interface IndexedDbRepositoryOptions {
   readonly databaseName?: string
@@ -86,6 +93,29 @@ function assertRecord(value: unknown, label: string): asserts value is { id: str
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object'
+}
+
+function assertTechniqueAttempt(value: unknown): asserts value is TechniqueAttemptRecord {
+  if (!isObjectRecord(value) || value.schemaVersion !== 1 || typeof value.id !== 'string' || typeof value.performedAt !== 'string' || !isCanonicalIsoTimestamp(value.performedAt)
+    || typeof value.moduleId !== 'string' || !(TECHNIQUE_MODULE_IDS as readonly string[]).includes(value.moduleId) || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string'
+    || !isObjectRecord(value.exercise) || value.exercise.id !== value.exerciseInstanceId || !isObjectRecord(value.expectedPerformancePlan) || !isObjectRecord(value.recording)
+    || !isObjectRecord(value.alignment) || !isObjectRecord(value.noteGrading) || !isObjectRecord(value.timingAnalysis) || !isObjectRecord(value.techniqueAnalysis)
+    || !isObjectRecord(value.engineVersions) || value.engineVersions.exercise !== TECHNIQUE_EXERCISE_ENGINE_VERSION || value.engineVersions.techniqueAnalysis !== TECHNIQUE_ANALYSIS_ENGINE_VERSION) {
+    throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt record is invalid.')
+  }
+  const exerciseSpec = isObjectRecord(value.exercise.spec) ? value.exercise.spec : null
+  const practiceContext = isObjectRecord(value.recording.practiceContext) ? value.recording.practiceContext : null
+  if (!exerciseSpec || !practiceContext || exerciseSpec.moduleId !== value.moduleId || exerciseSpec.templateId !== value.templateId || value.techniqueAnalysis.exerciseInstanceId !== value.exerciseInstanceId
+    || value.expectedPerformancePlan.id !== practiceContext.expectedPerformancePlanId || value.alignment.recordingId !== value.recording.id
+    || value.noteGrading.alignmentId !== value.alignment.id || value.timingAnalysis.noteGradingId !== value.noteGrading.id || value.techniqueAnalysis.timingAnalysisId !== value.timingAnalysis.id) {
+    throw new PianoStorageError('CORRUPT_RECORD', 'A TechniqueAttempt snapshot has inconsistent provenance.')
+  }
+}
+
+function assertTechniqueSummary(value: unknown): asserts value is TechniqueAttemptSummary {
+  if (!isObjectRecord(value) || typeof value.id !== 'string' || typeof value.moduleId !== 'string' || !(TECHNIQUE_MODULE_IDS as readonly string[]).includes(value.moduleId)
+    || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string' || typeof value.performedAt !== 'string' || !isCanonicalIsoTimestamp(value.performedAt)
+    || !Array.isArray(value.facets)) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt summary is invalid.')
 }
 
 function isNullableInteger(value: unknown): value is number | null {
@@ -681,6 +711,18 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       const sessions = transaction.objectStore(STORE.sessions)
       if (!sessions.indexNames.contains('endedAt')) sessions.createIndex('endedAt', 'endedAt')
     }
+    if (oldVersion < 4) {
+      const attempts = database.createObjectStore(STORE.techniqueAttempts, { keyPath: 'id' })
+      attempts.createIndex('performedAt', 'performedAt')
+      attempts.createIndex('moduleId', 'moduleId')
+      attempts.createIndex('templateId', 'templateId')
+      attempts.createIndex('exerciseInstanceId', 'exerciseInstanceId')
+      const summaries = database.createObjectStore(STORE.techniqueSummaries, { keyPath: 'id' })
+      summaries.createIndex('performedAt', 'performedAt')
+      summaries.createIndex('moduleId', 'moduleId')
+      summaries.createIndex('templateId', 'templateId')
+      summaries.createIndex('exerciseInstanceId', 'exerciseInstanceId')
+    }
   }
 
   private async getAll<T>(storeName: StoreName): Promise<T[]> {
@@ -996,6 +1038,61 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
     return values.sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id))
   }
 
+  async getTechniqueAttempt(id: string): Promise<TechniqueAttemptRecord | null> {
+    const value = await this.getById<unknown>(STORE.techniqueAttempts, id)
+    if (value === null) return null
+    assertTechniqueAttempt(value)
+    return value
+  }
+
+  async listTechniqueAttemptSummaries(moduleId?: string): Promise<readonly TechniqueAttemptSummary[]> {
+    const raw = moduleId ? await this.getAllByIndex<unknown>(STORE.techniqueSummaries, 'moduleId', moduleId) : await this.getAll<unknown>(STORE.techniqueSummaries)
+    return raw.map((value) => { assertTechniqueSummary(value); return value }).sort(compareIsoDescending)
+  }
+
+  async countTechniqueAttemptsForInstance(exerciseInstanceId: string): Promise<number> {
+    const database = await this.openDatabase()
+    const transaction = database.transaction(STORE.techniqueAttempts, 'readonly')
+    const count = await requestValue(transaction.objectStore(STORE.techniqueAttempts).index('exerciseInstanceId').count(idbRangeFor(exerciseInstanceId)))
+    await transactionComplete(transaction)
+    return count
+  }
+
+  async saveTechniqueAttempt(attempt: TechniqueAttemptRecord): Promise<TechniqueAttemptSaveResult> {
+    try { assertTechniqueAttempt(attempt) } catch (cause) { throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The Technique attempt contains invalid snapshot provenance.', cause) }
+    const database = await this.openDatabase()
+    const transaction = database.transaction([STORE.techniqueAttempts, STORE.techniqueSummaries], 'readwrite')
+    const completion = transactionComplete(transaction)
+    try {
+      const attempts = transaction.objectStore(STORE.techniqueAttempts)
+      const summaries = transaction.objectStore(STORE.techniqueSummaries)
+      const existing = await requestValue(attempts.get(attempt.id))
+      if (existing) {
+        assertTechniqueAttempt(existing)
+        const existingSummary = await requestValue(summaries.get(attempt.id)) as unknown
+        assertTechniqueSummary(existingSummary)
+        await completion
+        return { created: false, summary: existingSummary }
+      }
+      const priorInstanceCount = await requestValue(attempts.index('exerciseInstanceId').count(idbRangeFor(attempt.exerciseInstanceId)))
+      if (attempt.novelty.priorSavedAttemptCount !== priorInstanceCount || attempt.novelty.firstSavedAttempt !== (priorInstanceCount === 0)) {
+        throw new PianoStorageError('REFERENTIAL_INTEGRITY', 'The Technique sight-reading novelty snapshot is stale for this exact exercise instance.')
+      }
+      const summary = createTechniqueAttemptSummary(attempt)
+      attempts.add(attempt)
+      this.faultInjector?.('after-technique-attempt-write')
+      summaries.add(summary)
+      await completion
+      this.notify()
+      return { created: true, summary }
+    } catch (cause) {
+      try { transaction.abort() } catch { /* already closed */ }
+      void completion.catch(() => undefined)
+      if (cause instanceof PianoStorageError) throw cause
+      throw asPianoStorageError(cause)
+    }
+  }
+
   async saveAttempt(input: AttemptSaveInput): Promise<AttemptSaveResult> {
     const { attempt, session } = input
     try {
@@ -1186,7 +1283,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
 
   async getCounts(): Promise<StorageCounts> {
     const database = await this.openDatabase()
-    const names = [STORE.works, STORE.arrangements, STORE.scoreVersions, STORE.repertoire, STORE.sessions, STORE.attempts] as const
+    const names = [STORE.works, STORE.arrangements, STORE.scoreVersions, STORE.repertoire, STORE.sessions, STORE.attempts, STORE.techniqueAttempts] as const
     const transaction = database.transaction(names, 'readonly')
     const counts = await Promise.all(names.map((name) => requestValue(transaction.objectStore(name).count())))
     await transactionComplete(transaction)
@@ -1197,6 +1294,7 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       repertoireEntries: counts[3] ?? 0,
       practiceSessions: counts[4] ?? 0,
       performanceAttempts: counts[5] ?? 0,
+      techniqueAttempts: counts[6] ?? 0,
     }
   }
 

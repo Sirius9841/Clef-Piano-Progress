@@ -16,6 +16,9 @@ import type {
   RepertoireEntry,
   RepertoireListItem,
   StorageCounts,
+  TechniqueAttemptRecord,
+  TechniqueAttemptSaveResult,
+  TechniqueAttemptSummary,
 } from './types'
 import type { RepertoireStatus } from '../../domain/music'
 import type { VoiceLane, VoicingIntentProfile } from '../voicing-analysis/types'
@@ -32,6 +35,10 @@ export interface PianoProgressRepository {
   getAttempt(id: string): Promise<PerformanceAttemptRecord | null>
   listAttemptSummaries(arrangementId?: string): Promise<readonly AttemptSummary[]>
   listSessions(arrangementId?: string): Promise<readonly PracticeSessionRecord[]>
+  getTechniqueAttempt(id: string): Promise<TechniqueAttemptRecord | null>
+  listTechniqueAttemptSummaries(moduleId?: string): Promise<readonly TechniqueAttemptSummary[]>
+  countTechniqueAttemptsForInstance(exerciseInstanceId: string): Promise<number>
+  saveTechniqueAttempt(attempt: TechniqueAttemptRecord): Promise<TechniqueAttemptSaveResult>
   saveAttempt(input: AttemptSaveInput): Promise<AttemptSaveResult>
   setVoicingIntentProfile(arrangementId: string, scoreVersionId: string, profile: VoicingIntentProfile | null, lanes: readonly Pick<VoiceLane, 'id' | 'ambiguous'>[]): Promise<PersistedArrangement>
   setInterpretationReference(arrangementId: string, scoreVersionId: string, attemptId: string | null): Promise<PersistedArrangement>

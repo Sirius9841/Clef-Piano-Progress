@@ -16,6 +16,8 @@ Sustain changes preserve every raw CC64 value and are counted. Runtime state sep
 
 Phase 9 key Articulation still uses the physical attack-to-release span and never extends release to pedal-up. Phase 10 derives separate controller-based damper-release context and pedal timing without rewriting Articulation. Intermediate controller values are evidence of a continuous-capable stream, not calibrated half-pedal depth or acoustic duration.
 
+Phase 12 Technique workspaces use the same authoritative recorder and device-disconnect lifecycle. Each take records against its generated ExpectedPerformancePlan identity. Raw attacks, releases, velocities, sustain, device context, arrival sequence, and warnings are preserved in the TechniqueAttempt, even though Phase 12 Technique facets make no velocity- or pedal-quality claim.
+
 ## Disconnects and statistics
 
 A selected-device disconnect stops capture with `device-disconnected`, retaining all data collected so far. A disconnect means either that the selected ID disappears or that the same ID remains present with a state other than `connected`. The provider clears selection, active keys, and sustain; its recording lifecycle then finalizes the active take. Reconnecting only makes the input available for explicit reselection. It never appends to or resumes the frozen take, and a subsequent Start creates a fresh recording ID and buffer.

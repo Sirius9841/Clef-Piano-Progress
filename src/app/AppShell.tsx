@@ -10,8 +10,8 @@ import {
   Settings,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
 
 const navigation = [
@@ -24,9 +24,12 @@ const navigation = [
 ]
 
 export function AppShell() {
+  const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const week = useRepositoryQuery((repository) => repository.getProgress('7d'), 'shell-week')
   const weekMinutes = week.status === 'ready' ? Math.round(week.data.practiceTimeMs / 60_000) : 0
+
+  useEffect(() => { window.scrollTo({ top: 0, left: 0 }) }, [location.pathname])
 
   return (
     <div className="app-shell">

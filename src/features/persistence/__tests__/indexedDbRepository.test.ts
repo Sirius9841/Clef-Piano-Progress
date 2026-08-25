@@ -236,14 +236,38 @@ function createLegacyV1Database(name: string): Promise<void> {
   })
 }
 
+function createLegacyV3Database(name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, 3)
+    request.onupgradeneeded = () => {
+      for (const storeName of ['works', 'arrangements', 'scoreVersions', 'repertoire', 'practiceSessions', 'performanceAttempts', 'attemptSummaries']) request.result.createObjectStore(storeName, { keyPath: 'id' })
+      request.transaction?.objectStore('works').add({ id: 'preserved-work', title: 'Preserved', composer: 'Test', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' })
+    }
+    request.onsuccess = () => { request.result.close(); resolve() }
+    request.onerror = () => reject(request.error)
+  })
+}
+
 describe('IndexedDbPianoProgressRepository', () => {
   it('initializes a fresh versioned database and starts empty', async () => {
     const repo = repository('fresh-db')
     await repo.initialize()
-    await expect(repo.getCounts()).resolves.toEqual({ works: 0, arrangements: 0, scoreVersions: 0, repertoireEntries: 0, practiceSessions: 0, performanceAttempts: 0 })
+    await expect(repo.getCounts()).resolves.toEqual({ works: 0, arrangements: 0, scoreVersions: 0, repertoireEntries: 0, practiceSessions: 0, performanceAttempts: 0, techniqueAttempts: 0 })
     const database = await openDatabase('fresh-db')
-    expect(database.version).toBe(3)
-    expect([...database.objectStoreNames]).toEqual(['arrangements', 'attemptSummaries', 'performanceAttempts', 'practiceSessions', 'repertoire', 'scoreVersions', 'works'])
+    expect(database.version).toBe(4)
+    expect([...database.objectStoreNames]).toEqual(['arrangements', 'attemptSummaries', 'performanceAttempts', 'practiceSessions', 'repertoire', 'scoreVersions', 'techniqueAttemptSummaries', 'techniqueAttempts', 'works'])
+    database.close()
+  })
+
+  it('upgrades V3 additively and preserves existing data', async () => {
+    await createLegacyV3Database('legacy-v3-db')
+    const repo = repository('legacy-v3-db')
+    await repo.initialize()
+    await expect(repo.listWorks()).resolves.toMatchObject([{ id: 'preserved-work' }])
+    const database = await openDatabase('legacy-v3-db')
+    expect(database.version).toBe(4)
+    expect(database.objectStoreNames.contains('techniqueAttempts')).toBe(true)
+    expect(database.objectStoreNames.contains('techniqueAttemptSummaries')).toBe(true)
     database.close()
   })
 
@@ -497,7 +521,7 @@ describe('IndexedDbPianoProgressRepository', () => {
   })
 
   it('round-trips a V2 expression snapshot without changing the IndexedDB schema', async () => {
-    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
     const repo = repository('attempt-v2-db')
     const imported = await repo.importScore(importInput())
     const fixture = v2AttemptFixture(imported.arrangement.id, imported.scoreVersion.id)
@@ -536,7 +560,7 @@ describe('IndexedDbPianoProgressRepository', () => {
     const loaded = await repo.getAttempt(fixture.attempt.id)
     expect(loaded).toEqual(fixture.attempt)
     expect(loaded).toMatchObject({ schemaVersion: 4, engineVersions: { voicingAnalysis: 'voicing-analysis-1.0.0', referenceComparison: 'reference-comparison-1.1.0' } })
-    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
   })
 
   it.each([
@@ -726,7 +750,7 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(await repo.listRepertoire()).toEqual([])
     expect(await repo.getAttempt(fixture.attempt.id)).not.toBeNull()
     await repo.clearAll()
-    await expect(repo.getCounts()).resolves.toEqual({ works: 0, arrangements: 0, scoreVersions: 0, repertoireEntries: 0, practiceSessions: 0, performanceAttempts: 0 })
+    await expect(repo.getCounts()).resolves.toEqual({ works: 0, arrangements: 0, scoreVersions: 0, repertoireEntries: 0, practiceSessions: 0, performanceAttempts: 0, techniqueAttempts: 0 })
   })
 
   it('surfaces malformed persisted data as a typed corruption error', async () => {
@@ -822,7 +846,7 @@ describe('IndexedDbPianoProgressRepository', () => {
       engineVersions: { pedalAnalysis: 'pedal-analysis-1.1.1' },
       pedalAnalysis: { status: 'unavailable', score: null, diagnostics: { pedalAnalysisEngineVersion: 'pedal-analysis-1.1.1' } },
     })
-    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
   })
 
   it('keeps frozen pedal-analysis-1.0.0 V3 snapshots readable without 1.1 diagnostics', async () => {
@@ -832,7 +856,7 @@ describe('IndexedDbPianoProgressRepository', () => {
     const fixture = legacyV3AttemptFixture('arrangement', 'score')
     await putRawAttempt(name, fixture.attempt)
     await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(fixture.attempt)
-    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
   })
 
   it('keeps frozen pedal-analysis-1.1.0 V3 snapshots readable with the modern shape', async () => {
@@ -842,7 +866,7 @@ describe('IndexedDbPianoProgressRepository', () => {
     const fixture = historicalV11AttemptFixture('arrangement', 'score')
     await putRawAttempt(name, fixture.attempt)
     await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(fixture.attempt)
-    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
   })
 
   it.each([

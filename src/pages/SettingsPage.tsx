@@ -44,7 +44,7 @@ export function SettingsPage() {
         <div className="panel local-storage-panel">
           {counts.status === 'loading' && <p>Counting local records…</p>}
           {counts.status === 'error' && <p>{counts.error.message}</p>}
-          {counts.status === 'ready' && <div className="storage-counts"><span><strong>{counts.data.works}</strong> Works</span><span><strong>{counts.data.arrangements}</strong> Arrangements</span><span><strong>{counts.data.scoreVersions}</strong> ScoreVersions</span><span><strong>{counts.data.practiceSessions}</strong> Sessions</span><span><strong>{counts.data.performanceAttempts}</strong> Attempts</span></div>}
+          {counts.status === 'ready' && <div className="storage-counts"><span><strong>{counts.data.works}</strong> Works</span><span><strong>{counts.data.arrangements}</strong> Arrangements</span><span><strong>{counts.data.scoreVersions}</strong> ScoreVersions</span><span><strong>{counts.data.practiceSessions}</strong> Sessions</span><span><strong>{counts.data.performanceAttempts}</strong> Performance takes</span><span><strong>{counts.data.techniqueAttempts}</strong> Technique takes</span></div>}
           {clearMessage && <div className={clearState === 'error' ? 'renderer-inline-error' : 'save-confirmation'}>{clearMessage}</div>}
           <div className="local-data-actions"><div><strong>Clear all local data</strong><p>Browser storage can also be cleared by browser or operating-system controls. Clef has no remote copy.</p></div><button className="button ghost danger" disabled={clearState === 'clearing'} onClick={() => void clearAll()}><Trash2 size={16} /> {clearState === 'clearing' ? 'Clearing…' : 'Clear all data'}</button></div>
         </div>
@@ -57,7 +57,7 @@ export function SettingsPage() {
           <button disabled><span><Eye /></span><div><strong>Visual preferences</strong><p>Keyboard labels, density and progress display preferences.</p><StatusPill>Coming later</StatusPill></div><ChevronRight /></button>
         </div>
       </section>
-      <div className="settings-note"><Info /><p>MIDI access and saved performance history stay on this device in browser-local storage. There is no cloud backup, account sync, or upload in Phase 10.</p></div>
+      <div className="settings-note"><Info /><p>MIDI access, repertoire history, and Technique Lab history stay on this device in browser-local storage. There is no cloud backup, account sync, or upload in Phase 12.</p></div>
     </div>
   )
 }

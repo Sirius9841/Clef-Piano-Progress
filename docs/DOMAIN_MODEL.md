@@ -45,6 +45,8 @@ Phase 2 produces a `NormalizedScore` from validated canonical MusicXML. Phase 8 
 
 A PerformanceAttempt is one persisted recording tied to an Arrangement, exact ScoreVersion, PracticeSession, timestamp, scope, speed, and engine versions. V1 retains lossless raw MIDI plus AlignmentResult, NoteGradingResult, TimingAnalysisResult, and PerformanceResults. Phase 9 V2 additionally retains the exact ExpressionAnalysisResult. Phase 10 V3 additionally retains the exact PedalAnalysisResult. Phase 11 V4 additionally freezes exact VoicingAnalysisResult and ReferenceComparisonResult snapshots. Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and Voicing remain separate; no overall Performance Score is calculated.
 
+A `TechniqueAttemptRecordV1` is a separate immutable measurement record. It identifies one deterministic Technique exercise instance and freezes its exercise specification, generated MusicXML, challenge profile, expected plan, raw MIDI, reused alignment/note/timing snapshots, Technique facets, novelty state, and engine versions. It has no Work, Arrangement, ScoreVersion, PracticeSession, or PerformanceAttempt identity. See `TECHNIQUE_LAB.md`.
+
 ## Mastery
 
 Mastery estimates current knowledge of one Arrangement across multiple signals. It is not simply the best Performance Score. The final formula is intentionally deferred.
