@@ -4,6 +4,8 @@ import type { GradingScopeType } from '../note-grading/types'
 export type PedalMetricStatus = 'ready' | 'unavailable'
 export type PedalReliability = 'reliable' | 'limited' | 'provisional' | 'unavailable'
 export type PedalControllerEvidenceMode = 'unknown' | 'binary-like' | 'continuous-evidence'
+export type PedalChannelMode = 'none' | 'single-channel' | 'multi-channel-ambiguous'
+export type PedalTimingAnchorSource = 'local-performed' | 'global-score-clock'
 
 export interface PedalScope {
   readonly type: GradingScopeType
@@ -17,7 +19,8 @@ export interface PedalRawSample {
   readonly id: string
   readonly sequence: number
   readonly relativeMs: number
-  readonly channel: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly channel?: number
   readonly value: number
   readonly down: boolean
 }
@@ -28,6 +31,7 @@ export interface PedalTransition {
   readonly relativeMs: number
   readonly sequence: number
   readonly value: number
+  readonly channel: number
   readonly sourceSampleId: string
 }
 
@@ -44,6 +48,12 @@ export interface PedalControllerEvidence {
   readonly knownStateDurationMs: number
   readonly knownStateCoverage: number | null
   readonly extraUnassignedTransitionCount: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly channelMode?: PedalChannelMode
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly channels?: readonly number[]
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly authoritativeChannel?: number | null
 }
 
 export interface PedalTimeline {
@@ -58,8 +68,22 @@ export interface PedalTargetEvent {
   readonly sourceEventId: string
   readonly position: MusicalTime
   readonly expectedPerformedMs: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly timingAnchor?: PedalTimingAnchor
   readonly measureIndex: number
   readonly measureNumber: string
+}
+
+export interface PedalTimingAnchor {
+  readonly source: PedalTimingAnchorSource
+  readonly scorePosition: MusicalTime
+  readonly globalPredictedMs: number
+  readonly anchoredPerformedMs: number
+  readonly anchorOffsetFromGlobalMs: number
+  readonly beforeExpectedGroupId: string | null
+  readonly afterExpectedGroupId: string | null
+  readonly matchedPerformedGroupIds: readonly string[]
+  readonly confidence: number
 }
 
 export interface PedalPhraseTarget {
@@ -82,6 +106,20 @@ export interface PedalObservation {
   readonly kind: 'start' | 'change' | 'stop'
   readonly score: number
   readonly expectedPerformedMs: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly timingAnchorSource?: PedalTimingAnchorSource
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly globalExpectedMs?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly anchoredExpectedMs?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly anchorOffsetFromGlobalMs?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly beforeExpectedGroupId?: string | null
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly afterExpectedGroupId?: string | null
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly anchorPerformedGroupIds?: readonly string[]
   readonly transitionIds: readonly string[]
   readonly performedMs: number | null
   readonly timingErrorMs: number | null
@@ -93,8 +131,20 @@ export interface PedalObservation {
 export interface PedalPhraseResult {
   readonly id: string
   readonly targetId: string
-  readonly score: number
+  readonly score: number | null
   readonly observationIds: readonly string[]
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly authoredEventCount?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly analyzedEventCount?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly truncatedEventCount?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly unavailableEventCount?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly coverageRatio?: number
+  /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly completeness?: 'complete' | 'partial' | 'unanalyzed'
 }
 
 export interface PedalExclusion {
@@ -146,7 +196,27 @@ export interface PedalAnalysisResult {
   readonly noteGradingId: string
   readonly expressionAnalysisId: string
   readonly scope: PedalScope
-  readonly coverage: { readonly authoredPhraseCount: number; readonly analyzedPhraseCount: number; readonly ratio: number | null }
+  readonly coverage: {
+    readonly authoredPhraseCount: number
+    readonly analyzedPhraseCount: number
+    readonly ratio: number | null
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly fullyAnalyzedPhraseCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly partiallyAnalyzedPhraseCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly unanalyzedPhraseCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly authoredEventCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly analyzedEventCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly truncatedEventCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly unavailableEventCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly eventCoverageRatio?: number | null
+  }
   readonly controllerEvidence: PedalControllerEvidence
   readonly targets: readonly PedalPhraseTarget[]
   readonly observations: readonly PedalObservation[]
@@ -165,5 +235,11 @@ export interface PedalAnalysisResult {
     readonly authoredPedalEventCount: number
     readonly truncatedTargetCount: number
     readonly predepressedObservationCount: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly localTimingAnchorCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly globalTimingFallbackCount?: number
+    /** Added in pedal-analysis-1.1.0. Absent only on frozen 1.0.0 snapshots. */
+    readonly meanTimingAnchorConfidence?: number | null
   }
 }

@@ -2,9 +2,12 @@ import type { ExpressionAnalysisResult } from '../expression-analysis/types'
 import type { PerformanceRecording } from '../performance/types'
 import type { PedalTimeline, DamperHoldInterval, PedalInteraction } from './types'
 
-export function pedalStateAt(timeline: PedalTimeline, relativeMs: number): boolean | null {
-  let state = timeline.controllerEvidence.initialStateKnown ? timeline.controllerEvidence.initialDown : null
+export function pedalStateAt(timeline: PedalTimeline, relativeMs: number, channel: number): boolean | null {
+  let state = timeline.controllerEvidence.initialStateKnown && timeline.controllerEvidence.authoritativeChannel === channel
+    ? timeline.controllerEvidence.initialDown
+    : null
   for (const sample of timeline.rawSamples) {
+    if (sample.channel !== channel) continue
     if (sample.relativeMs > relativeMs) break
     state = sample.down
   }
@@ -17,8 +20,8 @@ export function buildDamperHolds(recording: PerformanceRecording, expression: Ex
     const press = presses.get(match.recordedKeyPressId)
     if (!press || press.releaseMs === null) return []
     const physicalReleaseMs = press.releaseMs
-    const state = pedalStateAt(timeline, physicalReleaseMs)
-    const laterUp = state === true ? timeline.transitions.find((transition) => transition.kind === 'up' && transition.relativeMs >= physicalReleaseMs) : undefined
+    const state = pedalStateAt(timeline, physicalReleaseMs, press.channel)
+    const laterUp = state === true ? timeline.transitions.find((transition) => transition.channel === press.channel && transition.kind === 'up' && transition.relativeMs >= physicalReleaseMs) : undefined
     return [{
       id: `damper-hold:${press.id}`,
       matchedObservationId: match.id,

@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { makeRecording } from '../../alignment/__tests__/fixtures'
 import type { PerformanceRecording } from '../../performance/types'
 import { buildPedalTimeline } from '../buildPedalTimeline'
+import { pedalStateAt } from '../damperHold'
 
-function recording(values: readonly { ms: number; value: number }[], initial?: PerformanceRecording['initialSustain']): PerformanceRecording {
+function recording(values: readonly { ms: number; value: number; channel?: number }[], initial?: PerformanceRecording['initialSustain']): PerformanceRecording {
   const base = makeRecording([{ midi: 60, ms: 100 }])
   return {
     ...base,
     durationMs: 1_000,
     initialSustain: initial,
-    events: values.map((sample, sequence) => ({ sequence, relativeMs: sample.ms, event: { type: 'sustain' as const, channel: 0, value: sample.value, down: sample.value >= 64, timestampMs: sample.ms } })),
+    events: values.map((sample, sequence) => ({ sequence, relativeMs: sample.ms, event: { type: 'sustain' as const, channel: sample.channel ?? 0, value: sample.value, down: sample.value >= 64, timestampMs: sample.ms } })),
     statistics: { ...base.statistics, eventCount: values.length, sustainChangeCount: values.length },
   }
 }
@@ -32,5 +33,17 @@ describe('performed pedal timeline', () => {
 
   it('keeps legacy recordings without initial state unknown', () => {
     expect(buildPedalTimeline(recording([])).controllerEvidence).toMatchObject({ mode: 'unknown', initialStateKnown: false, knownStateCoverage: null })
+  })
+
+  it('retains channels and tracks effective state independently per channel', () => {
+    const timeline = buildPedalTimeline(recording([
+      { ms: 100, value: 127, channel: 0 },
+      { ms: 110, value: 127, channel: 1 },
+      { ms: 200, value: 0, channel: 0 },
+    ]))
+    expect(timeline.transitions.map((item) => [item.kind, item.channel])).toEqual([['down', 0], ['down', 1], ['up', 0]])
+    expect(timeline.controllerEvidence).toMatchObject({ channelMode: 'multi-channel-ambiguous', channels: [0, 1], authoritativeChannel: null })
+    expect(pedalStateAt(timeline, 250, 0)).toBe(false)
+    expect(pedalStateAt(timeline, 250, 1)).toBe(true)
   })
 })

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { makeResultPlan, recordingForPlan, analyzeResult } from '../../performance-results/__tests__/fixtures'
 import { analyzeExpression } from '../../expression-analysis/analyzeExpression'
 import { analyzePedal } from '../../pedal-analysis/analyzePedal'
+import type { PedalAnalysisResult } from '../../pedal-analysis/types'
 import { clearCurrentTake } from '../../practice/takeWorkspace'
 import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PerformanceAttemptRecordV3, type PracticeSessionRecord } from '../types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
@@ -94,6 +95,37 @@ function v3AttemptFixture(arrangementId: string, scoreVersionId: string, session
     schemaVersion: 3,
     engineVersions: { ...fixture.attempt.engineVersions, pedalAnalysis: pedalAnalysis.diagnostics.pedalAnalysisEngineVersion },
     pedalAnalysis,
+  }
+  return { ...fixture, attempt }
+}
+
+function legacyV3AttemptFixture(arrangementId: string, scoreVersionId: string) {
+  const fixture = v3AttemptFixture(arrangementId, scoreVersionId, 'practice-v3-legacy')
+  const pedal = structuredClone(fixture.attempt.pedalAnalysis) as unknown as Record<string, unknown>
+  const remove = (value: unknown, keys: readonly string[]) => {
+    if (typeof value !== 'object' || value === null) return
+    const record = value as Record<string, unknown>
+    keys.forEach((key) => { delete record[key] })
+  }
+  const diagnostics = pedal.diagnostics as Record<string, unknown>
+  diagnostics.pedalAnalysisEngineVersion = 'pedal-analysis-1.0.0'
+  remove(diagnostics, ['localTimingAnchorCount', 'globalTimingFallbackCount', 'meanTimingAnchorConfidence'])
+  remove(pedal.coverage, ['fullyAnalyzedPhraseCount', 'partiallyAnalyzedPhraseCount', 'unanalyzedPhraseCount', 'authoredEventCount', 'analyzedEventCount', 'truncatedEventCount', 'unavailableEventCount', 'eventCoverageRatio'])
+  remove(pedal.controllerEvidence, ['channelMode', 'channels', 'authoritativeChannel'])
+  const timeline = pedal.timeline as Record<string, unknown>
+  remove(timeline.controllerEvidence, ['channelMode', 'channels', 'authoritativeChannel'])
+  const transitions = timeline.transitions as unknown[]
+  const targets = pedal.targets as Array<Record<string, unknown>>
+  const observations = pedal.observations as unknown[]
+  const phraseResults = pedal.phraseResults as unknown[]
+  transitions.forEach((transition) => remove(transition, ['channel']))
+  targets.forEach((target) => (target.events as unknown[]).forEach((event) => remove(event, ['timingAnchor'])))
+  observations.forEach((observation) => remove(observation, ['timingAnchorSource', 'globalExpectedMs', 'anchoredExpectedMs', 'anchorOffsetFromGlobalMs', 'beforeExpectedGroupId', 'afterExpectedGroupId', 'anchorPerformedGroupIds']))
+  phraseResults.forEach((phrase) => remove(phrase, ['authoredEventCount', 'analyzedEventCount', 'truncatedEventCount', 'unavailableEventCount', 'coverageRatio', 'completeness']))
+  const attempt: PerformanceAttemptRecordV3 = {
+    ...fixture.attempt,
+    engineVersions: { ...fixture.attempt.engineVersions, pedalAnalysis: 'pedal-analysis-1.0.0' },
+    pedalAnalysis: pedal as unknown as PedalAnalysisResult,
   }
   return { ...fixture, attempt }
 }
@@ -666,12 +698,23 @@ describe('IndexedDbPianoProgressRepository', () => {
     expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
   })
 
+  it('keeps frozen pedal-analysis-1.0.0 V3 snapshots readable without 1.1 diagnostics', async () => {
+    const name = 'valid-v3-pedal-legacy-1-0'
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = legacyV3AttemptFixture('arrangement', 'score')
+    await putRawAttempt(name, fixture.attempt)
+    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(fixture.attempt)
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(3)
+  })
+
   it.each([
     ['missing pedal snapshot', (attempt: PerformanceAttemptRecordV3) => { const copy: Record<string, unknown> = { ...attempt }; delete copy.pedalAnalysis; return copy }],
     ['wrong pedal expression identity', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, expressionAnalysisId: 'wrong-expression' } })],
     ['wrong pedal scope boundary', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, scope: { ...attempt.pedalAnalysis.scope, expectedEndGroupId: 'wrong-group' } } })],
     ['wrong pedal engine version', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, engineVersions: { ...attempt.engineVersions, pedalAnalysis: 'wrong-engine' } })],
     ['malformed pedal timeline', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, timeline: null } })],
+    ['missing 1.1 event coverage', (attempt: PerformanceAttemptRecordV3) => ({ ...attempt, pedalAnalysis: { ...attempt.pedalAnalysis, coverage: { authoredPhraseCount: attempt.pedalAnalysis.coverage.authoredPhraseCount, analyzedPhraseCount: attempt.pedalAnalysis.coverage.analyzedPhraseCount, ratio: attempt.pedalAnalysis.coverage.ratio } } })],
   ])('returns a typed corruption error for V3 %s', async (_label, corrupt) => {
     const name = `corrupt-v3-${_label}`
     const repo = repository(name)

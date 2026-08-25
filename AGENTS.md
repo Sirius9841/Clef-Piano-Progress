@@ -24,6 +24,14 @@ This repository builds a serious piano progress and performance-analysis applica
 - Preserve historical performance semantics so results remain reproducible.
 - Headline progress comparisons accept reliable and limited full-plan results only; provisional or unavailable results never create personal-best or trend claims.
 
+## Musical interpretation rules
+
+- Score fidelity and musical interpretation are distinct concepts. A metric may measure structural correctness or agreement with authored notation, but maximum literal conformity is never presented as the uniquely correct or most expressive performance.
+- Musically coherent rubato, phrasing, dynamics, articulation, and pedaling may legitimately differ from a literal score-time realization. Technique and fidelity evidence must preserve that interpretive freedom while still identifying uncontrolled execution.
+- Future reference performances are examples and comparison evidence, never absolute ground truth for musical expression. A difference from one reference is not automatically an error.
+- Do not penalize the same expressive timing decision independently in several dimensions when one dimension already owns that behavior.
+- Do not invent Emotion, Musicality, or Expressiveness scores from MIDI evidence. Artistic quality is not reducible to one objective numeric truth.
+
 ## Engineering rules
 
 - Keep TypeScript strict; avoid `any` and fix type or lint failures instead of suppressing them.
@@ -159,7 +167,11 @@ This repository builds a serious piano progress and performance-analysis applica
 - Unknown initial sustain state remains unknown. Never silently reinterpret a historical missing field as pedal-up.
 - Controller-derived damper intervals are not acoustic sound ends or sounding durations.
 - Pedal/key interaction context never rewrites or double-penalizes frozen Phase 9 Articulation.
-- Pedal analysis reuses both offset and scale from the Phase 4 affine clock and the effective practice-speed tempo timeline; it never independently refits timing.
+- Pedal timing primarily follows trustworthy local Phase 4 expected/performed onset correspondence: exact onset, bounded interpolation, bounded nearby onset, then the affine score clock as fallback. It never independently refits timing.
+- Pedal evaluates coordination with the musical structure the pianist actually performed. Rhythm/Tempo may describe rubato; Pedal must not independently punish the same global timing departure when the controller follows the aligned harmonic arrival.
+- CC64 state and effective transitions are channel-specific. Damper holds use the recorded key's own channel; multi-channel authored-pedal ownership remains explicitly ambiguous rather than merged or guessed.
+- Authored and performed pedal events use bounded, deterministic, non-cascading monotonic matching with explicit match, miss, and skipped-extra semantics. A missed earlier phrase must never steal a later gesture.
+- Phrase and metric coverage distinguish complete, partial, and unanalyzed evidence. Truncated or unknown events reduce coverage and reliability; a trustworthy real miss remains analyzed with score zero.
 - Persist V1 and V2 attempts unchanged and never silently reanalyze their pedal. V3 retains the exact expression and pedal snapshots plus engine versions.
 - Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal remain separate. Pedal does not enter Practice Priority, personal bests, trends, Mastery, Skill Rating, or an overall score.
 

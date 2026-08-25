@@ -40,9 +40,15 @@ Dynamics and articulation analysis: performance-relative normalization, explicit
 
 Authored damper-pedal phrase modeling, lossless CC64 timelines, tempo-aware start/stop/re-pedal timing, independent evidence and reliability, damper-hold/key-interaction context, V3 frozen attempt snapshots, and Practice/history presentation.
 
+## Phase 10.1 — complete
+
+Musical-integrity hardening: rubato-aware local pedal anchors, channel-safe CC64 state and damper holds, bounded non-cascading transition matching, honest partial event coverage, and a permanent distinction between score fidelity and musical interpretation.
+
 ## Phase 11+
 
 Reference-performance expression and advanced voicing, Technique Lab exercises, and transferable skill measurement.
+
+Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Phase 10 keeps Notes, Rhythm, Tempo, Dynamics, Articulation, and Pedal separate. Dynamics, Articulation, and Pedal do not enter personal bests, trends, or Practice Priority. Acoustic tone/loudness, calibrated half-pedal depth, voicing, an overall Performance Score, Mastery, cloud sync, and accounts remain unimplemented.
 

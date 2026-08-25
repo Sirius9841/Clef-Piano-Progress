@@ -2,6 +2,8 @@
 
 Phase 9 adds two independent, score-relative expression dimensions. It does not create an overall Expression, Performance, Musicality, Mastery, or Skill score.
 
+These dimensions describe authored fidelity evidence, not objective artistic quality. Dynamics evaluates authored contrast and direction without claiming one correct emotional curve; Articulation evaluates physical key behavior without claiming literal duration is the only expressive choice. Musically coherent interpretation may differ from a literal realization.
+
 ```text
 NormalizedScore ────────────────┐
 ExpectedPerformancePlan ───────┤
@@ -68,6 +70,8 @@ Phase 9 attempts use `PerformanceAttemptRecordV2` and preserve the exact `Expres
 ## Phase 10 relationship
 
 Phase 10 consumes this exact frozen expression snapshot only for correct-match and key-interaction context. Controller-derived damper intervals never replace physical key releases, change Articulation scores, or combine Dynamics, Articulation, and Pedal. See `PEDAL_ANALYSIS.md`.
+
+Phase 10.1's rubato-aware Pedal anchors do not change Dynamics or Articulation scoring. Timing/Tempo owns temporal shape, physical Articulation remains key behavior, and Pedal contributes separate performed-structure coordination context.
 
 ## Explicit limitations
 

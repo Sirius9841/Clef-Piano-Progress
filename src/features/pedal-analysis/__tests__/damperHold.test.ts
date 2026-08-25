@@ -19,14 +19,14 @@ function expression(): ExpressionAnalysisResult {
   } as unknown as ExpressionAnalysisResult
 }
 
-function recording(values: readonly { ms: number; value: number }[], initialDown = false): PerformanceRecording {
-  const base = makeRecording([{ midi: 60, ms: 10 }])
+function recording(values: readonly { ms: number; value: number; channel?: number }[], initialDown = false, keyChannel = 0): PerformanceRecording {
+  const base = makeRecording([{ midi: 60, ms: 10, channel: keyChannel }])
   return {
     ...base,
     durationMs: 300,
     initialSustain: { observed: true, down: initialDown, value: initialDown ? 127 : 0 },
     keyPresses: [{ ...base.keyPresses[0]!, releaseMs: 100, releaseSequence: 10 }],
-    events: values.map((sample, sequence) => ({ sequence, relativeMs: sample.ms, event: { type: 'sustain' as const, channel: 0, value: sample.value, down: sample.value >= 64, timestampMs: sample.ms } })),
+    events: values.map((sample, sequence) => ({ sequence, relativeMs: sample.ms, event: { type: 'sustain' as const, channel: sample.channel ?? 0, value: sample.value, down: sample.value >= 64, timestampMs: sample.ms } })),
   }
 }
 
@@ -50,5 +50,12 @@ describe('controller-derived damper hold context', () => {
     const holds = buildDamperHolds(take, snapshot, buildPedalTimeline(take))
     expect(buildPedalInteractions(snapshot, holds).map((item) => item.kind)).toEqual(['pedal-connects-detached-keys', 'pedal-bridges-key-gap'])
     expect(snapshot.articulation.score).toBe(articulationScore)
+  })
+
+  it('never lets a release on another channel end the key channel damper hold', () => {
+    const take = recording([{ ms: 50, value: 127, channel: 0 }, { ms: 220, value: 0, channel: 1 }])
+    expect(buildDamperHolds(take, expression(), buildPedalTimeline(take))[0]).toMatchObject({
+      channel: 0, pedalDownAtPhysicalRelease: true, damperReleaseMs: null, openAtRecordingEnd: true,
+    })
   })
 })

@@ -266,6 +266,35 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       && isNonnegativeInteger(controller.distinctValueCount) && isNonnegativeInteger(controller.intermediateValueCount)
       && isFiniteNumber(controller.knownStateDurationMs) && controller.knownStateDurationMs >= 0
       && isUnitNumberOrNull(controller.knownStateCoverage) && isNonnegativeInteger(controller.extraUnassignedTransitionCount)
+    const pedalEngineVersion = isObjectRecord(pedal.diagnostics) && typeof pedal.diagnostics.pedalAnalysisEngineVersion === 'string'
+      ? pedal.diagnostics.pedalAnalysisEngineVersion
+      : null
+    const requiresV11Shape = pedalEngineVersion !== null && pedalEngineVersion !== 'pedal-analysis-1.0.0'
+    const validTimingAnchor = (anchor: unknown): boolean => isObjectRecord(anchor)
+      && (anchor.source === 'local-performed' || anchor.source === 'global-score-clock')
+      && isMusicalTimeRecord(anchor.scorePosition)
+      && isFiniteNumber(anchor.globalPredictedMs) && isFiniteNumber(anchor.anchoredPerformedMs) && isFiniteNumber(anchor.anchorOffsetFromGlobalMs)
+      && isNullableString(anchor.beforeExpectedGroupId) && isNullableString(anchor.afterExpectedGroupId)
+      && Array.isArray(anchor.matchedPerformedGroupIds) && anchor.matchedPerformedGroupIds.every((id) => typeof id === 'string')
+      && isFiniteNumber(anchor.confidence) && anchor.confidence >= 0 && anchor.confidence <= 1
+    const validModernController = (controller: Record<string, unknown>): boolean => !requiresV11Shape || (
+      (controller.channelMode === 'none' || controller.channelMode === 'single-channel' || controller.channelMode === 'multi-channel-ambiguous')
+      && Array.isArray(controller.channels) && controller.channels.every((channel) => Number.isInteger(channel) && (channel as number) >= 0 && (channel as number) <= 15)
+      && (controller.authoritativeChannel === null || (Number.isInteger(controller.authoritativeChannel) && (controller.authoritativeChannel as number) >= 0 && (controller.authoritativeChannel as number) <= 15))
+    )
+    const validModernCoverage = (coverage: Record<string, unknown>): boolean => !requiresV11Shape || (
+      isNonnegativeInteger(coverage.fullyAnalyzedPhraseCount)
+      && isNonnegativeInteger(coverage.partiallyAnalyzedPhraseCount)
+      && isNonnegativeInteger(coverage.unanalyzedPhraseCount)
+      && isNonnegativeInteger(coverage.authoredEventCount)
+      && isNonnegativeInteger(coverage.analyzedEventCount)
+      && isNonnegativeInteger(coverage.truncatedEventCount)
+      && isNonnegativeInteger(coverage.unavailableEventCount)
+      && isUnitNumberOrNull(coverage.eventCoverageRatio)
+      && coverage.analyzedPhraseCount === coverage.fullyAnalyzedPhraseCount
+      && (coverage.fullyAnalyzedPhraseCount as number) + (coverage.partiallyAnalyzedPhraseCount as number) + (coverage.unanalyzedPhraseCount as number) === coverage.authoredPhraseCount
+      && (coverage.analyzedEventCount as number) + (coverage.truncatedEventCount as number) + (coverage.unavailableEventCount as number) === coverage.authoredEventCount
+    )
     if (
       !isObjectRecord(pedal.scope)
       || !isObjectRecord(pedal.coverage)
@@ -296,12 +325,16 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       || !isUnitNumberOrNull(pedal.coverage.ratio)
       || !validController(pedal.controllerEvidence)
       || !validController(pedal.timeline.controllerEvidence)
+      || !validModernController(pedal.controllerEvidence)
+      || !validModernController(pedal.timeline.controllerEvidence)
+      || !validModernCoverage(pedal.coverage)
       || pedal.controllerEvidence.mode !== pedal.timeline.controllerEvidence.mode
       || !pedal.timeline.rawSamples.every((sample) => isObjectRecord(sample) && typeof sample.id === 'string' && isNonnegativeInteger(sample.sequence) && isFiniteNumber(sample.relativeMs) && sample.relativeMs >= 0 && Number.isInteger(sample.channel) && Number.isInteger(sample.value) && (sample.value as number) >= 0 && (sample.value as number) <= 127 && typeof sample.down === 'boolean')
-      || !pedal.timeline.transitions.every((transition) => isObjectRecord(transition) && typeof transition.id === 'string' && (transition.kind === 'down' || transition.kind === 'up') && isFiniteNumber(transition.relativeMs) && transition.relativeMs >= 0 && isNonnegativeInteger(transition.sequence) && Number.isInteger(transition.value) && typeof transition.sourceSampleId === 'string')
-      || !pedal.targets.every((target) => isObjectRecord(target) && typeof target.id === 'string' && Array.isArray(target.sourceEventIds) && typeof target.partId === 'string' && isMusicalTimeRecord(target.startPosition) && isMusicalTimeRecord(target.endPosition) && Array.isArray(target.events) && target.events.every((event) => isObjectRecord(event) && typeof event.id === 'string' && ['start', 'change', 'stop'].includes(typeof event.kind === 'string' ? event.kind : '') && isMusicalTimeRecord(event.position) && isFiniteNumber(event.expectedPerformedMs)))
-      || !pedal.observations.every((observation) => isObjectRecord(observation) && typeof observation.id === 'string' && typeof observation.phraseTargetId === 'string' && ['start', 'change', 'stop'].includes(typeof observation.kind === 'string' ? observation.kind : '') && isFiniteNumber(observation.score) && observation.score >= 0 && observation.score <= 1 && Array.isArray(observation.transitionIds) && ['transition', 'predepressed', 'missing'].includes(typeof observation.evidence === 'string' ? observation.evidence : ''))
-      || !pedal.phraseResults.every((phrase) => isObjectRecord(phrase) && typeof phrase.id === 'string' && typeof phrase.targetId === 'string' && isFiniteNumber(phrase.score) && phrase.score >= 0 && phrase.score <= 1 && Array.isArray(phrase.observationIds))
+      || !pedal.timeline.transitions.every((transition) => isObjectRecord(transition) && typeof transition.id === 'string' && (transition.kind === 'down' || transition.kind === 'up') && isFiniteNumber(transition.relativeMs) && transition.relativeMs >= 0 && isNonnegativeInteger(transition.sequence) && Number.isInteger(transition.value) && typeof transition.sourceSampleId === 'string' && (!requiresV11Shape || (Number.isInteger(transition.channel) && (transition.channel as number) >= 0 && (transition.channel as number) <= 15)))
+      || (requiresV11Shape && (pedal.controllerEvidence.channelMode !== pedal.timeline.controllerEvidence.channelMode || pedal.controllerEvidence.authoritativeChannel !== pedal.timeline.controllerEvidence.authoritativeChannel || JSON.stringify(pedal.controllerEvidence.channels) !== JSON.stringify(pedal.timeline.controllerEvidence.channels)))
+      || !pedal.targets.every((target) => isObjectRecord(target) && typeof target.id === 'string' && Array.isArray(target.sourceEventIds) && typeof target.partId === 'string' && isMusicalTimeRecord(target.startPosition) && isMusicalTimeRecord(target.endPosition) && Array.isArray(target.events) && target.events.every((event) => isObjectRecord(event) && typeof event.id === 'string' && ['start', 'change', 'stop'].includes(typeof event.kind === 'string' ? event.kind : '') && isMusicalTimeRecord(event.position) && isFiniteNumber(event.expectedPerformedMs) && (!requiresV11Shape || (validTimingAnchor(event.timingAnchor) && (event.timingAnchor as Record<string, unknown>).anchoredPerformedMs === event.expectedPerformedMs))))
+      || !pedal.observations.every((observation) => isObjectRecord(observation) && typeof observation.id === 'string' && typeof observation.phraseTargetId === 'string' && ['start', 'change', 'stop'].includes(typeof observation.kind === 'string' ? observation.kind : '') && isFiniteNumber(observation.score) && observation.score >= 0 && observation.score <= 1 && Array.isArray(observation.transitionIds) && ['transition', 'predepressed', 'missing'].includes(typeof observation.evidence === 'string' ? observation.evidence : '') && (!requiresV11Shape || ((observation.timingAnchorSource === 'local-performed' || observation.timingAnchorSource === 'global-score-clock') && isFiniteNumber(observation.globalExpectedMs) && isFiniteNumber(observation.anchoredExpectedMs) && observation.anchoredExpectedMs === observation.expectedPerformedMs && isFiniteNumber(observation.anchorOffsetFromGlobalMs) && isNullableString(observation.beforeExpectedGroupId) && isNullableString(observation.afterExpectedGroupId) && Array.isArray(observation.anchorPerformedGroupIds))))
+      || !pedal.phraseResults.every((phrase) => isObjectRecord(phrase) && typeof phrase.id === 'string' && typeof phrase.targetId === 'string' && ((requiresV11Shape && phrase.score === null) || (isFiniteNumber(phrase.score) && phrase.score >= 0 && phrase.score <= 1)) && Array.isArray(phrase.observationIds) && (!requiresV11Shape || (isNonnegativeInteger(phrase.authoredEventCount) && isNonnegativeInteger(phrase.analyzedEventCount) && isNonnegativeInteger(phrase.truncatedEventCount) && isNonnegativeInteger(phrase.unavailableEventCount) && isFiniteNumber(phrase.coverageRatio) && phrase.coverageRatio >= 0 && phrase.coverageRatio <= 1 && (phrase.completeness === 'complete' || phrase.completeness === 'partial' || phrase.completeness === 'unanalyzed'))))
       || !pedal.damperHolds.every((hold) => isObjectRecord(hold) && typeof hold.id === 'string' && isFiniteNumber(hold.physicalReleaseMs) && isUnitNumberOrNull(hold.pedalDownAtPhysicalRelease === null ? null : hold.pedalDownAtPhysicalRelease ? 1 : 0) && typeof hold.openAtRecordingEnd === 'boolean')
       || !pedal.interactions.every((interaction) => isObjectRecord(interaction) && (interaction.kind === 'pedal-connects-detached-keys' || interaction.kind === 'pedal-bridges-key-gap') && Array.isArray(interaction.matchedObservationIds))
       || !pedal.exclusions.every(isObjectRecord)
@@ -309,6 +342,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
       || typeof pedal.diagnostics.pedalAnalysisEngineVersion !== 'string'
       || typeof pedal.diagnostics.musicXmlParserVersion !== 'string'
       || typeof pedal.diagnostics.expressionAnalysisEngineVersion !== 'string'
+      || (requiresV11Shape && (!isNonnegativeInteger(pedal.diagnostics.localTimingAnchorCount) || !isNonnegativeInteger(pedal.diagnostics.globalTimingFallbackCount) || !isUnitNumberOrNull(pedal.diagnostics.meanTimingAnchorConfidence)))
       || pedal.scoreId !== plan.scoreId
       || pedal.expectedPlanId !== plan.id
       || pedal.recordingId !== recording.id

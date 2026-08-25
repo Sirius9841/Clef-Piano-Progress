@@ -1,10 +1,11 @@
 import type { AlignmentResult } from '../alignment/types'
-import { scoreTimeToMilliseconds } from '../expected-performance/tempoTimeline'
 import type { ExpectedPerformancePlan } from '../expected-performance/types'
 import { compareTime, ZERO_TIME, type MusicalTime } from '../musicxml/musicalTime'
 import type { NormalizedScore, PedalEvent } from '../musicxml/types'
 import type { NoteGradingResult } from '../note-grading/types'
 import { notationLaneCompatible } from '../expression-analysis/notationLane'
+import { createPedalTimingAnchorResolver } from './pedalTimingAnchors'
+import { resolvePedalAnalysisOptions, type PedalAnalysisOptions } from './options'
 import type { PedalExclusion, PedalPhraseTarget, PedalScope, PedalTargetEvent, PedalWarning } from './types'
 
 export interface BuiltPedalTargets {
@@ -42,24 +43,22 @@ function scopeBounds(plan: ExpectedPerformancePlan, alignment: AlignmentResult, 
   return start && end ? { start, end } : null
 }
 
-function expectedPerformedMs(position: MusicalTime, plan: ExpectedPerformancePlan, alignment: AlignmentResult): number {
-  const referenceMs = scoreTimeToMilliseconds(position, plan.tempoTimeline, alignment.practiceSpeedMultiplier)
-  return alignment.timeTransform.offsetMs + alignment.timeTransform.scale * referenceMs
-}
-
-function targetEvent(event: PedalEvent, plan: ExpectedPerformancePlan, alignment: AlignmentResult): PedalTargetEvent {
+function targetEvent(event: PedalEvent, timingAnchor: NonNullable<PedalTargetEvent['timingAnchor']>): PedalTargetEvent {
   return {
     id: `pedal-target-event:${stableHash(event.id)}`,
     kind: event.type as 'start' | 'change' | 'stop',
     sourceEventId: event.id,
     position: { ...event.position },
-    expectedPerformedMs: expectedPerformedMs(event.position, plan, alignment),
+    expectedPerformedMs: timingAnchor.anchoredPerformedMs,
+    timingAnchor,
     measureIndex: event.measureIndex,
     measureNumber: event.measureNumber,
   }
 }
 
-export function buildPedalTargets(score: NormalizedScore, plan: ExpectedPerformancePlan, alignment: AlignmentResult, noteGrading: NoteGradingResult): BuiltPedalTargets {
+export function buildPedalTargets(score: NormalizedScore, plan: ExpectedPerformancePlan, alignment: AlignmentResult, noteGrading: NoteGradingResult, partialOptions: Partial<PedalAnalysisOptions> = {}): BuiltPedalTargets {
+  const options = resolvePedalAnalysisOptions(partialOptions)
+  const timingAnchorFor = createPedalTimingAnchorResolver(plan, alignment, options)
   const included = new Set(plan.includedPartIds)
   const events = score.pedalEvents.filter((event) => included.has(event.partId)).sort((left, right) => compareTime(left.position, right.position) || left.id.localeCompare(right.id))
   const open: OpenPhrase[] = []
@@ -106,7 +105,7 @@ export function buildPedalTargets(score: NormalizedScore, plan: ExpectedPerforma
       exclude(phrase.start, 'The complete pedal phrase crosses or falls outside the exact grading scope.')
       continue
     }
-    const gradeableEvents = phrase.events.filter((event) => event.type !== 'continue').map((event) => targetEvent(event, plan, alignment))
+    const gradeableEvents = phrase.events.filter((event) => event.type !== 'continue').map((event) => targetEvent(event, timingAnchorFor(event)))
     targets.push({
       id: `pedal-phrase:${stableHash(phrase.events.map((event) => event.id).join('|'))}`,
       sourceEventIds: phrase.events.map((event) => event.id),
