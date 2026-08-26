@@ -1,6 +1,7 @@
-export const MASTERY_MODEL_VERSION = 'mastery-model-1.0.0'
+export const MASTERY_MODEL_VERSION = 'mastery-model-1.1.0'
 
 export type MasteryConfidence = 'unestablished' | 'low' | 'medium' | 'high'
+export type DemonstratedSpeedStatus = 'unavailable' | 'needs-repetition' | 'needs-current-support' | 'established'
 export type MasteryEvidenceExclusionCode = 'different-score-version' | 'partial-scope' | 'provisional' | 'missing-metric' | 'future-dated' | 'wrong-arrangement' | 'invalid-summary'
 
 export interface MasteryEvidenceExclusion {
@@ -25,9 +26,17 @@ export interface ArrangementMastery {
   readonly control: number | null
   readonly minimumDimension: MasteryMinimumDimension | null
   readonly demonstratedSpeedMultiplier: number | null
+  readonly demonstratedSpeedStatus: DemonstratedSpeedStatus
+  readonly demonstratedSpeedCandidateMultiplier: number | null
+  readonly demonstratedSpeedQualifyingAttemptCount: number
   readonly demonstratedSpeedSessionCount: number
+  readonly demonstratedSpeedEffectiveSupport: number | null
+  readonly demonstratedSpeedEvidenceAttemptIds: readonly string[]
+  readonly demonstratedSpeedLastEvidenceAt: string | null
   readonly consistency: number | null
   readonly recencyFactor: number | null
+  readonly effectiveEvidenceSupport: number | null
+  readonly effectiveSessionSupport: number | null
   readonly eligibleAttemptCount: number
   readonly distinctSessionCount: number
   readonly lastEvidenceAt: string | null

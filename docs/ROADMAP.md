@@ -78,6 +78,10 @@ Score-side Tempo opportunity denominators shared with TimingAnalysis window geom
 
 Skill Model `1.0.0` now derives eight challenge-qualified current Technique ratings from the exact current summary engine pair, with two-stage context aggregation, repetition protection, confidence, consistency, recency, breadth envelopes, and typed exclusions. Mastery Model `1.0.0` derives current Arrangement/current-ScoreVersion command from reliable or limited full-score Notes, Rhythm, and Tempo summaries, keeping repeated demonstrated speed, control, consistency, recency, and confidence explicit. Both are pure immutable read models; persistence remains schema 4 and all historical attempt families remain untouched.
 
+## Phase 13.1 — complete
+
+Skill Model `1.1.0` bounds both rating and confidence evidence to the latest three attempts per exact template-aware context, separates quality recency from no-floor confidence authority, and distinguishes every material authored drill dimension including subdivision for Chords, Jumps, and Tempo Control. Mastery Model `1.1.0` gives demonstrated speed its own smooth current support, derives overall recency from the evidence distribution, and bounds confidence by effective attempt and session authority. UI provenance makes current speed support and the Progress range boundary explicit. Persistence remains schema 4 with no attempt-family changes.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

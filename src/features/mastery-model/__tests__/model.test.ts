@@ -14,7 +14,7 @@ function derive(attempts: readonly AttemptSummary[], overrides: Partial<{ arrang
   return deriveArrangementMastery({ arrangementId: overrides.arrangementId ?? 'arr-1', scoreVersionId: overrides.scoreVersionId ?? 'score-current', attempts, asOf: overrides.asOf ?? AS_OF })
 }
 
-describe('Mastery Model 1.0.0', () => {
+describe('Mastery Model 1.1.0', () => {
   it('keeps the explicit component weights normalized', () => {
     expect(Object.values(MASTERY_MODEL_OPTIONS.weights).reduce((sum, value) => sum + value, 0)).toBe(1)
   })
@@ -40,6 +40,7 @@ describe('Mastery Model 1.0.0', () => {
     expect(result.status).toBe('ready')
     expect(result.confidence).toBe('low')
     expect(result.demonstratedSpeedMultiplier).toBeNull()
+    expect(result.demonstratedSpeedStatus).toBe('needs-repetition')
     expect(result.mastery).toBeLessThan(60)
   })
 
@@ -54,6 +55,39 @@ describe('Mastery Model 1.0.0', () => {
   it('requires two qualifying takes in a canonical speed bucket', () => {
     expect(derive([summary('one')]).demonstratedSpeedMultiplier).toBeNull()
     expect(derive([summary('a', { practiceSpeedMultiplier: .7999999 }), summary('b', { practiceSpeedMultiplier: .8 })]).demonstratedSpeedMultiplier).toBe(.8)
+  })
+
+  it('prevents ancient full-speed evidence from borrowing freshness from a recent reduced-speed take', () => {
+    const result = derive([
+      summary('old-full-a', { performedAt: '2025-08-20T12:00:00.000Z' }),
+      summary('old-full-b', { performedAt: '2025-08-19T12:00:00.000Z' }),
+      summary('recent-slow', { practiceSpeedMultiplier: .6 }),
+    ])
+    expect(result.demonstratedSpeedMultiplier).toBeNull()
+    expect(result.demonstratedSpeedStatus).toBe('needs-current-support')
+    expect(result.demonstratedSpeedCandidateMultiplier).toBe(1)
+    expect(result.demonstratedSpeedQualifyingAttemptCount).toBe(2)
+    expect(result.demonstratedSpeedEffectiveSupport!).toBeLessThan(MASTERY_MODEL_OPTIONS.minimumDemonstratedSpeedSupport)
+    expect(result.demonstratedSpeedEvidenceAttemptIds).toEqual(['old-full-a', 'old-full-b'])
+  })
+
+  it('establishes full speed from two recent supported qualifying takes with transparent provenance', () => {
+    const result = derive([summary('recent-a'), summary('recent-b')])
+    expect(result.demonstratedSpeedMultiplier).toBe(1)
+    expect(result.demonstratedSpeedStatus).toBe('established')
+    expect(result.demonstratedSpeedEffectiveSupport!).toBeGreaterThanOrEqual(MASTERY_MODEL_OPTIONS.minimumDemonstratedSpeedSupport)
+    expect(result.demonstratedSpeedEvidenceAttemptIds).toEqual(['recent-a', 'recent-b'])
+    expect(result.demonstratedSpeedLastEvidenceAt).toBe('2026-08-20T12:00:00.000Z')
+  })
+
+  it('lets demonstrated speed expire smoothly as explicit asOf advances over frozen summaries', () => {
+    const attempts = [summary('a', { performedAt: '2026-01-02T12:00:00.000Z' }), summary('b', { performedAt: '2026-01-01T12:00:00.000Z' })]
+    const current = derive(attempts, { asOf: '2026-01-10T12:00:00.000Z' })
+    const later = derive(attempts, { asOf: '2027-01-10T12:00:00.000Z' })
+    expect(current.demonstratedSpeedMultiplier).toBe(1)
+    expect(later.demonstratedSpeedMultiplier).toBeNull()
+    expect(later.demonstratedSpeedStatus).toBe('needs-current-support')
+    expect(later.demonstratedSpeedEffectiveSupport!).toBeLessThan(current.demonstratedSpeedEffectiveSupport!)
   })
 
   it('does not allow weak Tempo to qualify clean demonstrated speed and preserves the minimum dimension', () => {
@@ -71,6 +105,24 @@ describe('Mastery Model 1.0.0', () => {
     expect(same.demonstratedSpeedSessionCount).toBe(1)
   })
 
+  it('uses bounded session authority so one fresh take cannot make four stale sessions high-confidence', () => {
+    const mixed = derive([
+      summary('recent'),
+      ...Array.from({ length: 4 }, (_, index) => summary(`old-${index}`, { performedAt: `2025-08-${String(16 + index).padStart(2, '0')}T12:00:00.000Z` })),
+    ])
+    expect(mixed.confidence).not.toBe('high')
+    expect(mixed.effectiveEvidenceSupport!).toBeLessThan(2)
+    expect(mixed.effectiveSessionSupport!).toBeLessThan(2)
+  })
+
+  it('still permits high confidence from five genuinely recent reliable takes across sessions', () => {
+    const attempts = Array.from({ length: 5 }, (_, index) => summary(`recent-${index}`, { performedAt: `2026-08-${20 + index}T12:00:00.000Z`, practiceSessionId: `session-${index % 3}` }))
+    const result = derive(attempts)
+    expect(result.confidence).toBe('high')
+    expect(result.effectiveEvidenceSupport!).toBeGreaterThanOrEqual(MASTERY_MODEL_OPTIONS.highConfidenceEffectiveEvidenceSupport)
+    expect(result.effectiveSessionSupport!).toBeGreaterThanOrEqual(MASTERY_MODEL_OPTIONS.highConfidenceEffectiveSessionSupport)
+  })
+
   it('derives lower robust consistency for a volatile series', () => {
     const stable = derive([.9, .91, .92, .91].map((value, index) => summary(`s-${index}`, { notes: value, rhythm: value, tempo: value })))
     const volatile = derive([.99, .65, .94, .7].map((value, index) => summary(`v-${index}`, { notes: value, rhythm: value, tempo: value })))
@@ -86,6 +138,13 @@ describe('Mastery Model 1.0.0', () => {
     expect(old.recencyFactor!).toBeGreaterThanOrEqual(.82)
     expect(old.mastery!).toBeLessThan(recent.mastery!)
     expect(old.confidence).toBe('low')
+  })
+
+  it('derives final recency from the evidence distribution rather than only the newest take', () => {
+    const freshOnly = derive([summary('fresh')])
+    const mixed = derive([summary('fresh'), ...Array.from({ length: 4 }, (_, index) => summary(`old-${index}`, { performedAt: `2025-08-${String(16 + index).padStart(2, '0')}T12:00:00.000Z` }))])
+    expect(mixed.recencyFactor!).toBeLessThan(freshOnly.recencyFactor!)
+    expect(mixed.recencyFactor!).toBeGreaterThanOrEqual(MASTERY_MODEL_OPTIONS.recencyFactorFloor)
   })
 
   it('resets evidence at a new ScoreVersion without deleting old history', () => {
@@ -114,5 +173,26 @@ describe('Mastery Model 1.0.0', () => {
     expect(derive(attempts)).toEqual(derive([...attempts].reverse()))
     expect(derive(attempts).exclusions.map((item) => item.code)).toEqual(expect.arrayContaining(['future-dated', 'invalid-summary']))
     expect(() => derive([], { asOf: 'invalid' })).toThrow(RangeError)
+  })
+
+  it('deep-freezes speed provenance and keeps numeric current evidence finite and bounded', () => {
+    const result = derive([summary('a'), summary('b')])
+    expect(Object.isFrozen(result.demonstratedSpeedEvidenceAttemptIds)).toBe(true)
+    expect(Object.isFrozen(result.minimumDimension)).toBe(true)
+    for (const value of [result.mastery, result.control, result.consistency, result.recencyFactor, result.effectiveEvidenceSupport, result.effectiveSessionSupport, result.demonstratedSpeedEffectiveSupport]) {
+      expect(value).not.toBeNull()
+      expect(Number.isFinite(value)).toBe(true)
+      expect(value!).toBeGreaterThanOrEqual(0)
+    }
+    expect(result.mastery!).toBeLessThanOrEqual(100)
+    expect(result.control!).toBeLessThanOrEqual(100)
+    expect(result.consistency!).toBeLessThanOrEqual(100)
+    expect(result.recencyFactor!).toBeLessThanOrEqual(1)
+    expect(result.effectiveEvidenceSupport!).toBeLessThanOrEqual(MASTERY_MODEL_OPTIONS.recentAttemptWindow)
+    expect(result.effectiveSessionSupport!).toBeLessThanOrEqual(MASTERY_MODEL_OPTIONS.recentAttemptWindow)
+    expect(result.demonstratedSpeedEffectiveSupport!).toBeLessThanOrEqual(MASTERY_MODEL_OPTIONS.recentAttemptWindow)
+    expect(result).not.toHaveProperty('overallPerformanceScore')
+    expect(result).not.toHaveProperty('musicality')
+    expect(result).not.toHaveProperty('artisticQuality')
   })
 })

@@ -20,10 +20,10 @@ function challenge(overrides: Partial<TechniqueChallengeProfileV2> = {}): Techni
     jumpSemitones: 12, tempoShape: 'steady', ...overrides }
 }
 
-function summary(id: string, moduleId: TechniqueModuleId = 'scales', overrides: { readonly score?: number; readonly performedAt?: string; readonly challenge?: Partial<TechniqueChallengeProfileV2>; readonly reliability?: 'reliable' | 'limited' | 'provisional' | 'unavailable'; readonly coverage?: number; readonly exerciseInstanceId?: string; readonly firstPass?: boolean; readonly omitFacet?: TechniqueFacetId } = {}): TechniqueAttemptSummaryV2 {
+function summary(id: string, moduleId: TechniqueModuleId = 'scales', overrides: { readonly score?: number; readonly performedAt?: string; readonly challenge?: Partial<TechniqueChallengeProfileV2>; readonly reliability?: 'reliable' | 'limited' | 'provisional' | 'unavailable'; readonly coverage?: number; readonly exerciseInstanceId?: string; readonly templateId?: string; readonly firstPass?: boolean; readonly omitFacet?: TechniqueFacetId } = {}): TechniqueAttemptSummaryV2 {
   const score = overrides.score ?? 80, reliability = overrides.reliability ?? 'reliable', coverage = overrides.coverage ?? .9
   const profile = challenge({ direction: moduleId === 'scales' ? 'ascending' : 'both', tempoChangeCount: moduleId === 'tempo-control' ? 4 : 0, tempoShape: moduleId === 'tempo-control' ? 'arch' : 'steady', ...overrides.challenge })
-  return { schemaVersion: 2, id, moduleId, templateId: `${moduleId}-standard-v2`, exerciseInstanceId: overrides.exerciseInstanceId ?? `instance-${id}`,
+  return { schemaVersion: 2, id, moduleId, templateId: overrides.templateId ?? `${moduleId}-standard-v2`, exerciseInstanceId: overrides.exerciseInstanceId ?? `instance-${id}`,
     performedAt: overrides.performedAt ?? '2026-08-20T12:00:00.000Z', durationMs: 3_000, exerciseEngineVersion: 'technique-exercise-1.1.1', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.2',
     challenge: profile, completion: { expectedEventCount: 16, attemptedEventCount: 16, completeCorrectOrIncorrectEventCount: 16, reachedSpanEndIndex: 15, eventCoverageRatio: coverage, spanReachedRatio: 1, completeEnoughForEvidence: true },
     novelty: { exerciseInstanceId: overrides.exerciseInstanceId ?? `instance-${id}`, priorSavedAttemptCount: overrides.firstPass === false ? 1 : 0, firstSavedAttempt: overrides.firstPass !== false },
@@ -31,7 +31,7 @@ function summary(id: string, moduleId: TechniqueModuleId = 'scales', overrides: 
   }
 }
 
-describe('Skill Model 1.0.0', () => {
+describe('Skill Model 1.1.0', () => {
   it('returns an immutable unestablished result, not zero, with no evidence', () => {
     const result = deriveSkillRating('scales', [], AS_OF)
     expect(result).toMatchObject({ qualityEstimate: null, confidence: 'unestablished', status: 'unestablished' })
@@ -74,7 +74,8 @@ describe('Skill Model 1.0.0', () => {
     expect(result.eligibleContextCount).toBe(2)
     expect(result.qualityEstimate).toBeGreaterThan(65)
     expect(result.qualityEstimate).toBeLessThan(75)
-    expect(result.contextRatings.find((context) => context.contextId.includes('bpm=80'))?.evidenceAttemptIds).toHaveLength(3)
+    expect(result.contextRatings.find((context) => context.qualityEstimate === 100)?.evidenceAttemptIds).toHaveLength(3)
+    expect(result.modelEvidenceAttemptCount).toBe(4)
   })
 
   it('accepts distinct first-pass sight-reading stimuli and excludes repeats', () => {
@@ -90,6 +91,72 @@ describe('Skill Model 1.0.0', () => {
     expect(deriveSkillRating('scales', narrow, AS_OF)).toMatchObject({ qualityEstimate: 98, confidence: 'low' })
     const broad = Array.from({ length: 12 }, (_, index) => summary(`b-${index}`, 'scales', { score: 73, challenge: { tonic: index % 6, targetTempoBpm: 70 + (index % 2) * 10 } }))
     expect(deriveSkillRating('scales', broad, AS_OF)).toMatchObject({ qualityEstimate: 73, confidence: 'high' })
+  })
+
+  it('bounds confidence to the latest three attempts per context even with fifty historical repeats', () => {
+    const repeated = Array.from({ length: 50 }, (_, index) => summary(`repeat-${index}`, 'scales', { performedAt: `2026-08-${String(1 + index % 20).padStart(2, '0')}T12:00:00.000Z` }))
+    const narrow = deriveSkillRating('scales', repeated, AS_OF)
+    expect(narrow).toMatchObject({ eligibleAttemptCount: 50, modelEvidenceAttemptCount: 3, eligibleContextCount: 1, confidence: 'low' })
+    expect(narrow.modelEvidenceAttemptIds).toHaveLength(3)
+    expect(narrow.effectiveEvidenceSupport).toBeLessThanOrEqual(1)
+
+    const oneOther = deriveSkillRating('scales', [...repeated, summary('other', 'scales', { challenge: { tonic: 2 } })], AS_OF)
+    expect(oneOther.eligibleAttemptCount).toBe(51)
+    expect(oneOther.modelEvidenceAttemptCount).toBe(4)
+    expect(oneOther.confidence).not.toBe('high')
+  })
+
+  it('uses distribution-aware no-floor authority for confidence while preserving high historical quality', () => {
+    const evidence = [
+      summary('recent-a', 'scales', { score: 96, challenge: { tonic: 0 } }),
+      summary('recent-b', 'scales', { score: 96, challenge: { tonic: 0 } }),
+      ...[2, 4, 6].flatMap((tonic) => [0, 1].map((index) => summary(`old-${tonic}-${index}`, 'scales', { score: 96, challenge: { tonic }, performedAt: `2022-01-0${index + 1}T12:00:00.000Z` }))),
+    ]
+    const result = deriveSkillRating('scales', evidence, AS_OF)
+    expect(result.qualityEstimate).toBe(96)
+    expect(result.eligibleContextCount).toBe(4)
+    expect(result.confidence).toBe('low')
+    expect(result.effectiveEvidenceSupport).toBeLessThan(2)
+  })
+
+  it('allows broad recent bounded contexts to establish high confidence', () => {
+    const evidence = [0, 2, 4, 6].flatMap((tonic) => [0, 1].map((index) => summary(`broad-${tonic}-${index}`, 'scales', { challenge: { tonic }, performedAt: `2026-08-${20 + index}T12:00:00.000Z` })))
+    const result = deriveSkillRating('scales', evidence, AS_OF)
+    expect(result).toMatchObject({ modelEvidenceAttemptCount: 8, eligibleContextCount: 4, confidence: 'high' })
+    expect(result.effectiveEvidenceSupport).toBeGreaterThanOrEqual(3.2)
+  })
+
+  it('gives limited low-coverage evidence less confidence authority without rewriting its measured quality', () => {
+    const make = (reliability: 'reliable' | 'limited', coverage: number) => [0, 2].flatMap((tonic) => [0, 1].map((index) => summary(`${reliability}-${tonic}-${index}`, 'scales', { score: 90, reliability, coverage, challenge: { tonic } })))
+    const limited = deriveSkillRating('scales', make('limited', .55), AS_OF)
+    const reliable = deriveSkillRating('scales', make('reliable', .9), AS_OF)
+    expect(limited.qualityEstimate).toBe(90)
+    expect(reliable.qualityEstimate).toBe(90)
+    expect(limited.effectiveEvidenceSupport!).toBeLessThan(reliable.effectiveEvidenceSupport!)
+    expect(limited.confidence).toBe('low')
+    expect(reliable.confidence).toBe('medium')
+  })
+
+  it.each(['chord-fluency', 'keyboard-jumps', 'tempo-control'] as const)('separates %s contexts by subdivision', (moduleId) => {
+    const result = deriveSkillRating(moduleId, [summary('quarter', moduleId, { challenge: { subdivision: 1 } }), summary('sixteenth', moduleId, { challenge: { subdivision: 4 } })], AS_OF)
+    expect(result.eligibleContextCount).toBe(2)
+    expect(result.challengeEnvelope.subdivisions).toEqual([1, 4])
+  })
+
+  it('keeps seed/instance outside identity, includes template identity, and includes jump starting tonic', () => {
+    expect(deriveSkillRating('scales', [summary('a', 'scales', { exerciseInstanceId: 'instance-a' }), summary('b', 'scales', { exerciseInstanceId: 'instance-b' })], AS_OF).eligibleContextCount).toBe(1)
+    expect(deriveSkillRating('scales', [summary('a'), summary('b', 'scales', { templateId: 'scales-alternate-v2' })], AS_OF).eligibleContextCount).toBe(2)
+    expect(deriveSkillRating('keyboard-jumps', [summary('c', 'keyboard-jumps', { challenge: { tonic: 0 } }), summary('d', 'keyboard-jumps', { challenge: { tonic: 7 } })], AS_OF).eligibleContextCount).toBe(2)
+  })
+
+  it('decreases current confidence authority deterministically as asOf advances without mutating history', () => {
+    const evidence = [0, 2, 4, 6].flatMap((tonic) => [0, 1].map((index) => summary(`dated-${tonic}-${index}`, 'scales', { score: 95, challenge: { tonic }, performedAt: `2026-08-${20 + index}T12:00:00.000Z` })))
+    const current = deriveSkillRating('scales', evidence, AS_OF)
+    const later = deriveSkillRating('scales', evidence, '2028-08-26T12:00:00.000Z')
+    expect(current.confidence).toBe('high')
+    expect(later.confidence).toBe('low')
+    expect(later.effectiveEvidenceSupport!).toBeLessThan(current.effectiveEvidenceSupport!)
+    expect(later.qualityEstimate).toBe(95)
   })
 
   it('gently favors recent context evidence and rejects future dates', () => {
@@ -118,6 +185,29 @@ describe('Skill Model 1.0.0', () => {
     expect(new Set(first.map((rating) => rating.moduleId)).size).toBe(8)
     expect(first[0]).not.toHaveProperty('overallScore')
     expect(first[0]).not.toHaveProperty('skillLevel')
+    expect(first[0]).not.toHaveProperty('overallPianoLevel')
+    expect(first[0]).not.toHaveProperty('difficultyScore')
+  })
+
+  it('deep-freezes provenance and keeps all exposed numeric evidence finite and bounded', () => {
+    const result = deriveSkillRating('scales', [summary('a'), summary('b')], AS_OF)
+    expect(Object.isFrozen(result.contextRatings)).toBe(true)
+    expect(Object.isFrozen(result.contextRatings[0])).toBe(true)
+    expect(Object.isFrozen(result.modelEvidenceAttemptIds)).toBe(true)
+    for (const value of [result.qualityEstimate, result.consistency, result.effectiveEvidenceSupport, ...result.contextRatings.flatMap((context) => [context.qualityEstimate, context.averageCoverage, context.reliableAttemptFraction, context.effectiveAuthority])]) {
+      expect(value).not.toBeNull()
+      expect(Number.isFinite(value)).toBe(true)
+      expect(value!).toBeGreaterThanOrEqual(0)
+    }
+    expect(result.qualityEstimate!).toBeLessThanOrEqual(100)
+    expect(result.consistency!).toBeLessThanOrEqual(100)
+    expect(result.effectiveEvidenceSupport!).toBeLessThanOrEqual(result.eligibleContextCount)
+    result.contextRatings.forEach((context) => {
+      expect(context.qualityEstimate).toBeLessThanOrEqual(100)
+      expect(context.averageCoverage).toBeLessThanOrEqual(1)
+      expect(context.reliableAttemptFraction).toBeLessThanOrEqual(1)
+      expect(context.effectiveAuthority).toBeLessThanOrEqual(1)
+    })
   })
 
   it('rejects invalid asOf and invalid numeric summaries', () => {

@@ -1,6 +1,6 @@
 import type { AttemptSummary } from '../persistence/types'
 import { MASTERY_MODEL_OPTIONS } from './options'
-import { MASTERY_MODEL_VERSION, type ArrangementMastery, type MasteryEvidenceExclusion, type MasteryMinimumDimension } from './types'
+import { MASTERY_MODEL_VERSION, type ArrangementMastery, type DemonstratedSpeedStatus, type MasteryEvidenceExclusion, type MasteryMinimumDimension } from './types'
 
 const DAY_MS = 86_400_000
 type Metric = 'notes' | 'rhythm' | 'tempo'
@@ -32,6 +32,7 @@ function mean(values: readonly number[]): number {
 
 function weightedMean(values: readonly { readonly value: number; readonly weight: number }[]): number {
   const totalWeight = values.reduce((sum, item) => sum + item.weight, 0)
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) return mean(values.map((item) => item.value))
   return Math.round(values.reduce((sum, item) => sum + item.value * item.weight, 0) / totalWeight * 1_000_000) / 1_000_000
 }
 
@@ -49,12 +50,13 @@ function consistency(values: readonly number[]): number | null {
 }
 
 function recencyWeight(days: number): number {
-  return 2 ** (-days / MASTERY_MODEL_OPTIONS.recencyHalfLifeDays)
+  return Math.max(0, Math.min(1, 2 ** (-days / MASTERY_MODEL_OPTIONS.recencyHalfLifeDays)))
 }
 
-function recencyFactor(days: number): number {
+function recencyFactor(attempts: readonly EligibleAttempt[]): number {
   const floor = MASTERY_MODEL_OPTIONS.recencyFactorFloor
-  return floor + (1 - floor) * recencyWeight(days)
+  const distributionRecency = mean(attempts.map((attempt) => recencyWeight(attempt.ageDays)))
+  return floor + (1 - floor) * distributionRecency
 }
 
 function exclusion(attemptId: string, code: MasteryEvidenceExclusion['code'], detail: string): MasteryEvidenceExclusion {
@@ -86,14 +88,55 @@ function qualifiesForSpeed(attempt: EligibleAttempt): boolean {
   return attempt.summary.notes >= threshold.notes && attempt.summary.rhythm >= threshold.rhythm && attempt.summary.tempo >= threshold.tempo
 }
 
-function demonstratedSpeed(attempts: readonly EligibleAttempt[]): { readonly multiplier: number | null; readonly sessions: number } {
+interface DemonstratedSpeedEvidence {
+  readonly multiplier: number | null
+  readonly status: DemonstratedSpeedStatus
+  readonly candidateMultiplier: number | null
+  readonly qualifyingAttemptCount: number
+  readonly sessions: number
+  readonly effectiveSupport: number | null
+  readonly evidenceAttemptIds: readonly string[]
+  readonly lastEvidenceAt: string | null
+}
+
+function attemptAuthority(attempt: EligibleAttempt): number {
+  const reliability = attempt.summary.reliability === 'reliable' ? MASTERY_MODEL_OPTIONS.reliableWeight : MASTERY_MODEL_OPTIONS.limitedWeight
+  return reliability * recencyWeight(attempt.ageDays)
+}
+
+function demonstratedSpeed(attempts: readonly EligibleAttempt[]): DemonstratedSpeedEvidence {
   const buckets = new Map<number, EligibleAttempt[]>()
   attempts.filter(qualifiesForSpeed).forEach((attempt) => {
     const bucket = speedBucket(attempt.summary.practiceSpeedMultiplier)
     buckets.set(bucket, [...(buckets.get(bucket) ?? []), attempt])
   })
-  const qualified = [...buckets.entries()].filter(([, values]) => values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts).sort(([left], [right]) => right - left)[0]
-  return qualified ? { multiplier: qualified[0], sessions: new Set(qualified[1].map((attempt) => attempt.summary.practiceSessionId)).size } : { multiplier: null, sessions: 0 }
+  const candidates = [...buckets.entries()].map(([multiplier, values]) => ({
+    multiplier,
+    values,
+    effectiveSupport: values.reduce((sum, attempt) => sum + attemptAuthority(attempt), 0),
+  })).sort((left, right) => right.multiplier - left.multiplier)
+  const established = candidates.find((candidate) => candidate.values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts && candidate.effectiveSupport >= MASTERY_MODEL_OPTIONS.minimumDemonstratedSpeedSupport)
+  const repeatedCandidate = candidates.find((candidate) => candidate.values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts)
+  const candidate = established ?? repeatedCandidate ?? candidates[0]
+  if (!candidate) return { multiplier: null, status: 'unavailable', candidateMultiplier: null, qualifyingAttemptCount: 0, sessions: 0, effectiveSupport: null, evidenceAttemptIds: [], lastEvidenceAt: null }
+  const sortedValues = [...candidate.values].sort((left, right) => right.summary.performedAt.localeCompare(left.summary.performedAt) || left.summary.id.localeCompare(right.summary.id))
+  const enoughRepetition = candidate.values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts
+  return {
+    multiplier: established?.multiplier ?? null,
+    status: established ? 'established' : enoughRepetition ? 'needs-current-support' : 'needs-repetition',
+    candidateMultiplier: candidate.multiplier,
+    qualifyingAttemptCount: candidate.values.length,
+    sessions: new Set(candidate.values.map((attempt) => attempt.summary.practiceSessionId)).size,
+    effectiveSupport: candidate.effectiveSupport,
+    evidenceAttemptIds: sortedValues.map((attempt) => attempt.summary.id),
+    lastEvidenceAt: sortedValues[0]?.summary.performedAt ?? null,
+  }
+}
+
+function sessionSupport(attempts: readonly EligibleAttempt[]): number {
+  const sessions = new Map<string, number>()
+  attempts.forEach((attempt) => sessions.set(attempt.summary.practiceSessionId, Math.min(1, (sessions.get(attempt.summary.practiceSessionId) ?? 0) + attemptAuthority(attempt))))
+  return [...sessions.values()].reduce((sum, support) => sum + support, 0)
 }
 
 function minimumDimension(attempts: readonly EligibleAttempt[]): MasteryMinimumDimension {
@@ -114,26 +157,31 @@ export function deriveArrangementMastery(input: DeriveArrangementMasteryInput): 
   const allEligible = outcomes.flatMap((outcome) => outcome.eligible ? [outcome.eligible] : [])
   const exclusions = outcomes.flatMap((outcome) => outcome.exclusion ? [outcome.exclusion] : []).sort((left, right) => left.attemptId.localeCompare(right.attemptId) || left.code.localeCompare(right.code))
   const recent = [...allEligible].sort((left, right) => right.summary.performedAt.localeCompare(left.summary.performedAt) || left.summary.id.localeCompare(right.summary.id)).slice(0, MASTERY_MODEL_OPTIONS.recentAttemptWindow)
-  if (!recent.length) return deepFreeze({ arrangementId: input.arrangementId, scoreVersionId: input.scoreVersionId, modelVersion: MASTERY_MODEL_VERSION, asOf: input.asOf, status: 'unestablished', mastery: null, confidence: 'unestablished', control: null, minimumDimension: null, demonstratedSpeedMultiplier: null, demonstratedSpeedSessionCount: 0, consistency: null, recencyFactor: null, eligibleAttemptCount: 0, distinctSessionCount: 0, lastEvidenceAt: null, evidenceAttemptIds: [], exclusions })
-  const weightFor = (attempt: EligibleAttempt) => (attempt.summary.reliability === 'reliable' ? MASTERY_MODEL_OPTIONS.reliableWeight : MASTERY_MODEL_OPTIONS.limitedWeight) * recencyWeight(attempt.ageDays)
+  if (!recent.length) return deepFreeze({ arrangementId: input.arrangementId, scoreVersionId: input.scoreVersionId, modelVersion: MASTERY_MODEL_VERSION, asOf: input.asOf, status: 'unestablished', mastery: null, confidence: 'unestablished', control: null, minimumDimension: null, demonstratedSpeedMultiplier: null, demonstratedSpeedStatus: 'unavailable', demonstratedSpeedCandidateMultiplier: null, demonstratedSpeedQualifyingAttemptCount: 0, demonstratedSpeedSessionCount: 0, demonstratedSpeedEffectiveSupport: null, demonstratedSpeedEvidenceAttemptIds: [], demonstratedSpeedLastEvidenceAt: null, consistency: null, recencyFactor: null, effectiveEvidenceSupport: null, effectiveSessionSupport: null, eligibleAttemptCount: 0, distinctSessionCount: 0, lastEvidenceAt: null, evidenceAttemptIds: [], exclusions })
+  const weightFor = attemptAuthority
   const control = weightedMean(recent.map((attempt) => ({ value: attempt.control, weight: weightFor(attempt) })))
   const consistencyValue = consistency(recent.map((attempt) => attempt.control))
   const speed = demonstratedSpeed(recent)
   const lastEvidenceAt = recent[0]!.summary.performedAt
-  const latestAge = recent[0]!.ageDays
-  const currentRecency = recencyFactor(latestAge)
+  const currentRecency = recencyFactor(recent)
   const { weights } = MASTERY_MODEL_OPTIONS
   const mastery = (control * weights.control + (speed.multiplier === null ? 0 : Math.min(1, speed.multiplier) * 100 * weights.demonstratedSpeed) + (consistencyValue ?? 0) * weights.consistency) * currentRecency
   const distinctSessionCount = new Set(recent.map((attempt) => attempt.summary.practiceSessionId)).size
-  const reliableFraction = recent.filter((attempt) => attempt.summary.reliability === 'reliable').length / recent.length
-  const confidence = recent.length >= MASTERY_MODEL_OPTIONS.highConfidenceAttempts && distinctSessionCount >= MASTERY_MODEL_OPTIONS.highConfidenceSessions && speed.sessions >= 2 && reliableFraction >= MASTERY_MODEL_OPTIONS.highConfidenceReliableFraction && latestAge <= MASTERY_MODEL_OPTIONS.highConfidenceFreshnessDays
+  const effectiveEvidenceSupport = recent.reduce((sum, attempt) => sum + attemptAuthority(attempt), 0)
+  const effectiveSessionSupport = sessionSupport(recent)
+  const reliableAuthority = recent.filter((attempt) => attempt.summary.reliability === 'reliable').reduce((sum, attempt) => sum + attemptAuthority(attempt), 0)
+  const reliableAuthorityFraction = effectiveEvidenceSupport > 0 ? reliableAuthority / effectiveEvidenceSupport : 0
+  const confidence = effectiveEvidenceSupport >= MASTERY_MODEL_OPTIONS.highConfidenceEffectiveEvidenceSupport && effectiveSessionSupport >= MASTERY_MODEL_OPTIONS.highConfidenceEffectiveSessionSupport && speed.multiplier !== null && speed.sessions >= 2 && reliableAuthorityFraction >= MASTERY_MODEL_OPTIONS.highConfidenceReliableAuthorityFraction
     ? 'high'
-    : recent.length >= MASTERY_MODEL_OPTIONS.mediumConfidenceAttempts && distinctSessionCount >= MASTERY_MODEL_OPTIONS.mediumConfidenceSessions && latestAge <= MASTERY_MODEL_OPTIONS.mediumConfidenceFreshnessDays ? 'medium' : 'low'
+    : effectiveEvidenceSupport >= MASTERY_MODEL_OPTIONS.mediumConfidenceEffectiveEvidenceSupport && effectiveSessionSupport >= MASTERY_MODEL_OPTIONS.mediumConfidenceEffectiveSessionSupport ? 'medium' : 'low'
   return deepFreeze({
     arrangementId: input.arrangementId, scoreVersionId: input.scoreVersionId, modelVersion: MASTERY_MODEL_VERSION, asOf: input.asOf,
     status: 'ready', mastery: Math.max(0, Math.min(100, mastery)), confidence, control, minimumDimension: minimumDimension(recent),
-    demonstratedSpeedMultiplier: speed.multiplier, demonstratedSpeedSessionCount: speed.sessions, consistency: consistencyValue,
-    recencyFactor: currentRecency, eligibleAttemptCount: allEligible.length, distinctSessionCount, lastEvidenceAt,
+    demonstratedSpeedMultiplier: speed.multiplier, demonstratedSpeedStatus: speed.status, demonstratedSpeedCandidateMultiplier: speed.candidateMultiplier,
+    demonstratedSpeedQualifyingAttemptCount: speed.qualifyingAttemptCount, demonstratedSpeedSessionCount: speed.sessions,
+    demonstratedSpeedEffectiveSupport: speed.effectiveSupport, demonstratedSpeedEvidenceAttemptIds: speed.evidenceAttemptIds,
+    demonstratedSpeedLastEvidenceAt: speed.lastEvidenceAt, consistency: consistencyValue,
+    recencyFactor: currentRecency, effectiveEvidenceSupport, effectiveSessionSupport, eligibleAttemptCount: allEligible.length, distinctSessionCount, lastEvidenceAt,
     evidenceAttemptIds: recent.map((attempt) => attempt.summary.id), exclusions,
   })
 }

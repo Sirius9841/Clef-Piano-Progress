@@ -1,6 +1,6 @@
 # Skill Model
 
-Skill Model `skill-model-1.0.0` derives carefully qualified current Technique state from immutable `TechniqueAttemptSummary` projections. It never reads raw MIDI, reparses an exercise, realigns a performance, regrades a facet, or mutates historical Technique records.
+Skill Model `skill-model-1.1.0` derives carefully qualified current Technique state from immutable `TechniqueAttemptSummary` projections. It never reads raw MIDI, reparses an exercise, realigns a performance, regrades a facet, or mutates historical Technique records.
 
 ## Meaning and boundary
 
@@ -8,27 +8,50 @@ Clef publishes exactly eight independent ratings, one for each Technique Lab mod
 
 Only the exact current engine pair `technique-exercise-1.1.1` / `technique-analysis-1.1.2` is eligible. V1 and earlier V2 summaries remain valid frozen history but are excluded from current Skill Model evidence. Sight-reading accepts only an exact instance's first saved attempt with `first-pass` facet context.
 
-## Evidence qualification
+## Evidence populations
 
-Applicable core facets are centralized per module. Ascending/descending-only scales do not require direction-change continuity, and steady Tempo Control exercises without authored tempo changes do not require transition control. Every applicable facet must be ready, reliable or limited, finite, and have at least `0.55` coverage. This threshold reuses the conservative Phase 12 evidence boundary as a product heuristic, not a law of piano pedagogy.
+Every applicable core facet must be ready, reliable or limited, finite, and have at least `0.55` coverage. One attempt's quality is the arithmetic mean of applicable facet scores, with every facet voting once. Reliability and coverage affect authority, never the measured quality.
 
-One attempt's quality is the arithmetic mean of its applicable facet scores. Each facet votes once regardless of observation count. Reliability never multiplies quality: it affects only evidence weight and confidence.
+The model keeps two populations explicit:
 
-## Contexts and aggregation
+- eligible historical evidence contains every qualifying current-engine summary;
+- bounded model evidence is the union of the latest three eligible attempts retained inside each exact challenge context.
 
-Challenge identity uses only module-relevant authored configuration such as tonic, mode, declared hand context, BPM, subdivision, octave span, direction, inversion, jump distance, or tempo shape. It excludes attempt IDs, recording IDs, timestamps, and generated seed/instance identity. Thus distinct first-pass stimuli can support one sight-reading challenge context, while repeated identical scales remain one context.
+Context quality, module quality, consistency, and confidence use bounded model evidence. Older eligible repeats remain visible in historical counts and breadth diagnostics but cannot strengthen current confidence.
 
-Aggregation has two stages:
+## Context identity
 
-1. The latest three attempts in each exact context produce one context estimate. Reliable evidence has weight `1.0`, limited evidence `0.6`; facet coverage and gentle recency also affect evidence weight.
-2. Context estimates receive equal structural influence with only gentle recency adjustment. Fifty repetitions in one context cannot outweigh all other contexts.
+Every context includes `templateId`; different templates never collapse. Seed, generated instance ID, attempt ID, recording ID, and timestamps never enter normal context identity. Exact module dimensions are:
 
-Current-state recency uses a 105-day half-life with a `0.35` historical floor. This is a transparent product heuristic, not a claim about neurological forgetting. All calculations require an explicit `asOf`; future-dated evidence is excluded.
+- Sight Reading: template, tonic, mode, declared hand context, target BPM, subdivision, event count.
+- Rhythm: template, starting tonic, declared hand context, target BPM, subdivision, event count.
+- Chord Fluency: template, tonic, mode, declared hand context, target BPM, subdivision, inversion, event count.
+- Scales: template, tonic, mode, declared hand context, target BPM, subdivision, octave span, direction.
+- Arpeggios: template, tonic, mode, declared hand context, target BPM, subdivision, octave span, direction.
+- Octaves: template, starting tonic, declared hand context, target BPM, subdivision, event count.
+- Keyboard Jumps: template, starting tonic, declared hand context, target BPM, subdivision, jump distance, event count.
+- Tempo Control: template, starting tonic, declared hand context, target BPM, subdivision, tempo shape, event count.
 
-Consistency is a separate robust median-absolute-deviation transformation and is not folded into quality. Confidence is `unestablished`, `low`, `medium`, or `high` and considers attempts, contexts, reliable proportion, coverage, recency, and breadth—not the score itself. No eligible evidence produces `null`, never zero.
+Keyboard Jumps includes tonic because the generator uses `60 + tonic` as the actual starting register/pitch. Register is not otherwise independently configurable. Context distinction describes different authored drills; it never ranks one key, register, subdivision, hand declaration, or template as inherently harder.
 
-## Challenge envelope
+## Quality and confidence recency
 
-Every result describes the demonstrated boundary: eligible attempts and contexts, BPM range, declared hand contexts, and last measurement. Module-relevant breadth includes tonics, modes, octave spans, directions, chord inversions, jump distances, subdivisions, tempo shapes, and distinct sight-reading first-pass instances. Tonics, modes, inversions, and declared hand context are breadth evidence; Phase 13 assigns them no arbitrary difficulty rank and never infers physical hand use.
+Quality continuity uses a 105-day half-life with a `0.35` floor. Within a context it weights the latest three attempts by reliability (`1.0` reliable, `0.6` limited), coverage, and quality recency. Contexts then receive equal structural influence with gentle quality recency. Fifty repetitions in one context therefore cannot outweigh another context.
 
-The result retains exact eligible attempt IDs, context ratings, and typed exclusions. It is deterministic, serializable, deeply immutable, React-independent, renderer-independent, and persistence-adapter-independent.
+Confidence uses a separate no-floor 90-day half-life. For a retained attempt:
+
+`attemptAuthority = reliabilityWeight × coverage × 2^(-ageDays / 90)`
+
+For a context:
+
+`contextAuthority = min(1, sum(attemptAuthority) / 1.5)`
+
+`effectiveEvidenceSupport` is the sum of context authority. Medium confidence needs at least two retained attempts, two contexts, and `1.2` effective support. High confidence needs at least eight retained attempts, four contexts, and `3.2` effective support. Thus old history can remain informative to quality while losing authority to claim that the ability is current. One recent context cannot refresh several ancient contexts, and 50 repeats in one context contribute at most three model attempts and one authority unit.
+
+Consistency is a separate median-absolute-deviation transformation over bounded model-attempt qualities. All calculations require an explicit `asOf`; future-dated evidence is excluded. No eligible evidence yields `null`/unestablished, never a zero score.
+
+## Challenge envelope and provenance
+
+Every result exposes eligible historical count and IDs separately from bounded model count and IDs, exact context ratings, effective authority, typed exclusions, BPM range, declared hand contexts, last measurement, and module-relevant breadth. Subdivision breadth is retained for all modules because it changes authored event timing and density. Sight Reading also reports distinct first-pass exercise instances.
+
+The projection is deterministic, serializable, deeply immutable, React-independent, renderer-independent, and persistence-adapter-independent.

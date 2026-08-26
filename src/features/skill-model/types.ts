@@ -1,6 +1,6 @@
 import type { TechniqueFacetId, TechniqueModuleId } from '../technique/types'
 
-export const SKILL_MODEL_VERSION = 'skill-model-1.0.0'
+export const SKILL_MODEL_VERSION = 'skill-model-1.1.0'
 
 export type SkillConfidence = 'unestablished' | 'low' | 'medium' | 'high'
 
@@ -40,6 +40,8 @@ export interface SkillContextRating {
   readonly lastMeasuredAt: string
   readonly averageCoverage: number
   readonly reliableAttemptFraction: number
+  /** Current confidence authority after reliability, coverage, recency, and the per-context cap. */
+  readonly effectiveAuthority: number
 }
 
 export interface SkillChallengeEnvelope {
@@ -69,10 +71,16 @@ export interface SkillRating {
   readonly confidence: SkillConfidence
   readonly consistency: number | null
   readonly eligibleAttemptCount: number
+  readonly modelEvidenceAttemptCount: number
   readonly eligibleContextCount: number
   readonly lastMeasuredAt: string | null
   readonly challengeEnvelope: SkillChallengeEnvelope
   readonly contextRatings: readonly SkillContextRating[]
-  readonly evidenceAttemptIds: readonly string[]
+  /** Every historically eligible current-engine summary, including repeats outside the bounded model window. */
+  readonly eligibleAttemptIds: readonly string[]
+  /** Exact union of the latest bounded attempts that influence current context quality, consistency, and confidence. */
+  readonly modelEvidenceAttemptIds: readonly string[]
+  /** Sum of bounded context authority; one context can contribute at most one unit. */
+  readonly effectiveEvidenceSupport: number | null
   readonly exclusions: readonly SkillEvidenceExclusion[]
 }

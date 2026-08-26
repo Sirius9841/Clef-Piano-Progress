@@ -49,13 +49,11 @@ A `TechniqueAttemptRecordV1` is a separate immutable measurement record. It iden
 
 ## Mastery
 
-Mastery Model `1.0.0` derives current command of one Arrangement from reliable/limited full-plan Notes, Rhythm, and Tempo summaries tied to its current immutable ScoreVersion. It keeps Control, repeated demonstrated speed, consistency, recency, and confidence visible and uses a documented 55/30/15 formula before a modest recency factor. It is not a best Performance Score, artistic verdict, Work-level property, or automatic Repertoire status. A changed ScoreVersion begins a new evidence boundary. See `MASTERY_MODEL.md`.
+Mastery Model `1.1.0` derives current command of one Arrangement from reliable/limited full-plan Notes, Rhythm, and Tempo summaries tied to its current immutable ScoreVersion. It keeps Control, currently supported repeated speed, consistency, distribution-aware recency, and confidence visible and uses a documented 55/30/15 formula before a modest recency factor. It is not a best Performance Score, artistic verdict, Work-level property, or automatic Repertoire status. A changed ScoreVersion begins a new evidence boundary. See `MASTERY_MODEL.md`.
 
 ## Skill Rating
 
-Skill Model `1.0.0` derives exactly eight independent current Technique ratings from the exact current Technique engine pair. Attempt facets vote equally, repeated takes are first collapsed into musically typed challenge contexts, and breadth/confidence always qualify the estimate. There is no overall pianist rating, universal level, or scalar challenge difficulty. Historical Technique attempts remain unchanged. See `SKILL_MODEL.md`.
-
-## SkillRating
+Skill Model `1.1.0` derives exactly eight independent current Technique ratings from the exact current Technique engine pair. Attempt facets vote equally, repeated takes are bounded inside exact template-aware challenge contexts, and current confidence uses only retained context evidence with no-floor authority. There is no overall pianist rating, universal level, or scalar challenge difficulty. Historical Technique attempts remain unchanged. See `SKILL_MODEL.md`.
 
 A SkillRating measures a transferable ability such as sight reading, rhythm, chord fluency, scales, or tempo control. It is independent of arrangement mastery.
 

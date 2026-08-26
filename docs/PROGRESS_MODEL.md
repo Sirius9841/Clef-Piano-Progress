@@ -1,6 +1,6 @@
 # Long-term progress model
 
-Progress remains derived from immutable attempt summaries and completed PracticeSessions. Phase 13 additionally derives carefully qualified Arrangement Mastery and eight transferable Technique skill ratings; it still never stores a mutable “best score” as the only truth or invents an overall Performance Score.
+Progress remains derived from immutable attempt summaries and completed PracticeSessions. Phase 13.1 derives carefully qualified Arrangement Mastery and eight transferable Technique skill ratings with current-evidence authority; it still never stores a mutable “best score” as the only truth or invents an overall Performance Score.
 
 ## Comparable attempts
 
@@ -31,3 +31,5 @@ The Progress view selects the latest headline-comparable full-plan context and r
 Practice time is the sum of completed PracticeSession durations in the selected 7-day, 30-day, or all-time range. Session count and attempt count are separate. Multiple takes inside one session therefore add analysis evidence without multiplying practice minutes. Active days are deduplicated from real timestamps in the user's local calendar rather than by their UTC ISO date.
 
 Personal-best and trend logic deliberately excludes Mastery, Dynamics, Articulation, Pedal, Voicing, Technique ratings, reference similarity, and any overall performance score. Phase 13 presents Skill Ratings as a separate summary-derived section and Arrangement Mastery on exact Arrangement detail; neither enters repertoire charts, Practice Priority, or personal-best claims. A selected reference remains an interpretive comparison preference, never a record to beat.
+
+The Progress page's 7-day, 30-day, and all-time selector applies only to practice volume and performance trends. Skill Ratings intentionally consume all eligible Technique history, then apply their own bounded per-context model window and current-state recency. Filtering Technique summaries by the Progress selector would discard the model's evidence semantics and is forbidden.

@@ -1,6 +1,7 @@
 import type { TechniqueAttemptSummary, TechniqueAttemptSummaryV2 } from '../persistence/types'
 import { TECHNIQUE_MODULE_IDS, type TechniqueFacetId, type TechniqueModuleId } from '../technique/types'
 import { SKILL_MODEL_OPTIONS } from './options'
+import { skillContextId } from './skillContextIdentity'
 import { SKILL_MODEL_VERSION, type SkillChallengeEnvelope, type SkillContextRating, type SkillEvidenceExclusion, type SkillRating, type TechniqueSkillEvidence } from './types'
 
 const DAY_MS = 86_400_000
@@ -30,6 +31,7 @@ function mean(values: readonly number[]): number {
 
 function weightedMean(values: readonly { readonly value: number; readonly weight: number }[]): number {
   const weight = values.reduce((sum, item) => sum + item.weight, 0)
+  if (!Number.isFinite(weight) || weight <= 0) return mean(values.map((item) => item.value))
   return Math.round(values.reduce((sum, item) => sum + item.value * item.weight, 0) / weight * 1_000_000) / 1_000_000
 }
 
@@ -58,9 +60,13 @@ function daysOld(performedAt: string, asOfMs: number): number | null {
   return (asOfMs - value) / DAY_MS
 }
 
-function recencyWeight(days: number): number {
-  const { recencyHalfLifeDays: halfLife, recencyWeightFloor: floor } = SKILL_MODEL_OPTIONS
+function qualityRecencyWeight(days: number): number {
+  const { qualityRecencyHalfLifeDays: halfLife, qualityRecencyWeightFloor: floor } = SKILL_MODEL_OPTIONS
   return floor + (1 - floor) * 2 ** (-days / halfLife)
+}
+
+function confidenceRecencyWeight(days: number): number {
+  return Math.max(0, Math.min(1, 2 ** (-days / SKILL_MODEL_OPTIONS.confidenceRecencyHalfLifeDays)))
 }
 
 function requiredFacets(summary: TechniqueAttemptSummaryV2): readonly TechniqueFacetId[] {
@@ -70,22 +76,6 @@ function requiredFacets(summary: TechniqueAttemptSummaryV2): readonly TechniqueF
   return base
 }
 
-function contextId(summary: TechniqueAttemptSummaryV2): string {
-  const challenge = summary.challenge
-  let identity: Readonly<Record<string, string | number>>
-  switch (summary.moduleId) {
-    case 'sight-reading': identity = { module: summary.moduleId, tonic: challenge.tonic, mode: challenge.mode, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, subdivision: challenge.subdivision, events: challenge.eventCount }; break
-    case 'rhythm': identity = { module: summary.moduleId, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, subdivision: challenge.subdivision, events: challenge.eventCount }; break
-    case 'chord-fluency': identity = { module: summary.moduleId, tonic: challenge.tonic, mode: challenge.mode, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, inversion: challenge.chordInversion, events: challenge.eventCount }; break
-    case 'scales':
-    case 'arpeggios': identity = { module: summary.moduleId, tonic: challenge.tonic, mode: challenge.mode, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, octaves: challenge.octaveSpan, direction: challenge.direction, subdivision: challenge.subdivision }; break
-    case 'octaves': identity = { module: summary.moduleId, tonic: challenge.tonic, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, subdivision: challenge.subdivision, events: challenge.eventCount }; break
-    case 'keyboard-jumps': identity = { module: summary.moduleId, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, jump: challenge.jumpSemitones, events: challenge.eventCount }; break
-    case 'tempo-control': identity = { module: summary.moduleId, hand: challenge.declaredHandContext, bpm: challenge.targetTempoBpm, shape: challenge.tempoShape, events: challenge.eventCount }; break
-  }
-  return Object.entries(identity).map(([key, value]) => `${key}=${value}`).join('|')
-}
-
 function exclusion(attemptId: string, code: SkillEvidenceExclusion['code'], detail: string): SkillEvidenceExclusion {
   return { attemptId, code, detail }
 }
@@ -93,12 +83,12 @@ function exclusion(attemptId: string, code: SkillEvidenceExclusion['code'], deta
 function validateCurrentSummary(summary: TechniqueAttemptSummary, moduleId: TechniqueModuleId, asOfMs: number): { readonly evidence?: TechniqueSkillEvidence; readonly exclusion?: SkillEvidenceExclusion } {
   if (summary.moduleId !== moduleId) return { exclusion: exclusion(summary.id, 'wrong-module', `Expected ${moduleId}; summary belongs to ${summary.moduleId}.`) }
   if (!('schemaVersion' in summary) || summary.schemaVersion !== 2 || summary.exerciseEngineVersion !== 'technique-exercise-1.1.1' || summary.techniqueAnalysisEngineVersion !== 'technique-analysis-1.1.2') {
-    return { exclusion: exclusion(summary.id, 'legacy-engine', 'Only the current Technique 1.1.1 / analysis 1.1.2 evidence pair informs Skill Model 1.0.0.') }
+    return { exclusion: exclusion(summary.id, 'legacy-engine', 'Only the current Technique 1.1.1 / analysis 1.1.2 evidence pair informs Skill Model 1.1.0.') }
   }
   const age = daysOld(summary.performedAt, asOfMs)
   if (age === null) return { exclusion: exclusion(summary.id, Number.isFinite(Date.parse(summary.performedAt)) ? 'future-dated' : 'invalid-summary', 'The performed timestamp is invalid or later than asOf.') }
   const challengeNumbers = [summary.challenge.targetTempoBpm, summary.challenge.eventCount, summary.challenge.tonic, summary.challenge.octaveSpan, summary.challenge.subdivision, summary.challenge.chordInversion, summary.challenge.jumpSemitones, summary.challenge.tempoChangeCount]
-  if (challengeNumbers.some((value) => !Number.isFinite(value)) || summary.completion.eventCoverageRatio < 0 || summary.completion.eventCoverageRatio > 1) {
+  if (!summary.templateId.trim() || challengeNumbers.some((value) => !Number.isFinite(value)) || summary.completion.eventCoverageRatio < 0 || summary.completion.eventCoverageRatio > 1) {
     return { exclusion: exclusion(summary.id, 'invalid-summary', 'Challenge or completion provenance contains an invalid numeric value.') }
   }
   if (moduleId === 'sight-reading' && (!summary.novelty.firstSavedAttempt || summary.novelty.priorSavedAttemptCount !== 0)) {
@@ -120,7 +110,7 @@ function validateCurrentSummary(summary: TechniqueAttemptSummary, moduleId: Tech
     exerciseInstanceId: summary.exerciseInstanceId,
     moduleId,
     performedAt: summary.performedAt,
-    contextId: contextId(summary),
+    contextId: skillContextId(summary),
     quality: mean(ready.map((facet) => facet.score!)),
     reliability: ready.every((facet) => facet.reliability === 'reliable') ? 'reliable' : 'limited',
     coverage: mean(ready.map((facet) => facet.coverage)),
@@ -128,12 +118,18 @@ function validateCurrentSummary(summary: TechniqueAttemptSummary, moduleId: Tech
   } }
 }
 
+function modelAttemptAuthority(item: TechniqueSkillEvidence, asOfMs: number): number {
+  const reliability = item.reliability === 'reliable' ? SKILL_MODEL_OPTIONS.reliableWeight : SKILL_MODEL_OPTIONS.limitedWeight
+  return reliability * item.coverage * confidenceRecencyWeight(daysOld(item.performedAt, asOfMs)!)
+}
+
 function contextRatings(evidence: readonly TechniqueSkillEvidence[], asOfMs: number): readonly SkillContextRating[] {
   const groups = new Map<string, TechniqueSkillEvidence[]>()
   evidence.forEach((item) => groups.set(item.contextId, [...(groups.get(item.contextId) ?? []), item]))
   return [...groups.entries()].map(([id, items]) => {
     const recent = [...items].sort((left, right) => right.performedAt.localeCompare(left.performedAt) || left.attemptId.localeCompare(right.attemptId)).slice(0, SKILL_MODEL_OPTIONS.contextAttemptWindow)
-    const weighted = recent.map((item) => ({ value: item.quality, weight: (item.reliability === 'reliable' ? SKILL_MODEL_OPTIONS.reliableWeight : SKILL_MODEL_OPTIONS.limitedWeight) * item.coverage * recencyWeight(daysOld(item.performedAt, asOfMs)!) }))
+    const weighted = recent.map((item) => ({ value: item.quality, weight: (item.reliability === 'reliable' ? SKILL_MODEL_OPTIONS.reliableWeight : SKILL_MODEL_OPTIONS.limitedWeight) * item.coverage * qualityRecencyWeight(daysOld(item.performedAt, asOfMs)!) }))
+    const effectiveAuthority = Math.min(1, recent.reduce((sum, item) => sum + modelAttemptAuthority(item, asOfMs), 0) / SKILL_MODEL_OPTIONS.contextAuthorityNormalization)
     return {
       contextId: id,
       qualityEstimate: weightedMean(weighted),
@@ -142,6 +138,7 @@ function contextRatings(evidence: readonly TechniqueSkillEvidence[], asOfMs: num
       lastMeasuredAt: recent[0]!.performedAt,
       averageCoverage: mean(recent.map((item) => item.coverage)),
       reliableAttemptFraction: recent.filter((item) => item.reliability === 'reliable').length / recent.length,
+      effectiveAuthority,
     }
   }).sort((left, right) => right.lastMeasuredAt.localeCompare(left.lastMeasuredAt) || left.contextId.localeCompare(right.contextId))
 }
@@ -170,7 +167,7 @@ function envelope(moduleId: TechniqueModuleId, summaries: readonly TechniqueAtte
     jumpDistancesSemitones: moduleId === 'keyboard-jumps' ? uniqueSorted(eligible.map((summary) => summary.challenge.jumpSemitones)) : [],
     maximumJumpDistanceSemitones: moduleId === 'keyboard-jumps' && eligible.length ? Math.max(...eligible.map((summary) => summary.challenge.jumpSemitones)) : null,
     tempoShapes: moduleId === 'tempo-control' ? uniqueSorted(eligible.map((summary) => summary.challenge.tempoShape)) : [],
-    subdivisions: moduleId === 'rhythm' || moduleId === 'octaves' ? uniqueSorted(eligible.map((summary) => summary.challenge.subdivision)) : [],
+    subdivisions: uniqueSorted(eligible.map((summary) => summary.challenge.subdivision)),
     distinctFirstPassExerciseInstances: new Set(eligible.filter((summary) => summary.moduleId === 'sight-reading').map((summary) => summary.exerciseInstanceId)).size,
   }
 }
@@ -184,21 +181,22 @@ export function deriveSkillRating(moduleId: TechniqueModuleId, summaries: readon
   const contexts = contextRatings(evidence, asOfMs)
   const currentSummaries = summaries.filter((summary): summary is TechniqueAttemptSummaryV2 => 'schemaVersion' in summary && summary.schemaVersion === 2)
   const challengeEnvelope = envelope(moduleId, currentSummaries, evidence)
-  if (!evidence.length) return deepFreeze({ moduleId, modelVersion: SKILL_MODEL_VERSION, asOf, status: 'unestablished', qualityEstimate: null, confidence: 'unestablished', consistency: null, eligibleAttemptCount: 0, eligibleContextCount: 0, lastMeasuredAt: null, challengeEnvelope, contextRatings: [], evidenceAttemptIds: [], exclusions })
-  const qualityEstimate = weightedMean(contexts.map((context) => ({ value: context.qualityEstimate, weight: recencyWeight(daysOld(context.lastMeasuredAt, asOfMs)!) })))
+  if (!evidence.length) return deepFreeze({ moduleId, modelVersion: SKILL_MODEL_VERSION, asOf, status: 'unestablished', qualityEstimate: null, confidence: 'unestablished', consistency: null, eligibleAttemptCount: 0, modelEvidenceAttemptCount: 0, eligibleContextCount: 0, lastMeasuredAt: null, challengeEnvelope, contextRatings: [], eligibleAttemptIds: [], modelEvidenceAttemptIds: [], effectiveEvidenceSupport: null, exclusions })
+  const qualityEstimate = weightedMean(contexts.map((context) => ({ value: context.qualityEstimate, weight: qualityRecencyWeight(daysOld(context.lastMeasuredAt, asOfMs)!) })))
   const lastMeasuredAt = evidence.map((item) => item.performedAt).sort().at(-1)!
-  const reliableFraction = evidence.filter((item) => item.reliability === 'reliable').length / evidence.length
-  const averageCoverage = mean(evidence.map((item) => item.coverage))
-  const newestAge = daysOld(lastMeasuredAt, asOfMs)!
-  const confidence = evidence.length >= SKILL_MODEL_OPTIONS.highConfidenceAttempts && contexts.length >= SKILL_MODEL_OPTIONS.highConfidenceContexts && reliableFraction >= SKILL_MODEL_OPTIONS.highConfidenceReliableFraction && averageCoverage >= SKILL_MODEL_OPTIONS.highConfidenceCoverage && newestAge <= SKILL_MODEL_OPTIONS.confidenceFreshnessDays
+  const modelEvidenceIds = new Set(contexts.flatMap((context) => context.evidenceAttemptIds))
+  const modelEvidence = evidence.filter((item) => modelEvidenceIds.has(item.attemptId))
+  const effectiveEvidenceSupport = contexts.reduce((sum, context) => sum + context.effectiveAuthority, 0)
+  const confidence = modelEvidence.length >= SKILL_MODEL_OPTIONS.highConfidenceModelAttempts && contexts.length >= SKILL_MODEL_OPTIONS.highConfidenceContexts && effectiveEvidenceSupport >= SKILL_MODEL_OPTIONS.highConfidenceEffectiveSupport
     ? 'high'
-    : evidence.length >= SKILL_MODEL_OPTIONS.mediumConfidenceAttempts && contexts.length >= SKILL_MODEL_OPTIONS.mediumConfidenceContexts && newestAge <= SKILL_MODEL_OPTIONS.confidenceFreshnessDays * 2 ? 'medium' : 'low'
-  const consistencyEvidenceIds = new Set(contexts.flatMap((context) => context.evidenceAttemptIds))
+    : modelEvidence.length >= SKILL_MODEL_OPTIONS.mediumConfidenceModelAttempts && contexts.length >= SKILL_MODEL_OPTIONS.mediumConfidenceContexts && effectiveEvidenceSupport >= SKILL_MODEL_OPTIONS.mediumConfidenceEffectiveSupport ? 'medium' : 'low'
   return deepFreeze({
     moduleId, modelVersion: SKILL_MODEL_VERSION, asOf, status: 'established', qualityEstimate, confidence,
-    consistency: consistency(evidence.filter((item) => consistencyEvidenceIds.has(item.attemptId)).map((item) => item.quality)), eligibleAttemptCount: evidence.length,
+    consistency: consistency(modelEvidence.map((item) => item.quality)), eligibleAttemptCount: evidence.length, modelEvidenceAttemptCount: modelEvidence.length,
     eligibleContextCount: contexts.length, lastMeasuredAt, challengeEnvelope, contextRatings: contexts,
-    evidenceAttemptIds: [...evidence].sort((left, right) => left.performedAt.localeCompare(right.performedAt) || left.attemptId.localeCompare(right.attemptId)).map((item) => item.attemptId), exclusions,
+    eligibleAttemptIds: [...evidence].sort((left, right) => left.performedAt.localeCompare(right.performedAt) || left.attemptId.localeCompare(right.attemptId)).map((item) => item.attemptId),
+    modelEvidenceAttemptIds: [...modelEvidence].sort((left, right) => left.performedAt.localeCompare(right.performedAt) || left.attemptId.localeCompare(right.attemptId)).map((item) => item.attemptId),
+    effectiveEvidenceSupport, exclusions,
   })
 }
 
