@@ -1,6 +1,6 @@
 export { deriveAllSkillRatings, deriveSkillRating } from './model'
 export { SKILL_MODEL_OPTIONS } from './options'
-export { SKILL_CONTEXT_DIMENSIONS, skillContextId } from './skillContextIdentity'
-export type { SkillContextDimension } from './skillContextIdentity'
+export { SKILL_CONTEXT_DEFINITIONS, SKILL_CONTEXT_DIMENSIONS, skillContextId, skillContextUsesDimension } from './skillContextIdentity'
+export type { SkillContextDefinition, SkillContextDimension, SkillTonicSemantics } from './skillContextIdentity'
 export { SKILL_MODEL_VERSION } from './types'
 export type { SkillChallengeEnvelope, SkillConfidence, SkillContextRating, SkillEvidenceExclusion, SkillEvidenceExclusionCode, SkillRating, TechniqueSkillEvidence } from './types'

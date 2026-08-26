@@ -14,5 +14,6 @@ export const MASTERY_MODEL_OPTIONS = Object.freeze({
   mediumConfidenceEffectiveSessionSupport: 1.25,
   highConfidenceEffectiveEvidenceSupport: 4,
   highConfidenceEffectiveSessionSupport: 2.5,
+  highConfidenceDemonstratedSpeedSessionSupport: 1.5,
   highConfidenceReliableAuthorityFraction: 0.6,
 })

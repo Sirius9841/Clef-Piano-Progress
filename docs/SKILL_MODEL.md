@@ -1,6 +1,6 @@
 # Skill Model
 
-Skill Model `skill-model-1.1.0` derives carefully qualified current Technique state from immutable `TechniqueAttemptSummary` projections. It never reads raw MIDI, reparses an exercise, realigns a performance, regrades a facet, or mutates historical Technique records.
+Skill Model `skill-model-1.1.1` derives carefully qualified current Technique state from immutable `TechniqueAttemptSummary` projections. It never reads raw MIDI, reparses an exercise, realigns a performance, regrades a facet, or mutates historical Technique records.
 
 ## Meaning and boundary
 
@@ -19,6 +19,8 @@ The model keeps two populations explicit:
 
 Context quality, module quality, consistency, and confidence use bounded model evidence. Older eligible repeats remain visible in historical counts and breadth diagnostics but cannot strengthen current confidence.
 
+This is the model window, not a claim that every retained take is recent. The window is count-bounded; explicit recency weights determine how much current authority its takes retain.
+
 ## Context identity
 
 Every context includes `templateId`; different templates never collapse. Seed, generated instance ID, attempt ID, recording ID, and timestamps never enter normal context identity. Exact module dimensions are:
@@ -32,7 +34,7 @@ Every context includes `templateId`; different templates never collapse. Seed, g
 - Keyboard Jumps: template, starting tonic, declared hand context, target BPM, subdivision, jump distance, event count.
 - Tempo Control: template, starting tonic, declared hand context, target BPM, subdivision, tempo shape, event count.
 
-Keyboard Jumps includes tonic because the generator uses `60 + tonic` as the actual starting register/pitch. Register is not otherwise independently configurable. Context distinction describes different authored drills; it never ranks one key, register, subdivision, hand declaration, or template as inherently harder.
+For Sight Reading, Chord Fluency, Scales, and Arpeggios, tonic is tonal-key provenance. For Rhythm, Octaves, Keyboard Jumps, and Tempo Control, the same source field is starting-pitch provenance and must never be presented as a key. Keyboard Jumps uses `60 + tonic` as the actual starting pitch; register is not otherwise independently configurable. Context distinction describes different authored drills; it never ranks one key, register, subdivision, hand declaration, or template as inherently harder.
 
 ## Quality and confidence recency
 
@@ -52,6 +54,8 @@ Consistency is a separate median-absolute-deviation transformation over bounded 
 
 ## Challenge envelope and provenance
 
-Every result exposes eligible historical count and IDs separately from bounded model count and IDs, exact context ratings, effective authority, typed exclusions, BPM range, declared hand contexts, last measurement, and module-relevant breadth. Subdivision breadth is retained for all modules because it changes authored event timing and density. Sight Reading also reports distinct first-pass exercise instances.
+Every result exposes eligible historical count and IDs separately from bounded model count and IDs, exact context ratings, effective authority, typed exclusions, BPM range, declared hand contexts, last measurement, and module-relevant breadth. The challenge envelope is derived from the same canonical per-module context definition used to create context identity, so a material identity dimension cannot silently disappear from displayed provenance.
+
+The envelope includes tonal `tonics`, non-tonal `startingTonics`, `modes`, `subdivisions`, `eventCounts`, `octaveSpans`, `directions`, `chordInversions`, `jumpSemitones`, `tempoShapes`, `templateIds`, and `distinctTemplateCount`, using only dimensions applicable to that module. Subdivision breadth is retained for all eight modules because it changes authored event timing and density. Template and event-count provenance remain descriptive; neither creates a difficulty rank. Sight Reading also reports distinct first-pass exercise instances.
 
 The projection is deterministic, serializable, deeply immutable, React-independent, renderer-independent, and persistence-adapter-independent.

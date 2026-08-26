@@ -180,7 +180,7 @@ This repository builds a serious piano progress and performance-analysis applica
 
 ## Skill and mastery model rules
 
-- Skill Model `1.1.0` consumes only current-pair Technique V2 summaries (`exercise-1.1.1` / `analysis-1.1.2`). Older Technique evidence remains frozen history and never creates a current rating.
+- Skill Model `1.1.1` consumes only current-pair Technique V2 summaries (`exercise-1.1.1` / `analysis-1.1.2`). Older Technique evidence remains frozen history and never creates a current rating.
 - Keep exactly eight independent Technique skill ratings. Never create an overall pianist score, universal level, percentile, or challenge difficulty multiplier.
 - Skill attempt quality gives each applicable ready facet one equal vote. Reliability and coverage affect evidence authority, not the measured facet quality itself.
 - Aggregate Technique evidence through challenge contexts before module ratings so repeated identical practice cannot dominate breadth. Tonics, modes, inversions, and declared hand context are descriptive breadth, not ranked difficulty or inferred physical execution.
@@ -192,7 +192,10 @@ This repository builds a serious piano progress and performance-analysis applica
 - Skill confidence uses only the bounded latest model evidence retained per challenge context. Older repeats remain eligible history but cannot inflate current confidence.
 - Skill quality continuity and confidence authority use distinct recency semantics: old history may remain informative without proving current ability.
 - Challenge-context identity includes every module-relevant configured dimension that materially changes the authored exercise, including template and subdivision where applicable, without assigning difficulty ranks.
+- Challenge-context identity and its challenge envelope share one canonical per-module definition. Keep tonal-key tonic provenance separate from non-tonal starting-pitch provenance, and expose template, subdivision, and event-count breadth without interpreting them as difficulty.
+- Call the bounded latest-three-per-context population the model window, never the current window; recency authority, not membership alone, determines whether evidence is current.
 - Mastery demonstrated speed requires repeated current reliability/recency support in its exact speed bucket, not merely two qualifying performances at any age.
+- Mastery High confidence requires current, session-capped authority inside the exact demonstrated-speed bucket. Keep raw supporting-session count distinct from effective session authority; stale, same-session, or other-speed support cannot masquerade as current independent repetition.
 - Current-state recency and confidence are distribution-aware. The newest evidence item alone cannot refresh an otherwise stale population, and repeated same-session evidence has bounded confidence influence.
 
 ## Pedal-analysis rules

@@ -1,6 +1,6 @@
 import type { TechniqueFacetId, TechniqueModuleId } from '../technique/types'
 
-export const SKILL_MODEL_VERSION = 'skill-model-1.1.0'
+export const SKILL_MODEL_VERSION = 'skill-model-1.1.1'
 
 export type SkillConfidence = 'unestablished' | 'low' | 'medium' | 'high'
 
@@ -51,6 +51,7 @@ export interface SkillChallengeEnvelope {
   readonly declaredHandContexts: readonly ('left' | 'right' | 'both')[]
   readonly lastMeasuredAt: string | null
   readonly tonics: readonly number[]
+  readonly startingTonics: readonly number[]
   readonly modes: readonly ('major' | 'natural-minor')[]
   readonly octaveSpans: readonly number[]
   readonly directions: readonly ('ascending' | 'descending' | 'both')[]
@@ -59,6 +60,9 @@ export interface SkillChallengeEnvelope {
   readonly maximumJumpDistanceSemitones: number | null
   readonly tempoShapes: readonly ('steady' | 'accelerate' | 'decelerate' | 'arch')[]
   readonly subdivisions: readonly number[]
+  readonly eventCounts: readonly number[]
+  readonly templateIds: readonly string[]
+  readonly distinctTemplateCount: number
   readonly distinctFirstPassExerciseInstances: number
 }
 

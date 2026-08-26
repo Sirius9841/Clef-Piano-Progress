@@ -82,6 +82,10 @@ Skill Model `1.0.0` now derives eight challenge-qualified current Technique rati
 
 Skill Model `1.1.0` bounds both rating and confidence evidence to the latest three attempts per exact template-aware context, separates quality recency from no-floor confidence authority, and distinguishes every material authored drill dimension including subdivision for Chords, Jumps, and Tempo Control. Mastery Model `1.1.0` gives demonstrated speed its own smooth current support, derives overall recency from the evidence distribution, and bounds confidence by effective attempt and session authority. UI provenance makes current speed support and the Progress range boundary explicit. Persistence remains schema 4 with no attempt-family changes.
 
+## Phase 13.2 — complete
+
+Skill Model `1.1.1` synchronizes challenge identity with the displayed envelope, exposes template, subdivision, event-count, and non-tonal starting-pitch provenance across all eight modules, and calls the retained latest-three evidence a model window rather than implying recency. Mastery Model `1.1.1` requires current, bucket-local effective session authority for High-confidence demonstrated speed, while preserving separate raw session provenance. Same-session repetitions may establish a speed but cannot produce High confidence; stale or other-speed sessions cannot substitute for current independent support. Persistence remains schema 4 with no new stores or record versions. Phase 13 is closed.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

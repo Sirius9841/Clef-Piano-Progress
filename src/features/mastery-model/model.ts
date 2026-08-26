@@ -95,6 +95,8 @@ interface DemonstratedSpeedEvidence {
   readonly qualifyingAttemptCount: number
   readonly sessions: number
   readonly effectiveSupport: number | null
+  readonly effectiveSessionSupport: number | null
+  readonly supportingSessionIds: readonly string[]
   readonly evidenceAttemptIds: readonly string[]
   readonly lastEvidenceAt: string | null
 }
@@ -118,9 +120,10 @@ function demonstratedSpeed(attempts: readonly EligibleAttempt[]): DemonstratedSp
   const established = candidates.find((candidate) => candidate.values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts && candidate.effectiveSupport >= MASTERY_MODEL_OPTIONS.minimumDemonstratedSpeedSupport)
   const repeatedCandidate = candidates.find((candidate) => candidate.values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts)
   const candidate = established ?? repeatedCandidate ?? candidates[0]
-  if (!candidate) return { multiplier: null, status: 'unavailable', candidateMultiplier: null, qualifyingAttemptCount: 0, sessions: 0, effectiveSupport: null, evidenceAttemptIds: [], lastEvidenceAt: null }
+  if (!candidate) return { multiplier: null, status: 'unavailable', candidateMultiplier: null, qualifyingAttemptCount: 0, sessions: 0, effectiveSupport: null, effectiveSessionSupport: null, supportingSessionIds: [], evidenceAttemptIds: [], lastEvidenceAt: null }
   const sortedValues = [...candidate.values].sort((left, right) => right.summary.performedAt.localeCompare(left.summary.performedAt) || left.summary.id.localeCompare(right.summary.id))
   const enoughRepetition = candidate.values.length >= MASTERY_MODEL_OPTIONS.speedQualification.minimumAttempts
+  const supportingSessionIds = [...new Set(candidate.values.map((attempt) => attempt.summary.practiceSessionId))].sort()
   return {
     multiplier: established?.multiplier ?? null,
     status: established ? 'established' : enoughRepetition ? 'needs-current-support' : 'needs-repetition',
@@ -128,6 +131,8 @@ function demonstratedSpeed(attempts: readonly EligibleAttempt[]): DemonstratedSp
     qualifyingAttemptCount: candidate.values.length,
     sessions: new Set(candidate.values.map((attempt) => attempt.summary.practiceSessionId)).size,
     effectiveSupport: candidate.effectiveSupport,
+    effectiveSessionSupport: sessionSupport(candidate.values),
+    supportingSessionIds,
     evidenceAttemptIds: sortedValues.map((attempt) => attempt.summary.id),
     lastEvidenceAt: sortedValues[0]?.summary.performedAt ?? null,
   }
@@ -157,7 +162,7 @@ export function deriveArrangementMastery(input: DeriveArrangementMasteryInput): 
   const allEligible = outcomes.flatMap((outcome) => outcome.eligible ? [outcome.eligible] : [])
   const exclusions = outcomes.flatMap((outcome) => outcome.exclusion ? [outcome.exclusion] : []).sort((left, right) => left.attemptId.localeCompare(right.attemptId) || left.code.localeCompare(right.code))
   const recent = [...allEligible].sort((left, right) => right.summary.performedAt.localeCompare(left.summary.performedAt) || left.summary.id.localeCompare(right.summary.id)).slice(0, MASTERY_MODEL_OPTIONS.recentAttemptWindow)
-  if (!recent.length) return deepFreeze({ arrangementId: input.arrangementId, scoreVersionId: input.scoreVersionId, modelVersion: MASTERY_MODEL_VERSION, asOf: input.asOf, status: 'unestablished', mastery: null, confidence: 'unestablished', control: null, minimumDimension: null, demonstratedSpeedMultiplier: null, demonstratedSpeedStatus: 'unavailable', demonstratedSpeedCandidateMultiplier: null, demonstratedSpeedQualifyingAttemptCount: 0, demonstratedSpeedSessionCount: 0, demonstratedSpeedEffectiveSupport: null, demonstratedSpeedEvidenceAttemptIds: [], demonstratedSpeedLastEvidenceAt: null, consistency: null, recencyFactor: null, effectiveEvidenceSupport: null, effectiveSessionSupport: null, eligibleAttemptCount: 0, distinctSessionCount: 0, lastEvidenceAt: null, evidenceAttemptIds: [], exclusions })
+  if (!recent.length) return deepFreeze({ arrangementId: input.arrangementId, scoreVersionId: input.scoreVersionId, modelVersion: MASTERY_MODEL_VERSION, asOf: input.asOf, status: 'unestablished', mastery: null, confidence: 'unestablished', control: null, minimumDimension: null, demonstratedSpeedMultiplier: null, demonstratedSpeedStatus: 'unavailable', demonstratedSpeedCandidateMultiplier: null, demonstratedSpeedQualifyingAttemptCount: 0, demonstratedSpeedSessionCount: 0, demonstratedSpeedEffectiveSupport: null, demonstratedSpeedEffectiveSessionSupport: null, demonstratedSpeedSupportingSessionIds: [], demonstratedSpeedEvidenceAttemptIds: [], demonstratedSpeedLastEvidenceAt: null, consistency: null, recencyFactor: null, effectiveEvidenceSupport: null, effectiveSessionSupport: null, eligibleAttemptCount: 0, distinctSessionCount: 0, lastEvidenceAt: null, evidenceAttemptIds: [], exclusions })
   const weightFor = attemptAuthority
   const control = weightedMean(recent.map((attempt) => ({ value: attempt.control, weight: weightFor(attempt) })))
   const consistencyValue = consistency(recent.map((attempt) => attempt.control))
@@ -171,7 +176,7 @@ export function deriveArrangementMastery(input: DeriveArrangementMasteryInput): 
   const effectiveSessionSupport = sessionSupport(recent)
   const reliableAuthority = recent.filter((attempt) => attempt.summary.reliability === 'reliable').reduce((sum, attempt) => sum + attemptAuthority(attempt), 0)
   const reliableAuthorityFraction = effectiveEvidenceSupport > 0 ? reliableAuthority / effectiveEvidenceSupport : 0
-  const confidence = effectiveEvidenceSupport >= MASTERY_MODEL_OPTIONS.highConfidenceEffectiveEvidenceSupport && effectiveSessionSupport >= MASTERY_MODEL_OPTIONS.highConfidenceEffectiveSessionSupport && speed.multiplier !== null && speed.sessions >= 2 && reliableAuthorityFraction >= MASTERY_MODEL_OPTIONS.highConfidenceReliableAuthorityFraction
+  const confidence = effectiveEvidenceSupport >= MASTERY_MODEL_OPTIONS.highConfidenceEffectiveEvidenceSupport && effectiveSessionSupport >= MASTERY_MODEL_OPTIONS.highConfidenceEffectiveSessionSupport && speed.multiplier !== null && speed.sessions >= 2 && speed.effectiveSessionSupport !== null && speed.effectiveSessionSupport >= MASTERY_MODEL_OPTIONS.highConfidenceDemonstratedSpeedSessionSupport && reliableAuthorityFraction >= MASTERY_MODEL_OPTIONS.highConfidenceReliableAuthorityFraction
     ? 'high'
     : effectiveEvidenceSupport >= MASTERY_MODEL_OPTIONS.mediumConfidenceEffectiveEvidenceSupport && effectiveSessionSupport >= MASTERY_MODEL_OPTIONS.mediumConfidenceEffectiveSessionSupport ? 'medium' : 'low'
   return deepFreeze({
@@ -179,7 +184,8 @@ export function deriveArrangementMastery(input: DeriveArrangementMasteryInput): 
     status: 'ready', mastery: Math.max(0, Math.min(100, mastery)), confidence, control, minimumDimension: minimumDimension(recent),
     demonstratedSpeedMultiplier: speed.multiplier, demonstratedSpeedStatus: speed.status, demonstratedSpeedCandidateMultiplier: speed.candidateMultiplier,
     demonstratedSpeedQualifyingAttemptCount: speed.qualifyingAttemptCount, demonstratedSpeedSessionCount: speed.sessions,
-    demonstratedSpeedEffectiveSupport: speed.effectiveSupport, demonstratedSpeedEvidenceAttemptIds: speed.evidenceAttemptIds,
+    demonstratedSpeedEffectiveSupport: speed.effectiveSupport, demonstratedSpeedEffectiveSessionSupport: speed.effectiveSessionSupport,
+    demonstratedSpeedSupportingSessionIds: speed.supportingSessionIds, demonstratedSpeedEvidenceAttemptIds: speed.evidenceAttemptIds,
     demonstratedSpeedLastEvidenceAt: speed.lastEvidenceAt, consistency: consistencyValue,
     recencyFactor: currentRecency, effectiveEvidenceSupport, effectiveSessionSupport, eligibleAttemptCount: allEligible.length, distinctSessionCount, lastEvidenceAt,
     evidenceAttemptIds: recent.map((attempt) => attempt.summary.id), exclusions,

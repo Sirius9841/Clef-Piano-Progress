@@ -1,4 +1,4 @@
-export const MASTERY_MODEL_VERSION = 'mastery-model-1.1.0'
+export const MASTERY_MODEL_VERSION = 'mastery-model-1.1.1'
 
 export type MasteryConfidence = 'unestablished' | 'low' | 'medium' | 'high'
 export type DemonstratedSpeedStatus = 'unavailable' | 'needs-repetition' | 'needs-current-support' | 'established'
@@ -31,6 +31,9 @@ export interface ArrangementMastery {
   readonly demonstratedSpeedQualifyingAttemptCount: number
   readonly demonstratedSpeedSessionCount: number
   readonly demonstratedSpeedEffectiveSupport: number | null
+  /** Current reliability/recency authority summed inside the exact speed bucket and capped to one per session. */
+  readonly demonstratedSpeedEffectiveSessionSupport: number | null
+  readonly demonstratedSpeedSupportingSessionIds: readonly string[]
   readonly demonstratedSpeedEvidenceAttemptIds: readonly string[]
   readonly demonstratedSpeedLastEvidenceAt: string | null
   readonly consistency: number | null

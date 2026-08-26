@@ -42,11 +42,15 @@ function skillFixture(scenario: string): readonly TechniqueAttemptSummary[] {
   if (scenario === 'narrow') return Array.from({ length: 8 }, (_, index) => ({ ...techniqueSummary('scales', index, 98), challenge: challenge('scales', 0) }))
   if (scenario === 'broad') return Array.from({ length: 10 }, (_, index) => techniqueSummary('scales', index, 74))
   if (scenario === 'stale') return [0, 2, 4, 6].flatMap((tonic, contextIndex) => [0, 1].map((repeat) => ({ ...techniqueSummary('scales', contextIndex * 2 + repeat, 94), performedAt: `2022-01-0${repeat + 1}T12:00:00.000Z`, challenge: { ...challenge('scales', contextIndex), tonic } })))
+  if (scenario === 'provenance') return (['rhythm', 'chord-fluency', 'octaves', 'keyboard-jumps', 'tempo-control'] as const).flatMap((moduleId, moduleIndex) => [0, 1].map((variant) => {
+    const source = techniqueSummary(moduleId, moduleIndex * 2 + variant, 86)
+    return { ...source, templateId: variant === 0 ? `${moduleId}-standard-v2` : `${moduleId}-alternate-v2`, challenge: { ...source.challenge, tonic: variant === 0 ? 0 : 7, subdivision: variant === 0 ? 1 : 4 } }
+  }))
   return []
 }
 
-function attempt(id: string, speed = 1, score = .92, scoreVersionId = 'score-current', performedAt = '2026-08-20T12:00:00.000Z'): AttemptSummary {
-  return { id, arrangementId: 'qa-arrangement', scoreVersionId, practiceSessionId: `session-${id}`, performedAt, durationMs: 60_000, practiceSpeedMultiplier: speed, gradingScope: 'full-plan', reliability: 'reliable', notes: score, rhythm: score, tempo: score }
+function attempt(id: string, speed = 1, score = .92, scoreVersionId = 'score-current', performedAt = '2026-08-20T12:00:00.000Z', practiceSessionId = `session-${id}`): AttemptSummary {
+  return { id, arrangementId: 'qa-arrangement', scoreVersionId, practiceSessionId, performedAt, durationMs: 60_000, practiceSpeedMultiplier: speed, gradingScope: 'full-plan', reliability: 'reliable', notes: score, rhythm: score, tempo: score }
 }
 
 function masteryFixture(scenario: string): readonly AttemptSummary[] {
@@ -54,6 +58,9 @@ function masteryFixture(scenario: string): readonly AttemptSummary[] {
   if (scenario === 'reduced') return [attempt('reduced-1', .6), attempt('reduced-2', .6)]
   if (scenario === 'full') return Array.from({ length: 5 }, (_, index) => attempt(`full-${index}`, 1, .94 - index * .005))
   if (scenario === 'recent-100') return [attempt('recent-100-a'), attempt('recent-100-b')]
+  if (scenario === 'same-session-100') return [attempt('same-100-a', 1, .94, 'score-current', '2026-08-24T12:00:00.000Z', 'S1'), attempt('same-100-b', 1, .94, 'score-current', '2026-08-23T12:00:00.000Z', 'S1')]
+  if (scenario === 'current-multi-100') return [attempt('full-a', 1, .94, 'score-current', '2026-08-24T12:00:00.000Z', 'S1'), attempt('full-b', 1, .94, 'score-current', '2026-08-23T12:00:00.000Z', 'S2'), attempt('lower-c', .8, .92, 'score-current', '2026-08-22T12:00:00.000Z', 'S3'), attempt('lower-d', .8, .92, 'score-current', '2026-08-21T12:00:00.000Z', 'S4'), attempt('lower-e', .8, .92, 'score-current', '2026-08-20T12:00:00.000Z', 'S5')]
+  if (scenario === 'stale-second-session') return [attempt('full-a', 1, .94, 'score-current', '2026-08-24T12:00:00.000Z', 'S1'), attempt('full-b', 1, .94, 'score-current', '2026-08-23T12:00:00.000Z', 'S1'), attempt('full-old-c', 1, .94, 'score-current', '2025-08-20T12:00:00.000Z', 'S2'), attempt('lower-d', .8, .92, 'score-current', '2026-08-22T12:00:00.000Z', 'S3'), attempt('lower-e', .8, .92, 'score-current', '2026-08-21T12:00:00.000Z', 'S4'), attempt('lower-f', .8, .92, 'score-current', '2026-08-20T12:00:00.000Z', 'S5')]
   if (scenario === 'recent-60') return [attempt('recent-60-a', .6), attempt('recent-60-b', .6)]
   if (scenario === 'stale-mixed') return [attempt('old-full-a', 1, .95, 'score-current', '2025-08-20T12:00:00.000Z'), attempt('old-full-b', 1, .95, 'score-current', '2025-08-19T12:00:00.000Z'), attempt('recent-60', .6)]
   if (scenario === 'old') return [attempt('old-1', 1, .95, 'score-old'), attempt('old-2', 1, .95, 'score-old')]
@@ -66,5 +73,5 @@ export function Phase13QaPage() {
   const masteryScenario = params.get('mastery') ?? 'none'
   const skills = deriveAllSkillRatings(skillFixture(skillScenario), AS_OF)
   const mastery = deriveArrangementMastery({ arrangementId: 'qa-arrangement', scoreVersionId: 'score-current', attempts: masteryFixture(masteryScenario), asOf: AS_OF })
-  return <div className="page"><PageHeader eyebrow="Development-only visual review" title="Phase 13.1 QA fixtures" description="Static, explicitly labeled fixtures for responsive presentation checks. They are not persisted and make no product claims." /><p className="qa-fixture-label">Visual QA fixture · Skill: {skillScenario} · not saved evidence</p><SkillRatingsPanel skills={skills} clarifyProgressRange /><p className="qa-fixture-label">Visual QA fixture · Mastery: {masteryScenario} · not saved evidence</p><ArrangementMasteryPanel mastery={mastery} /><section className="panel local-data-actions"><div><strong>Manual repertoire status: Learning</strong><p>This fixture demonstrates that user-controlled status remains independent from derived Mastery.</p></div></section></div>
+  return <div className="page"><PageHeader eyebrow="Development-only visual review" title="Phase 13.2 QA fixtures" description="Static, explicitly labeled fixtures for responsive presentation checks. They are not persisted and make no product claims." /><p className="qa-fixture-label">Visual QA fixture · Skill: {skillScenario} · not saved evidence</p><SkillRatingsPanel skills={skills} clarifyProgressRange /><p className="qa-fixture-label">Visual QA fixture · Mastery: {masteryScenario} · not saved evidence</p><ArrangementMasteryPanel mastery={mastery} /><section className="panel local-data-actions"><div><strong>Manual repertoire status: Learning</strong><p>This fixture demonstrates that user-controlled status remains independent from derived Mastery.</p></div></section></div>
 }

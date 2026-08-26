@@ -1,6 +1,6 @@
 # Arrangement Mastery Model
 
-Mastery Model `mastery-model-1.1.0` answers: how strongly does current repeated evidence support command of this exact Arrangement and its current immutable ScoreVersion?
+Mastery Model `mastery-model-1.1.1` answers: how strongly does current repeated evidence support command of this exact Arrangement and its current immutable ScoreVersion?
 
 ## Eligibility and meaning
 
@@ -20,9 +20,17 @@ Practice speeds are rounded to `0.01`. A speed bucket first needs at least two f
 
 `speedSupportWeight = reliabilityWeight × 2^(-ageDays / 120)`
 
-The bucket qualifies only when the sum is at least `1.10`. This smooth threshold allows two recent reliable or limited takes, may allow moderately old strong support, and causes year-old evidence to expire without a hard date cliff or history mutation. The highest bucket satisfying both requirements is demonstrated. Same-session takes may establish speed, but bounded session authority keeps confidence below equivalent multi-session evidence.
+The bucket qualifies only when the attempt-authority sum is at least `1.10`. This smooth threshold allows two recent reliable or limited takes, may allow moderately old strong support, and causes year-old evidence to expire without a hard date cliff or history mutation. The highest bucket satisfying both requirements is demonstrated.
 
-The result exposes established or candidate speed, status, qualifying-take count, session count, effective support, exact supporting IDs, and last supporting timestamp. Two year-old 100% takes plus one recent 60% take therefore report no demonstrated speed: the old 100% bucket is `needs-current-support`, and the unrelated recent take cannot refresh it. Two recent 100% qualifying takes still establish `1.0`.
+Speed confidence also has bucket-local session authority. Qualifying takes are grouped by exact `practiceSessionId`; one session contributes at most one unit:
+
+`speedSessionContribution = min(1, sum(speedSupportWeight in session))`
+
+`demonstratedSpeedEffectiveSessionSupport = sum(speedSessionContribution)`
+
+Raw `demonstratedSpeedSessionCount` remains a separate historical provenance count. Same-session takes may establish speed, but they cannot create High confidence. High confidence requires at least two raw sessions and `1.50` current effective session support inside the demonstrated-speed bucket. A stale second session can remain in the raw count while losing enough authority to block High confidence, and current sessions at another speed never substitute for it.
+
+The result exposes established or candidate speed, status, qualifying-take count, raw session count, effective attempt support, effective session support, exact supporting attempt/session IDs, and last supporting timestamp. Two year-old 100% takes plus one recent 60% take therefore report no demonstrated speed: the old 100% bucket is `needs-current-support`, and the unrelated recent take cannot refresh it. Two recent 100% qualifying takes still establish `1.0`; two current independent sessions can support High confidence when the other confidence requirements are also met.
 
 ## Formula and distribution-aware recency
 
@@ -42,6 +50,6 @@ The three uses of recency have distinct roles. Control recency weights competing
 
 Confidence is separate from Mastery quality. `effectiveEvidenceSupport` sums each attempt's reliability × no-floor recency authority. Attempts are also grouped by PracticeSession; each session contributes at most one unit to `effectiveSessionSupport`, so ten same-session takes do not equal ten independent sessions.
 
-Medium confidence needs `1.25` effective attempt support and `1.25` effective session support. High confidence needs `4.0` attempt support, `2.5` session support, an established speed supported across at least two sessions, and at least `0.60` of current authority from reliable evidence. One recent plus four very old takes cannot create High confidence; five genuinely recent reliable takes across several sessions can. High Mastery with Low confidence remains legal.
+Medium confidence needs `1.25` effective attempt support and `1.25` effective session support. High confidence needs `4.0` attempt support, `2.5` overall session support, an established speed with at least two raw supporting sessions and `1.50` effective session support in that exact speed bucket, and at least `0.60` of current authority from reliable evidence. One recent plus four very old takes cannot create High confidence; five genuinely recent reliable takes across several sessions can. High Mastery with Low confidence remains legal.
 
 The projection is derived on read, deterministic, deeply immutable, serializable, React-independent, renderer-independent, and IndexedDB-independent. A new ScoreVersion starts a new evidence boundary without deleting old history or carrying state forward.

@@ -1,7 +1,7 @@
 import type { TechniqueAttemptSummary, TechniqueAttemptSummaryV2 } from '../persistence/types'
 import { TECHNIQUE_MODULE_IDS, type TechniqueFacetId, type TechniqueModuleId } from '../technique/types'
 import { SKILL_MODEL_OPTIONS } from './options'
-import { skillContextId } from './skillContextIdentity'
+import { SKILL_CONTEXT_DEFINITIONS, skillContextId, skillContextUsesDimension } from './skillContextIdentity'
 import { SKILL_MODEL_VERSION, type SkillChallengeEnvelope, type SkillContextRating, type SkillEvidenceExclusion, type SkillRating, type TechniqueSkillEvidence } from './types'
 
 const DAY_MS = 86_400_000
@@ -83,7 +83,7 @@ function exclusion(attemptId: string, code: SkillEvidenceExclusion['code'], deta
 function validateCurrentSummary(summary: TechniqueAttemptSummary, moduleId: TechniqueModuleId, asOfMs: number): { readonly evidence?: TechniqueSkillEvidence; readonly exclusion?: SkillEvidenceExclusion } {
   if (summary.moduleId !== moduleId) return { exclusion: exclusion(summary.id, 'wrong-module', `Expected ${moduleId}; summary belongs to ${summary.moduleId}.`) }
   if (!('schemaVersion' in summary) || summary.schemaVersion !== 2 || summary.exerciseEngineVersion !== 'technique-exercise-1.1.1' || summary.techniqueAnalysisEngineVersion !== 'technique-analysis-1.1.2') {
-    return { exclusion: exclusion(summary.id, 'legacy-engine', 'Only the current Technique 1.1.1 / analysis 1.1.2 evidence pair informs Skill Model 1.1.0.') }
+    return { exclusion: exclusion(summary.id, 'legacy-engine', 'Only the current Technique 1.1.1 / analysis 1.1.2 evidence pair informs Skill Model 1.1.1.') }
   }
   const age = daysOld(summary.performedAt, asOfMs)
   if (age === null) return { exclusion: exclusion(summary.id, Number.isFinite(Date.parse(summary.performedAt)) ? 'future-dated' : 'invalid-summary', 'The performed timestamp is invalid or later than asOf.') }
@@ -151,23 +151,29 @@ function envelope(moduleId: TechniqueModuleId, summaries: readonly TechniqueAtte
   const eligibleIds = new Set(evidence.map((item) => item.attemptId))
   const eligible = summaries.filter((summary) => eligibleIds.has(summary.id))
   const bpms = eligible.map((summary) => summary.challenge.targetTempoBpm)
-  const usesKey = moduleId === 'sight-reading' || moduleId === 'chord-fluency' || moduleId === 'scales' || moduleId === 'arpeggios'
-  const usesOctaveShape = moduleId === 'scales' || moduleId === 'arpeggios'
+  const definition = SKILL_CONTEXT_DEFINITIONS[moduleId]
+  const uses = (dimension: Parameters<typeof skillContextUsesDimension>[1]) => skillContextUsesDimension(moduleId, dimension)
+  const tonalTonic = definition.tonicSemantics === 'tonal-key'
+  const templateIds = uses('templateId') ? uniqueSorted(eligible.map((summary) => summary.templateId)) : []
   return {
     attemptCount: eligible.length,
     distinctChallengeContexts: new Set(evidence.map((item) => item.contextId)).size,
     targetTempoBpm: bpms.length ? { minimum: Math.min(...bpms), maximum: Math.max(...bpms) } : null,
     declaredHandContexts: uniqueSorted(eligible.map((summary) => summary.challenge.declaredHandContext)),
     lastMeasuredAt: evidence.map((item) => item.performedAt).sort().at(-1) ?? null,
-    tonics: usesKey ? uniqueSorted(eligible.map((summary) => summary.challenge.tonic)) : [],
-    modes: usesKey ? uniqueSorted(eligible.map((summary) => summary.challenge.mode)) : [],
-    octaveSpans: usesOctaveShape ? uniqueSorted(eligible.map((summary) => summary.challenge.octaveSpan)) : [],
-    directions: usesOctaveShape ? uniqueSorted(eligible.map((summary) => summary.challenge.direction)) : [],
-    chordInversions: moduleId === 'chord-fluency' ? uniqueSorted(eligible.map((summary) => summary.challenge.chordInversion)) : [],
-    jumpDistancesSemitones: moduleId === 'keyboard-jumps' ? uniqueSorted(eligible.map((summary) => summary.challenge.jumpSemitones)) : [],
-    maximumJumpDistanceSemitones: moduleId === 'keyboard-jumps' && eligible.length ? Math.max(...eligible.map((summary) => summary.challenge.jumpSemitones)) : null,
-    tempoShapes: moduleId === 'tempo-control' ? uniqueSorted(eligible.map((summary) => summary.challenge.tempoShape)) : [],
-    subdivisions: uniqueSorted(eligible.map((summary) => summary.challenge.subdivision)),
+    tonics: uses('tonic') && tonalTonic ? uniqueSorted(eligible.map((summary) => summary.challenge.tonic)) : [],
+    startingTonics: uses('tonic') && !tonalTonic ? uniqueSorted(eligible.map((summary) => summary.challenge.tonic)) : [],
+    modes: uses('mode') ? uniqueSorted(eligible.map((summary) => summary.challenge.mode)) : [],
+    octaveSpans: uses('octaveSpan') ? uniqueSorted(eligible.map((summary) => summary.challenge.octaveSpan)) : [],
+    directions: uses('direction') ? uniqueSorted(eligible.map((summary) => summary.challenge.direction)) : [],
+    chordInversions: uses('chordInversion') ? uniqueSorted(eligible.map((summary) => summary.challenge.chordInversion)) : [],
+    jumpDistancesSemitones: uses('jumpSemitones') ? uniqueSorted(eligible.map((summary) => summary.challenge.jumpSemitones)) : [],
+    maximumJumpDistanceSemitones: uses('jumpSemitones') && eligible.length ? Math.max(...eligible.map((summary) => summary.challenge.jumpSemitones)) : null,
+    tempoShapes: uses('tempoShape') ? uniqueSorted(eligible.map((summary) => summary.challenge.tempoShape)) : [],
+    subdivisions: uses('subdivision') ? uniqueSorted(eligible.map((summary) => summary.challenge.subdivision)) : [],
+    eventCounts: uses('eventCount') ? uniqueSorted(eligible.map((summary) => summary.challenge.eventCount)) : [],
+    templateIds,
+    distinctTemplateCount: templateIds.length,
     distinctFirstPassExerciseInstances: new Set(eligible.filter((summary) => summary.moduleId === 'sight-reading').map((summary) => summary.exerciseInstanceId)).size,
   }
 }

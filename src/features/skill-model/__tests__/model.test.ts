@@ -31,12 +31,13 @@ function summary(id: string, moduleId: TechniqueModuleId = 'scales', overrides: 
   }
 }
 
-describe('Skill Model 1.1.0', () => {
+describe('Skill Model 1.1.1', () => {
   it('returns an immutable unestablished result, not zero, with no evidence', () => {
     const result = deriveSkillRating('scales', [], AS_OF)
     expect(result).toMatchObject({ qualityEstimate: null, confidence: 'unestablished', status: 'unestablished' })
     expect(Object.isFrozen(result)).toBe(true)
     expect(Object.isFrozen(result.challengeEnvelope.tonics)).toBe(true)
+    expect(result.challengeEnvelope).toMatchObject({ startingTonics: [], templateIds: [], distinctTemplateCount: 0, eventCounts: [] })
   })
 
   it('excludes legacy engine pairs without rewriting or producing fake evidence', () => {
@@ -143,9 +144,24 @@ describe('Skill Model 1.1.0', () => {
     expect(result.challengeEnvelope.subdivisions).toEqual([1, 4])
   })
 
+  it.each(['rhythm', 'octaves'] as const)('reports %s tonic as starting-pitch breadth rather than key breadth', (moduleId) => {
+    const result = deriveSkillRating(moduleId, [summary('c', moduleId, { challenge: { tonic: 0 } }), summary('g', moduleId, { challenge: { tonic: 7 } })], AS_OF)
+    expect(result.eligibleContextCount).toBe(2)
+    expect(result.challengeEnvelope.startingTonics).toEqual([0, 7])
+    expect(result.challengeEnvelope.tonics).toEqual([])
+  })
+
+  it.each(['keyboard-jumps', 'tempo-control'] as const)('reports %s starting-pitch and subdivision provenance', (moduleId) => {
+    const result = deriveSkillRating(moduleId, [summary('a', moduleId, { challenge: { tonic: 0, subdivision: 1 } }), summary('b', moduleId, { challenge: { tonic: 7, subdivision: 4 } })], AS_OF)
+    expect(result.challengeEnvelope).toMatchObject({ startingTonics: [0, 7], subdivisions: [1, 4] })
+  })
+
   it('keeps seed/instance outside identity, includes template identity, and includes jump starting tonic', () => {
     expect(deriveSkillRating('scales', [summary('a', 'scales', { exerciseInstanceId: 'instance-a' }), summary('b', 'scales', { exerciseInstanceId: 'instance-b' })], AS_OF).eligibleContextCount).toBe(1)
-    expect(deriveSkillRating('scales', [summary('a'), summary('b', 'scales', { templateId: 'scales-alternate-v2' })], AS_OF).eligibleContextCount).toBe(2)
+    const templates = deriveSkillRating('scales', [summary('a'), summary('b', 'scales', { templateId: 'scales-alternate-v2' })], AS_OF)
+    expect(templates.eligibleContextCount).toBe(2)
+    expect(templates.challengeEnvelope.templateIds).toEqual(['scales-alternate-v2', 'scales-standard-v2'])
+    expect(templates.challengeEnvelope.distinctTemplateCount).toBe(2)
     expect(deriveSkillRating('keyboard-jumps', [summary('c', 'keyboard-jumps', { challenge: { tonic: 0 } }), summary('d', 'keyboard-jumps', { challenge: { tonic: 7 } })], AS_OF).eligibleContextCount).toBe(2)
   })
 
@@ -172,6 +188,7 @@ describe('Skill Model 1.1.0', () => {
     expect(scales.challengeEnvelope).toMatchObject({ tonics: [0, 2, 6, 10], modes: ['major', 'natural-minor'], octaveSpans: [1, 2], declaredHandContexts: ['left', 'right'] })
     const chords = deriveSkillRating('chord-fluency', [0, 1, 2].map((value) => summary(`c-${value}`, 'chord-fluency', { challenge: { chordInversion: value as 0 | 1 | 2 } })), AS_OF)
     expect(chords.challengeEnvelope.chordInversions).toEqual([0, 1, 2])
+    expect(deriveSkillRating('chord-fluency', [summary('quarter', 'chord-fluency', { challenge: { subdivision: 1 } }), summary('sixteenth', 'chord-fluency', { challenge: { subdivision: 4 } })], AS_OF).challengeEnvelope.subdivisions).toEqual([1, 4])
     const jumps = deriveSkillRating('keyboard-jumps', [7, 24].map((value) => summary(`j-${value}`, 'keyboard-jumps', { challenge: { jumpSemitones: value as 7 | 24 } })), AS_OF)
     expect(jumps.challengeEnvelope).toMatchObject({ jumpDistancesSemitones: [7, 24], maximumJumpDistanceSemitones: 24 })
     const tempo = deriveSkillRating('tempo-control', ['steady', 'arch'].map((shape) => summary(`t-${shape}`, 'tempo-control', { challenge: { tempoShape: shape as 'steady' | 'arch', tempoChangeCount: shape === 'steady' ? 0 : 4 }, omitFacet: shape === 'steady' ? 'tempo-transition-control' : undefined })), AS_OF)
@@ -194,6 +211,9 @@ describe('Skill Model 1.1.0', () => {
     expect(Object.isFrozen(result.contextRatings)).toBe(true)
     expect(Object.isFrozen(result.contextRatings[0])).toBe(true)
     expect(Object.isFrozen(result.modelEvidenceAttemptIds)).toBe(true)
+    expect(Object.isFrozen(result.challengeEnvelope.startingTonics)).toBe(true)
+    expect(Object.isFrozen(result.challengeEnvelope.templateIds)).toBe(true)
+    expect(Object.isFrozen(result.challengeEnvelope.eventCounts)).toBe(true)
     for (const value of [result.qualityEstimate, result.consistency, result.effectiveEvidenceSupport, ...result.contextRatings.flatMap((context) => [context.qualityEstimate, context.averageCoverage, context.reliableAttemptFraction, context.effectiveAuthority])]) {
       expect(value).not.toBeNull()
       expect(Number.isFinite(value)).toBe(true)
