@@ -19,6 +19,8 @@ import type {
   TechniqueExerciseSnapshotV2,
   TechniqueFacetResultV1,
   TechniqueFacetResultV2,
+  TechniqueAnalysisEngineVersionV2,
+  TechniqueExerciseEngineVersionV2,
   TechniqueModuleId,
   TechniqueNovelty,
 } from '../technique/types'
@@ -276,12 +278,12 @@ export interface TechniqueAttemptRecordV2 {
   readonly techniqueAnalysis: TechniqueAnalysisResultV2
   readonly novelty: TechniqueNovelty
   readonly engineVersions: {
-    readonly exercise: 'technique-exercise-1.1.0'
+    readonly exercise: TechniqueExerciseEngineVersionV2
     readonly parser: string
     readonly alignment: string
     readonly noteGrading: string
     readonly timingAnalysis: string
-    readonly techniqueAnalysis: 'technique-analysis-1.1.0'
+    readonly techniqueAnalysis: TechniqueAnalysisEngineVersionV2
   }
 }
 
@@ -307,8 +309,8 @@ export interface TechniqueAttemptSummaryV2 {
   readonly exerciseInstanceId: string
   readonly performedAt: string
   readonly durationMs: number
-  readonly exerciseEngineVersion: 'technique-exercise-1.1.0'
-  readonly techniqueAnalysisEngineVersion: 'technique-analysis-1.1.0'
+  readonly exerciseEngineVersion: TechniqueExerciseEngineVersionV2
+  readonly techniqueAnalysisEngineVersion: TechniqueAnalysisEngineVersionV2
   readonly challenge: TechniqueChallengeProfileV2
   readonly completion: TechniqueAnalysisResultV2['completion']
   readonly novelty: TechniqueNovelty

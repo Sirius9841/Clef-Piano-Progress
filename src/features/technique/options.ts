@@ -5,7 +5,7 @@ export const TECHNIQUE_ANALYSIS_OPTIONS = Object.freeze({
   minimumTempoStabilitySamples: 4, minimumTempoTransitionSamples: 3, evennessLogTolerance: 0.18,
   pulseExpansionGraceRatio: 1.12, pulseExtremePauseRatio: 1.8, chordTightSpreadMs: 35, chordMaximumSpreadMs: 120,
   turnNeighborhoodRadius: 1, tempoTargetLogTolerance: 0.22, tempoStabilityLogTolerance: 0.14, tempoTrajectoryLogTolerance: 0.16,
-  reliableCoverageRatio: 0.8, weakFindingScore: 65, chordFindingScore: 80, comparativeFindingGap: 20,
+  reliableCoverageRatio: 0.8, minimumReliableFacetCoverage: 0.8, weakFindingScore: 65, chordFindingScore: 80, comparativeFindingGap: 20,
   minimumAuthoredTempoDelta: 0.005,
 })
 export type TechniqueAnalysisOptions = typeof TECHNIQUE_ANALYSIS_OPTIONS

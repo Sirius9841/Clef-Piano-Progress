@@ -8,7 +8,22 @@ import { defaultTechniqueSpec, derivedArpeggioEventCount, derivedScaleEventCount
 import { defaultTechniqueForm, validateTechniqueConfiguration } from '../configuration'
 import { compileTechniqueExercise } from '../exerciseCompiler'
 import { arpeggioSequence, scaleSequence } from '../exerciseGenerator'
-import { TECHNIQUE_MODULE_IDS, type TechniqueExerciseSpec } from '../types'
+import { CANONICAL_MAJOR_KEYS, CANONICAL_NATURAL_MINOR_KEYS } from '../techniqueNotation'
+import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_MODULE_IDS, type TechniqueExerciseSpec } from '../types'
+
+function analyzeSelected(spec: TechniqueExerciseSpec, select: (midiNotes: readonly number[], index: number) => readonly number[] | null) {
+  const compiled = compileTechniqueExercise(spec)
+  const attacks = compiled.expectedPerformancePlan.onsetGroups.flatMap((group, index) => {
+    const selected = select(group.midiNotes, index)
+    return selected?.map((midi, noteIndex) => ({ midi, ms: index * 750 + noteIndex * 10 })) ?? []
+  })
+  const recording = makeRecording(attacks, { planId: compiled.expectedPerformancePlan.id })
+  const alignment = alignPerformance(compiled.expectedPerformancePlan, recording)
+  const noteGrading = gradeNotes({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, options: { gradingScope: 'full-plan' } })
+  const timingAnalysis = analyzeTiming({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, noteGrading })
+  const novelty = { exerciseInstanceId: compiled.snapshot.id, priorSavedAttemptCount: 0, firstSavedAttempt: true }
+  return { compiled, recording, alignment, noteGrading, timingAnalysis, result: analyzeTechnique({ exercise: compiled.snapshot, recording, alignment, noteGrading, timingAnalysis, novelty }) }
+}
 
 function analyzePerfect(spec: TechniqueExerciseSpec, intervalMs = 750) {
   const compiled = compileTechniqueExercise(spec)
@@ -54,6 +69,30 @@ describe('Technique exercise compiler', () => {
     const long = compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), octaveSpan: 2, direction: 'both' })
     expect(long.expectedPerformancePlan.onsetGroups.map((group) => group.midiNotes[0])).toEqual(scaleSequence(long.snapshot.spec))
     expect(long.normalizedScore.parts[0]!.measures.length).toBeGreaterThan(1)
+  })
+
+  it('uses canonical key signatures and key-aware enharmonic spelling in generated MusicXML', () => {
+    expect(CANONICAL_MAJOR_KEYS.map((key) => key.fifths)).toEqual([0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5])
+    expect(CANONICAL_NATURAL_MINOR_KEYS.map((key) => key.fifths)).toEqual([-3, 4, -1, -6, 1, -4, 3, -2, 5, 0, -5, 2])
+    const fSharp = compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), tonic: 6, direction: 'ascending' }).snapshot.generatedMusicXml
+    expect(fSharp).toContain('<fifths>6</fifths>')
+    expect(fSharp).toContain('<step>E</step><alter>1</alter><octave>5</octave>')
+    const dFlat = compileTechniqueExercise({ ...defaultTechniqueSpec('arpeggios'), tonic: 1, direction: 'ascending' }).snapshot.generatedMusicXml
+    expect(dFlat).toContain('<fifths>-5</fifths>')
+    expect(dFlat).toContain('<step>D</step><alter>-1</alter>')
+    const aMinor = compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), tonic: 9, mode: 'natural-minor', direction: 'ascending' }).snapshot.generatedMusicXml
+    expect(aMinor).toContain('<fifths>0</fifths>')
+    expect(aMinor).not.toContain('<alter>')
+    const cSharpMinor = compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), tonic: 1, mode: 'natural-minor', direction: 'ascending' }).snapshot.generatedMusicXml
+    expect(cSharpMinor).toContain('<fifths>4</fifths>')
+    expect(cSharpMinor).toContain('<step>E</step><octave>4</octave>')
+  })
+
+  it('generates only with the current V2 engine while retaining historical versions as persistence types', () => {
+    expect(defaultTechniqueSpec('scales').exerciseEngineVersion).toBe('technique-exercise-1.1.1')
+    expect(TECHNIQUE_EXERCISE_ENGINE_VERSION).toBe('technique-exercise-1.1.1')
+    expect(TECHNIQUE_ANALYSIS_ENGINE_VERSION).toBe('technique-analysis-1.1.1')
+    expect(() => compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), exerciseEngineVersion: 'technique-exercise-1.1.0' })).toThrow(/1\.1\.1/)
   })
 
   it('changes instance identity for every musically relevant challenge dimension', () => {
@@ -132,6 +171,50 @@ describe('Technique exercise compiler', () => {
     const result = analyzeTechnique({ exercise: compiled.snapshot, recording, alignment, noteGrading, timingAnalysis, novelty: { exerciseInstanceId: compiled.snapshot.id, priorSavedAttemptCount: 0, firstSavedAttempt: true } })
     expect(result.observations.filter((item) => item.facetId === 'chord-accuracy')).toHaveLength(8)
     expect(result.observations.filter((item) => item.facetId === 'chord-synchronization').length).toBeLessThan(8)
+  })
+
+  it('scores only the attempted span while preserving interior pitch failures', () => {
+    const spec = { ...defaultTechniqueSpec('scales'), direction: 'ascending' as const }
+    const tailTruncated = analyzeSelected(spec, (notes, index) => index < 5 ? notes : null).result
+    const tailPitch = tailTruncated.facets.find((facet) => facet.id === 'note-accuracy')!
+    expect(tailTruncated.completion).toMatchObject({ expectedEventCount: 8, attemptedEventCount: 5, completeCorrectOrIncorrectEventCount: 5, reachedSpanEndIndex: 4 })
+    expect(tailPitch).toMatchObject({ score: 100, evidenceCount: 5, eligibleCount: 5, coverage: 1, reliability: 'limited' })
+
+    const leadingUntouched = analyzeSelected(spec, (notes, index) => index >= 3 ? notes : null).result
+    const leadingPitch = leadingUntouched.facets.find((facet) => facet.id === 'note-accuracy')!
+    expect(leadingUntouched.completion.attemptedEventCount).toBe(5)
+    expect(leadingPitch).toMatchObject({ score: 100, evidenceCount: 5, eligibleCount: 5, coverage: 1 })
+
+    const interiorMiss = analyzeSelected(spec, (notes, index) => index === 3 ? null : notes).result
+    const interiorPitch = interiorMiss.facets.find((facet) => facet.id === 'note-accuracy')!
+    expect(interiorPitch).toMatchObject({ score: 87.5, evidenceCount: 8, eligibleCount: 8, coverage: 1 })
+    expect(interiorMiss.observations.find((item) => item.facetId === 'note-accuracy' && item.expectedEventIds[0] === 'technique:event:3')?.score).toBe(0)
+  })
+
+  it('uses attempted authored opportunities for chord, jump, recovery, and turn coverage', () => {
+    const chords = analyzeSelected({ ...defaultTechniqueSpec('chord-fluency'), eventCount: 20 }, (notes, index) => index < 7 || index === 19 ? notes : notes.slice(1)).result
+    expect(chords.facets.find((facet) => facet.id === 'chord-synchronization')).toMatchObject({ evidenceCount: 8, eligibleCount: 20, coverage: .4, reliability: 'limited' })
+    expect(chords.facets.find((facet) => facet.id === 'chord-accuracy')).toMatchObject({ evidenceCount: 20, eligibleCount: 20, coverage: 1, score: 40, reliability: 'reliable' })
+
+    const jumps = analyzeSelected({ ...defaultTechniqueSpec('keyboard-jumps'), eventCount: 13 }, (notes, index) => [3, 7].includes(index) ? notes.map((midi) => midi + 1) : notes).result
+    expect(jumps.facets.find((facet) => facet.id === 'jump-timing-consistency')).toMatchObject({ evidenceCount: 4, eligibleCount: 6, coverage: 4 / 6, reliability: 'limited' })
+    const recovery = analyzeSelected({ ...defaultTechniqueSpec('keyboard-jumps'), eventCount: 13 }, (notes, index) => [2, 6].includes(index) ? notes.map((midi) => midi + 1) : notes).result
+    expect(recovery.facets.find((facet) => facet.id === 'recovery-continuity')).toMatchObject({ evidenceCount: 4, eligibleCount: 6, coverage: 4 / 6, reliability: 'limited' })
+
+    const turn = analyzeSelected({ ...defaultTechniqueSpec('scales'), direction: 'both' }, (notes, index) => index === 7 ? notes.map((midi) => midi + 1) : notes).result
+    expect(turn.facets.find((facet) => facet.id === 'direction-change-continuity')).toMatchObject({ status: 'unavailable', evidenceCount: 0, eligibleCount: 2, coverage: 0 })
+  })
+
+  it('refuses mismatched exercise-to-alignment structure without leaking observations or findings', () => {
+    const source = analyzeSelected({ ...defaultTechniqueSpec('scales'), tonic: 0, direction: 'ascending' }, (notes) => notes)
+    const different = compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), tonic: 2, direction: 'ascending' })
+    const novelty = { exerciseInstanceId: different.snapshot.id, priorSavedAttemptCount: 0, firstSavedAttempt: true }
+    const result = analyzeTechnique({ exercise: different.snapshot, recording: source.recording, alignment: source.alignment, noteGrading: source.noteGrading, timingAnalysis: source.timingAnalysis, novelty })
+    expect(result.status).toBe('unavailable')
+    expect(result.observations).toEqual([])
+    expect(result.findings).toEqual([])
+    expect(result.facets.every((facet) => facet.status === 'unavailable' && facet.eligibleCount === 0)).toBe(true)
+    expect(result.warnings.join(' ')).toMatch(/frozen exercise events/i)
   })
 
   it('separates actual event coverage from the reached span and freezes the complete V2 output', () => {

@@ -34,10 +34,10 @@ import {
   type TechniqueAttemptSummary,
 } from './types'
 import {
-  TECHNIQUE_ANALYSIS_ENGINE_VERSION,
   TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1,
-  TECHNIQUE_EXERCISE_ENGINE_VERSION,
   TECHNIQUE_EXERCISE_ENGINE_VERSION_V1,
+  SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2,
+  SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2,
   TECHNIQUE_FACET_IDS,
   TECHNIQUE_FACET_IDS_V1,
   TECHNIQUE_MODULE_IDS,
@@ -115,6 +115,12 @@ const TECHNIQUE_OBSERVATION_UNITS = ['ratio', 'milliseconds', 'count', 'percent'
 const TECHNIQUE_OBSERVATION_METHODS = ['event-pitch', 'rhythm-loss', 'median-centered-interval', 'hesitation-expansion', 'chord-spread', 'turn-neighborhood', 'jump-landing-interval', 'jump-recovery-interval', 'target-tempo-ratio', 'local-tempo-stability', 'authored-tempo-trajectory'] as const
 
 function inEnum(value: unknown, values: readonly string[]): value is string { return typeof value === 'string' && values.includes(value) }
+function supportedTechniqueExerciseEngine(value: unknown): boolean { return inEnum(value, SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2) }
+function supportedTechniqueAnalysisEngine(value: unknown): boolean { return inEnum(value, SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2) }
+function supportedTechniqueEnginePair(exercise: unknown, analysis: unknown): boolean {
+  const index = SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2.findIndex((version) => version === exercise)
+  return index >= 0 && SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2[index] === analysis
+}
 function validTechniqueModule(value: unknown): boolean { return inEnum(value, TECHNIQUE_MODULE_IDS) }
 function validTechniqueTime(value: unknown, positive = false): boolean {
   return isObjectRecord(value) && Number.isInteger(value.numerator) && Number.isInteger(value.denominator) && (value.denominator as number) > 0 && (!positive || (value.numerator as number) > 0)
@@ -125,7 +131,7 @@ function validTechniqueNovelty(value: unknown, exerciseInstanceId: string): bool
 }
 function validTechniqueSpecV2(value: unknown): value is Record<string, unknown> {
   return isObjectRecord(value) && validTechniqueModule(value.moduleId) && typeof value.templateId === 'string' && value.templateId.length > 0 && typeof value.seed === 'string' && value.seed.length > 0
-    && value.exerciseEngineVersion === TECHNIQUE_EXERCISE_ENGINE_VERSION && Number.isInteger(value.tonic) && (value.tonic as number) >= 0 && (value.tonic as number) <= 11
+    && supportedTechniqueExerciseEngine(value.exerciseEngineVersion) && Number.isInteger(value.tonic) && (value.tonic as number) >= 0 && (value.tonic as number) <= 11
     && inEnum(value.mode, TECHNIQUE_MODES_V2) && isFiniteNumber(value.targetTempoBpm) && value.targetTempoBpm >= 30 && value.targetTempoBpm <= 240
     && isNonnegativeInteger(value.eventCount) && value.eventCount >= 4 && value.eventCount <= 64 && inEnum(value.direction, TECHNIQUE_DIRECTIONS)
     && (value.octaveSpan === 1 || value.octaveSpan === 2) && (value.subdivision === 1 || value.subdivision === 2 || value.subdivision === 4)
@@ -183,7 +189,7 @@ function validTechniqueFacetV2(value: unknown, challenge: Record<string, unknown
   return value.status === 'ready' ? value.score !== null && value.evidenceCount >= value.minimumEvidence && value.reliability !== 'unavailable' : value.score === null && value.reliability === 'unavailable'
 }
 function validTechniqueAnalysisV2(value: unknown, exercise: Record<string, unknown>): value is Record<string, unknown> {
-  if (!isObjectRecord(value) || typeof value.id !== 'string' || !validStatus(value.status) || value.analysisEngineVersion !== TECHNIQUE_ANALYSIS_ENGINE_VERSION
+  if (!isObjectRecord(value) || typeof value.id !== 'string' || !validStatus(value.status) || !supportedTechniqueAnalysisEngine(value.analysisEngineVersion)
     || value.moduleId !== (exercise.spec as Record<string, unknown>).moduleId || value.exerciseInstanceId !== exercise.id || typeof value.recordingId !== 'string'
     || typeof value.alignmentId !== 'string' || typeof value.noteGradingId !== 'string' || typeof value.timingAnalysisId !== 'string'
     || !validTechniqueCompletionV2(value.completion) || !validTechniqueNovelty(value.novelty, exercise.id as string) || !validTechniqueChallengeV2(value.challenge, exercise.spec as Record<string, unknown>)
@@ -245,6 +251,26 @@ function validTechniqueSnapshotSources(value: Record<string, unknown>): boolean 
     && isStringArray(observation.sourceTimingObservationIds) && observation.sourceTimingObservationIds.every((id) => timingIds.has(id))
     && isStringArray(observation.sourceNoteResultIds) && observation.sourceNoteResultIds.every((id) => noteResultIds.has(id)))
 }
+function sameMidiMultiset(left: readonly unknown[], right: readonly unknown[]): boolean {
+  if (left.length !== right.length || !left.every(Number.isInteger) || !right.every(Number.isInteger)) return false
+  const sortedLeft = [...left].sort((a, b) => (a as number) - (b as number)), sortedRight = [...right].sort((a, b) => (a as number) - (b as number))
+  return sortedLeft.every((midi, index) => midi === sortedRight[index])
+}
+function validTechniqueExercisePlan(value: Record<string, unknown>): boolean {
+  const exercise = value.exercise, plan = value.expectedPerformancePlan, recording = value.recording
+  if (!isObjectRecord(exercise) || !Array.isArray(exercise.events) || !isObjectRecord(plan) || !Array.isArray(plan.onsetGroups)
+    || !Array.isArray(plan.includedPartIds) || plan.includedPartIds.length !== 1 || plan.includedPartIds[0] !== 'P1'
+    || !isObjectRecord(recording) || !isObjectRecord(recording.practiceContext) || typeof plan.scoreId !== 'string' || recording.practiceContext.scoreId !== plan.scoreId
+    || exercise.events.length !== plan.onsetGroups.length) return false
+  const onsetGroups = plan.onsetGroups
+  return exercise.events.every((event, index) => {
+    const group = onsetGroups[index]
+    return isObjectRecord(event) && validTechniqueTime(event.position) && Array.isArray(event.midiNotes)
+      && isObjectRecord(group) && validTechniqueTime(group.position) && Array.isArray(group.midiNotes)
+      && compareTime(event.position as { numerator: number; denominator: number }, group.position as { numerator: number; denominator: number }) === 0
+      && sameMidiMultiset(event.midiNotes, group.midiNotes)
+  })
+}
 function assertTechniqueAttempt(value: unknown): asserts value is TechniqueAttemptRecord {
   if (!isObjectRecord(value)) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt record is invalid.')
   const valid = value.schemaVersion === 1 ? validTechniqueV1Base(value) && validTechniqueCrossProvenance(value, false)
@@ -252,8 +278,8 @@ function assertTechniqueAttempt(value: unknown): asserts value is TechniqueAttem
       && typeof value.templateId === 'string' && typeof value.exerciseInstanceId === 'string' && validTechniqueExerciseV2(value.exercise)
       && value.exercise.id === value.exerciseInstanceId && (value.exercise.spec as Record<string, unknown>).moduleId === value.moduleId && (value.exercise.spec as Record<string, unknown>).templateId === value.templateId
       && validTechniqueAnalysisV2(value.techniqueAnalysis, value.exercise) && validTechniqueNovelty(value.novelty, value.exerciseInstanceId) && semanticEqual(value.novelty, value.techniqueAnalysis.novelty)
-      && isObjectRecord(value.engineVersions) && value.engineVersions.exercise === TECHNIQUE_EXERCISE_ENGINE_VERSION && value.engineVersions.techniqueAnalysis === TECHNIQUE_ANALYSIS_ENGINE_VERSION
-      && validTechniqueCrossProvenance(value, true) && validTechniqueSnapshotSources(value)
+      && isObjectRecord(value.engineVersions) && supportedTechniqueEnginePair(value.engineVersions.exercise, value.engineVersions.techniqueAnalysis)
+      && validTechniqueCrossProvenance(value, true) && validTechniqueSnapshotSources(value) && validTechniqueExercisePlan(value)
   if (!valid) throw new PianoStorageError('CORRUPT_RECORD', 'A stored TechniqueAttempt record is invalid or has inconsistent provenance.')
 }
 
@@ -267,8 +293,8 @@ function validTechniqueSummaryV1(value: Record<string, unknown>): boolean {
 }
 function validTechniqueSummaryV2(value: Record<string, unknown>): boolean {
   if (value.schemaVersion !== 2 || typeof value.id !== 'string' || !validTechniqueModule(value.moduleId) || typeof value.templateId !== 'string' || typeof value.exerciseInstanceId !== 'string'
-    || !isCanonicalIsoTimestamp(value.performedAt) || !isFiniteNumber(value.durationMs) || value.durationMs < 0 || value.exerciseEngineVersion !== TECHNIQUE_EXERCISE_ENGINE_VERSION
-    || value.techniqueAnalysisEngineVersion !== TECHNIQUE_ANALYSIS_ENGINE_VERSION || !validTechniqueChallengeV2(value.challenge) || !validTechniqueCompletionV2(value.completion)
+    || !isCanonicalIsoTimestamp(value.performedAt) || !isFiniteNumber(value.durationMs) || value.durationMs < 0 || !supportedTechniqueExerciseEngine(value.exerciseEngineVersion)
+    || !supportedTechniqueEnginePair(value.exerciseEngineVersion, value.techniqueAnalysisEngineVersion) || !validTechniqueChallengeV2(value.challenge) || !validTechniqueCompletionV2(value.completion)
     || !validTechniqueNovelty(value.novelty, value.exerciseInstanceId) || !Array.isArray(value.facets)) return false
   return value.facets.every((facet) => isObjectRecord(facet) && inEnum(facet.id, TECHNIQUE_FACET_IDS) && typeof facet.label === 'string' && validStatus(facet.status)
     && (facet.score === null || (isFiniteNumber(facet.score) && facet.score >= 0 && facet.score <= 100)) && validReliability(facet.reliability)

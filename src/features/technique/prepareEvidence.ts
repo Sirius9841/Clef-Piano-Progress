@@ -7,9 +7,17 @@ import type { TechniqueCompletionV2, TechniqueExerciseSnapshotV2, TechniqueInter
 
 export interface PreparedTechniqueEvidence {
   readonly completion: TechniqueCompletionV2
-  readonly eventGroups: readonly { readonly eventId: string; readonly expectedGroupId: string; readonly performedGroupId: string | null; readonly index: number; readonly noteResult: GroupNoteResult | null }[]
+  readonly eventGroups: readonly { readonly eventId: string; readonly expectedGroupId: string; readonly performedGroupId: string | null; readonly index: number; readonly participation: 'attempted' | 'outside-performed-span'; readonly noteResult: GroupNoteResult | null }[]
   readonly intervals: readonly TechniqueIntervalEvidence[]
   readonly perfectExpectedGroupIds: ReadonlySet<string>
+}
+
+export function attemptedEventCount(evidence: PreparedTechniqueEvidence, selector: (eventIndex: number) => boolean = () => true): number {
+  return evidence.eventGroups.filter((entry) => entry.participation === 'attempted' && selector(entry.index)).length
+}
+
+export function attemptedTransitionCount(evidence: PreparedTechniqueEvidence, selector: (currentEventIndex: number) => boolean = () => true): number {
+  return evidence.eventGroups.filter((entry) => entry.index > 0 && entry.participation === 'attempted' && evidence.eventGroups[entry.index - 1]?.participation === 'attempted' && selector(entry.index)).length
 }
 
 export function prepareTechniqueEvidence(exercise: TechniqueExerciseSnapshotV2, alignment: AlignmentResult, noteGrading: NoteGradingResult, timing: TimingAnalysisResult): PreparedTechniqueEvidence {
@@ -27,7 +35,7 @@ export function prepareTechniqueEvidence(exercise: TechniqueExerciseSnapshotV2, 
   const eventCoverageRatio = expectedEventCount === 0 ? 0 : clamp01(completeCorrectOrIncorrectEventCount / expectedEventCount)
   const spanReachedRatio = reachedSpanEndIndex === null || expectedEventCount === 0 ? 0 : clamp01((reachedSpanEndIndex + 1) / expectedEventCount)
   const completion: TechniqueCompletionV2 = { expectedEventCount, attemptedEventCount, completeCorrectOrIncorrectEventCount, reachedSpanEndIndex, eventCoverageRatio, spanReachedRatio, completeEnoughForEvidence: eventCoverageRatio >= TECHNIQUE_ANALYSIS_OPTIONS.minimumEventCoverage }
-  const eventGroups = exercise.events.map((event, index) => { const expectedGroupId = alignment.expectedGroups[index]?.id ?? ''; return { eventId: event.id, expectedGroupId, performedGroupId: performedByExpected.get(expectedGroupId) ?? null, index, noteResult: noteByGroup.get(expectedGroupId) ?? null } })
+  const eventGroups = exercise.events.map((event, index) => { const expectedGroupId = alignment.expectedGroups[index]?.id ?? ''; return { eventId: event.id, expectedGroupId, performedGroupId: performedByExpected.get(expectedGroupId) ?? null, index, participation: firstReached !== null && reachedSpanEndIndex !== null && index >= firstReached && index <= reachedSpanEndIndex ? 'attempted' as const : 'outside-performed-span' as const, noteResult: noteByGroup.get(expectedGroupId) ?? null } })
   const perfectExpectedGroupIds = new Set(noteGrading.groupResults.filter((group) => group.classification === 'perfect' && group.expectedGroupId).map((group) => group.expectedGroupId!))
   const eventByGroup = new Map(eventGroups.map((entry) => [entry.expectedGroupId, entry]))
   const intervals: TechniqueIntervalEvidence[] = timing.rhythm.observations.flatMap((observation) => {

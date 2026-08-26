@@ -16,7 +16,7 @@ Sustain changes preserve every raw CC64 value and are counted. Runtime state sep
 
 Phase 9 key Articulation still uses the physical attack-to-release span and never extends release to pedal-up. Phase 10 derives separate controller-based damper-release context and pedal timing without rewriting Articulation. Intermediate controller values are evidence of a continuous-capable stream, not calibrated half-pedal depth or acoustic duration.
 
-Phase 12/12.1 Technique workspaces use the same authoritative recorder and device-disconnect lifecycle. Each take records against its generated ExpectedPerformancePlan identity, and configuration is locked while a take exists so notation cannot move underneath captured evidence. Raw attacks, releases, velocities, sustain, device context, arrival sequence, and warnings are preserved in the TechniqueAttempt, even though Technique facets make no velocity- or pedal-quality claim. Declared hand context is user metadata only; MIDI does not verify physical hand use.
+Phase 12 Technique workspaces use the same authoritative recorder and device-disconnect lifecycle. Each take records against its generated ExpectedPerformancePlan and score identity, and configuration is locked while a take exists so notation cannot move underneath captured evidence. Phase 12.2 rechecks that frozen identity plus exact generated-event/plan structure before saving. Raw attacks, releases, velocities, sustain, device context, arrival sequence, and warnings are preserved in the TechniqueAttempt, even though Technique facets make no velocity- or pedal-quality claim. Declared hand context is user metadata only; MIDI does not verify physical hand use.
 
 ## Disconnects and statistics
 

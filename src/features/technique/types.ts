@@ -8,8 +8,14 @@ import type { TimingAnalysisResult } from '../timing-analysis/types'
 
 export const TECHNIQUE_EXERCISE_ENGINE_VERSION_V1 = 'technique-exercise-1.0.0'
 export const TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1 = 'technique-analysis-1.0.0'
-export const TECHNIQUE_EXERCISE_ENGINE_VERSION = 'technique-exercise-1.1.0'
-export const TECHNIQUE_ANALYSIS_ENGINE_VERSION = 'technique-analysis-1.1.0'
+export const TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0 = 'technique-exercise-1.1.0'
+export const TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0 = 'technique-analysis-1.1.0'
+export const TECHNIQUE_EXERCISE_ENGINE_VERSION = 'technique-exercise-1.1.1'
+export const TECHNIQUE_ANALYSIS_ENGINE_VERSION = 'technique-analysis-1.1.1'
+export const SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2 = [TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_EXERCISE_ENGINE_VERSION] as const
+export const SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2 = [TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_ANALYSIS_ENGINE_VERSION] as const
+export type TechniqueExerciseEngineVersionV2 = typeof SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2[number]
+export type TechniqueAnalysisEngineVersionV2 = typeof SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2[number]
 
 export const TECHNIQUE_MODULE_IDS = ['sight-reading', 'rhythm', 'chord-fluency', 'scales', 'arpeggios', 'octaves', 'keyboard-jumps', 'tempo-control'] as const
 export type TechniqueModuleId = typeof TECHNIQUE_MODULE_IDS[number]
@@ -32,7 +38,7 @@ export interface TechniqueExerciseSpecV2 {
   readonly octaveSpan: 1 | 2; readonly subdivision: 1 | 2 | 4; readonly chordInversion: 0 | 1 | 2
   readonly jumpSemitones: 7 | 12 | 19 | 24; readonly tempoShape: TechniqueTempoShape
   readonly declaredHandContext: DeclaredHandContext
-  readonly exerciseEngineVersion: typeof TECHNIQUE_EXERCISE_ENGINE_VERSION
+  readonly exerciseEngineVersion: TechniqueExerciseEngineVersionV2
 }
 export type TechniqueExerciseSpec = TechniqueExerciseSpecV2
 
@@ -138,7 +144,7 @@ export interface TechniqueAnalysisResultV1 {
 export interface TechniqueAnalysisResultV2 {
   readonly id: string; readonly status: 'ready' | 'unavailable'; readonly moduleId: TechniqueModuleId; readonly exerciseInstanceId: string
   readonly recordingId: string; readonly alignmentId: string; readonly noteGradingId: string; readonly timingAnalysisId: string
-  readonly analysisEngineVersion: typeof TECHNIQUE_ANALYSIS_ENGINE_VERSION
+  readonly analysisEngineVersion: TechniqueAnalysisEngineVersionV2
   readonly completion: TechniqueCompletionV2; readonly novelty: TechniqueNovelty; readonly challenge: TechniqueChallengeProfileV2
   readonly facets: readonly TechniqueFacetResultV2[]; readonly observations: readonly TechniqueObservationV2[]
   readonly findings: readonly string[]; readonly exclusions: readonly string[]; readonly warnings: readonly string[]

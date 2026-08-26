@@ -7,14 +7,15 @@ import { analyzeTiming } from '../../timing-analysis/analyzeTiming'
 import { analyzeTechnique } from '../../technique/analyzeTechnique'
 import { defaultTechniqueSpec } from '../../technique/catalog'
 import { compileTechniqueExercise } from '../../technique/exerciseCompiler'
-import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION_V1 } from '../../technique/types'
+import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION_V1, TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0 } from '../../technique/types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
 import { createTechniqueAttemptSummary, PERSISTENCE_SCHEMA_VERSION, type TechniqueAttemptRecordV1, type TechniqueAttemptRecordV2 } from '../types'
 
 function attempt(id = 'technique-attempt:test', seed = 'persistence'): TechniqueAttemptRecordV2 {
   const compiled = compileTechniqueExercise({ ...defaultTechniqueSpec('scales', seed), eventCount: 8 })
   const attacks = compiled.expectedPerformancePlan.onsetGroups.flatMap((group, index) => group.midiNotes.map((midi) => ({ midi, ms: index * 750 })))
-  const recording = makeRecording(attacks, { id: `recording:${id}`, planId: compiled.expectedPerformancePlan.id })
+  const baseRecording = makeRecording(attacks, { id: `recording:${id}`, planId: compiled.expectedPerformancePlan.id })
+  const recording = { ...baseRecording, practiceContext: { ...baseRecording.practiceContext, scoreId: compiled.expectedPerformancePlan.scoreId } }
   const alignment = alignPerformance(compiled.expectedPerformancePlan, recording)
   const noteGrading = gradeNotes({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, options: { gradingScope: 'full-plan' } })
   const timingAnalysis = analyzeTiming({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, noteGrading })
@@ -105,6 +106,55 @@ describe('Technique persistence', () => {
     expect(summaries).toHaveLength(2)
     expect(summaries.find((summary) => summary.id === v1.id)).not.toHaveProperty('schemaVersion')
     expect(summaries.find((summary) => summary.id === v2.id)).toMatchObject({ schemaVersion: 2, exerciseEngineVersion: TECHNIQUE_EXERCISE_ENGINE_VERSION, techniqueAnalysisEngineVersion: TECHNIQUE_ANALYSIS_ENGINE_VERSION })
+  })
+
+  it('reads historical V2 1.1.0 and current V2 1.1.1 records without a schema bump', async () => {
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: 'technique-v2-engine-compatibility-test' })
+    const current = attempt('technique-attempt:v2-current', 'v2-current')
+    const historicalMutable = structuredClone(attempt('technique-attempt:v2-historical', 'v2-historical')) as unknown as Record<string, unknown>
+    record(record(historicalMutable.exercise).spec).exerciseEngineVersion = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
+    record(historicalMutable.techniqueAnalysis).analysisEngineVersion = TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0
+    record(historicalMutable.engineVersions).exercise = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
+    record(historicalMutable.engineVersions).techniqueAnalysis = TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0
+    const historical = historicalMutable as unknown as TechniqueAttemptRecordV2
+    await expect(repository.saveTechniqueAttempt(historical)).resolves.toMatchObject({ created: true })
+    await expect(repository.saveTechniqueAttempt(current)).resolves.toMatchObject({ created: true })
+    await expect(repository.getTechniqueAttempt(historical.id)).resolves.toEqual(historical)
+    await expect(repository.listTechniqueAttemptSummaries()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: historical.id, exerciseEngineVersion: 'technique-exercise-1.1.0', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.0' }),
+      expect.objectContaining({ id: current.id, exerciseEngineVersion: 'technique-exercise-1.1.1', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.1' }),
+    ]))
+    expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
+  })
+
+  it('rejects unsupported and mixed V2 engine identities explicitly', async () => {
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: 'technique-v2-engine-rejection-test' })
+    const unsupported = structuredClone(attempt('technique-attempt:unsupported')) as unknown as Record<string, unknown>
+    record(record(unsupported.exercise).spec).exerciseEngineVersion = 'technique-exercise-1.1.9'
+    record(unsupported.engineVersions).exercise = 'technique-exercise-1.1.9'
+    await expect(repository.saveTechniqueAttempt(unsupported as unknown as TechniqueAttemptRecordV2)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    const mixed = structuredClone(attempt('technique-attempt:mixed')) as unknown as Record<string, unknown>
+    record(record(mixed.exercise).spec).exerciseEngineVersion = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
+    record(mixed.engineVersions).exercise = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
+    await expect(repository.saveTechniqueAttempt(mixed as unknown as TechniqueAttemptRecordV2)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+  })
+
+  it('enforces frozen exercise-to-plan semantics and P1 score identity before saving', async () => {
+    const corruptions: readonly [string, (value: Record<string, unknown>) => void][] = [
+      ['event count', (value) => { array(record(value.expectedPerformancePlan).onsetGroups).pop() }],
+      ['event position', (value) => { record(array(record(value.expectedPerformancePlan).onsetGroups)[0]).position = { numerator: 1, denominator: 8 } }],
+      ['MIDI cardinality', (value) => { record(array(record(value.expectedPerformancePlan).onsetGroups)[0]).midiNotes = [] }],
+      ['MIDI value', (value) => { const group = record(array(record(value.expectedPerformancePlan).onsetGroups)[0]); group.midiNotes = [99] }],
+      ['part selection', (value) => { record(value.expectedPerformancePlan).includedPartIds = ['P2'] }],
+      ['recording score', (value) => { record(record(value.recording).practiceContext).scoreId = 'different-score' }],
+    ]
+    for (const [label, corrupt] of corruptions) {
+      const repository = new IndexedDbPianoProgressRepository({ databaseName: `technique-plan-guard-${label}` })
+      const malformed = structuredClone(attempt(`technique-attempt:plan:${label}`)) as unknown as Record<string, unknown>
+      corrupt(malformed)
+      await expect(repository.saveTechniqueAttempt(malformed as unknown as TechniqueAttemptRecordV2), label).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+      await expect(repository.getCounts()).resolves.toMatchObject({ techniqueAttempts: 0 })
+    }
   })
 
   it('preserves aggregation-ready V2 challenge provenance without loading the full attempt', () => {

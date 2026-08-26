@@ -2,7 +2,7 @@ import { StatusPill } from '../../components/ui'
 import type { TechniqueAnalysisResultV1, TechniqueAnalysisResultV2 } from './types'
 
 export function TechniqueResultPanel({ result }: { result: TechniqueAnalysisResultV1 | TechniqueAnalysisResultV2 }) {
-  const versionTwo = result.analysisEngineVersion === 'technique-analysis-1.1.0'
+  const versionTwo = 'eventCoverageRatio' in result.completion
   const completionRatio = versionTwo ? result.completion.eventCoverageRatio : result.completion.ratio
   const completionLabel = versionTwo ? 'event coverage' : 'reached'
   return <section className="panel technique-results">

@@ -15,8 +15,8 @@ describe('TechniqueResultPanel versioned history', () => {
     expect(html).toContain('Frozen legacy composite.')
   })
 
-  it('renders V2 actual coverage separately from reached span', () => {
-    const result: TechniqueAnalysisResultV2 = { id: 'v2', status: 'unavailable', moduleId: 'rhythm', exerciseInstanceId: 'exercise', recordingId: 'recording', alignmentId: 'alignment', noteGradingId: 'notes', timingAnalysisId: 'timing', analysisEngineVersion: 'technique-analysis-1.1.0', completion: { expectedEventCount: 8, attemptedEventCount: 8, completeCorrectOrIncorrectEventCount: 2, reachedSpanEndIndex: 7, eventCoverageRatio: .25, spanReachedRatio: 1, completeEnoughForEvidence: false }, novelty: { exerciseInstanceId: 'exercise', priorSavedAttemptCount: 1, firstSavedAttempt: false }, challenge: challengeV2, facets: [], observations: [], findings: [], exclusions: [], warnings: [] }
+  it.each(['technique-analysis-1.1.0', 'technique-analysis-1.1.1'] as const)('renders %s actual coverage separately from reached span', (analysisEngineVersion) => {
+    const result: TechniqueAnalysisResultV2 = { id: 'v2', status: 'unavailable', moduleId: 'rhythm', exerciseInstanceId: 'exercise', recordingId: 'recording', alignmentId: 'alignment', noteGradingId: 'notes', timingAnalysisId: 'timing', analysisEngineVersion, completion: { expectedEventCount: 8, attemptedEventCount: 8, completeCorrectOrIncorrectEventCount: 2, reachedSpanEndIndex: 7, eventCoverageRatio: .25, spanReachedRatio: 1, completeEnoughForEvidence: false }, novelty: { exerciseInstanceId: 'exercise', priorSavedAttemptCount: 1, firstSavedAttempt: false }, challenge: challengeV2, facets: [], observations: [], findings: [], exclusions: [], warnings: [] }
     const html = renderToStaticMarkup(<TechniqueResultPanel result={result} />)
     expect(html).toContain('25% event coverage')
     expect(html).toContain('Reached span 100%')
