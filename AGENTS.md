@@ -165,7 +165,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - TechniqueAttempt is a separate immutable record family; never attach it to Work, Arrangement, ScoreVersion, PracticeSession, or PerformanceAttempt.
 - Generated exercises are deterministic from an explicit spec, template, and seed, then compile through the canonical MusicXML parser and expected-performance builder.
 - Technique history is frozen by explicit engine pair: V1 `1.0.0`; V2 `exercise-1.1.0`/`analysis-1.1.0`, `exercise-1.1.1`/`analysis-1.1.1`, and current `exercise-1.1.1`/`analysis-1.1.2`. Reject all other pairings. IndexedDB remains schema 4.
-- Every Technique facet retains exact challenge context. Never collapse challenge into one difficulty number or combine facets into an overall score, Skill Rating, Mastery, or headline progress claim.
+- Every Technique facet retains exact challenge context. Phase 12 analysis never collapses challenge into one difficulty number or directly creates Skill Rating, Mastery, or headline progress; only the summary-driven Phase 13 Skill Model may combine applicable facets under its explicit context-qualified rules.
 - Technique analysis consumes frozen Alignment, NoteGrading, and TimingAnalysis snapshots; it never reparses, realigns, or regrades.
 - Wrong, missed, additional, unsafe, or non-adjacent pitch evidence cannot become a second timing penalty. Sparse timing evidence is unavailable, never zero. Interior failures remain authored opportunities and can lower facet coverage without becoming zero-valued timing observations.
 - Rhythm precision and hesitation continuity, global target tempo and local stability, scale-wide evenness and its turn, and jump landing and recovery use distinct observation semantics/populations.
@@ -177,6 +177,17 @@ This repository builds a serious piano progress and performance-analysis applica
 - Technical exactness is valid only when it is the declared exercise objective. Do not transfer metronomic expectations to interpretation-aware repertoire timing.
 - Do not infer fingering, physical hand use, tension, relaxation, biomechanics, injury risk, acoustic tone, velocity quality, or pedal quality from Phase 12 evidence.
 - Phase 13 may consume only frozen, validated Technique summaries; it must not regenerate or reinterpret historical attempts.
+
+## Skill and mastery model rules
+
+- Skill Model `1.0.0` consumes only current-pair Technique V2 summaries (`exercise-1.1.1` / `analysis-1.1.2`). Older Technique evidence remains frozen history and never creates a current rating.
+- Keep exactly eight independent Technique skill ratings. Never create an overall pianist score, universal level, percentile, or challenge difficulty multiplier.
+- Skill attempt quality gives each applicable ready facet one equal vote. Reliability and coverage affect evidence authority, not the measured facet quality itself.
+- Aggregate Technique evidence through challenge contexts before module ratings so repeated identical practice cannot dominate breadth. Tonics, modes, inversions, and declared hand context are descriptive breadth, not ranked difficulty or inferred physical execution.
+- Skill and Mastery models require explicit `asOf`, use typed exclusions, preserve exact evidence IDs, and return immutable serializable projections. No evidence is null/unestablished, never zero.
+- Arrangement Mastery belongs to one Arrangement and only its current ScoreVersion. It accepts reliable/limited full-plan summaries with Notes, Rhythm, and Tempo; old versions, partials, and provisional results remain history.
+- Mastery keeps Control, demonstrated speed, consistency, recency, and confidence explicit. Practice time, attempt volume, expression, pedal, voicing, references, and repertoire status never inflate it.
+- Demonstrated speed requires repeated dimension-qualified full-score evidence. Tempo accuracy at a reduced target is not full-speed mastery, and a single lucky take never establishes speed.
 
 ## Pedal-analysis rules
 

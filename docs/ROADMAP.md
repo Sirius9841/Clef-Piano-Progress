@@ -74,12 +74,12 @@ Attempted-span semantics, facet-specific authored-opportunity coverage, key-awar
 
 Score-side Tempo opportunity denominators shared with TimingAnalysis window geometry, exact sample-to-opportunity mapping, authored transition coverage, pre-dispatch identity failure closure, and explicit frozen V2 engine-pair compatibility. Current analysis is `technique-analysis-1.1.2`; IndexedDB remains schema 4.
 
-## Phase 13 — next
+## Phase 13 — complete
 
-Phase 13 may build summary-driven transferable skill evidence from frozen, validated Technique summaries. It has not begun.
+Skill Model `1.0.0` now derives eight challenge-qualified current Technique ratings from the exact current summary engine pair, with two-stage context aggregation, repetition protection, confidence, consistency, recency, breadth envelopes, and typed exclusions. Mastery Model `1.0.0` derives current Arrangement/current-ScoreVersion command from reliable or limited full-score Notes, Rhythm, and Tempo summaries, keeping repeated demonstrated speed, control, consistency, recency, and confidence explicit. Both are pure immutable read models; persistence remains schema 4 and all historical attempt families remain untouched.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
-Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, or Practice Priority. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, Mastery, cloud sync, and accounts remain unimplemented.
+Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.
 
 The pre-Phase-9 hardening pass adds same-ID MIDI disconnect safety, truthful Library and Technique previews, conservative PB reliability eligibility, captured-speed locking, user-controlled Repertoire status and sorting, defensive persistence mutation/corruption handling, and validation CI. It does not add expressive grading.

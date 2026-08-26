@@ -2,6 +2,7 @@ import { ArrowLeft, CalendarDays, FileMusic, History, Play, Trash2 } from 'lucid
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, PageHeader, SectionHeading, Stat } from '../components/ui'
+import { ArrangementMasteryPanel } from '../components/Phase13Panels'
 import { REPERTOIRE_STATUSES, type RepertoireStatus } from '../domain/music'
 import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
@@ -12,11 +13,14 @@ import type { AttemptSummary, PersistedScoreVersion, RepertoireListItem } from '
 import { comparableAttemptKey, derivePersonalBests, formatPercent, selectLatestHeadlineAttempt } from '../features/progress/model'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { buildPersistedPracticePlan } from '../features/practice/persistedPractice'
+import { deriveArrangementMastery } from '../features/mastery-model'
+import type { ArrangementMastery } from '../features/mastery-model'
 
 interface PieceData {
   readonly item: RepertoireListItem | null
   readonly attempts: readonly AttemptSummary[]
   readonly scoreVersions: readonly PersistedScoreVersion[]
+  readonly asOf: string
 }
 
 function formatPracticeTime(milliseconds: number): string {
@@ -37,7 +41,7 @@ export function PieceDetailPage() {
   const [mutationState, setMutationState] = useState<'idle' | 'saving'>('idle')
   const state = useRepositoryQuery<PieceData>(async (repository) => {
     const [items, attempts, scoreVersions] = await Promise.all([repository.listRepertoire(), repository.listAttemptSummaries(arrangementId), repository.listScoreVersions(arrangementId)])
-    return { item: items.find((candidate) => candidate.arrangement.id === arrangementId) ?? null, attempts, scoreVersions }
+    return { item: items.find((candidate) => candidate.arrangement.id === arrangementId) ?? null, attempts, scoreVersions, asOf: new Date().toISOString() }
   }, `piece:${arrangementId}`)
   const data = state.status === 'ready' ? state.data : null
   const item = data?.item ?? null
@@ -47,6 +51,7 @@ export function PieceDetailPage() {
     ? attempts.filter((attempt) => comparableAttemptKey(attempt) === comparableAttemptKey(latestFull))
     : []
   const personalBests = derivePersonalBests(comparable)
+  const mastery: ArrangementMastery | null = item && data ? deriveArrangementMastery({ arrangementId: item.arrangement.id, scoreVersionId: item.scoreVersion.id, attempts, asOf: data.asOf }) : null
 
   const startPractice = () => {
     if (!item) return
@@ -126,6 +131,8 @@ export function PieceDetailPage() {
           {(['notes', 'rhythm', 'tempo'] as const).map((metric) => { const best = personalBests.find((value) => value.metric === metric); return <Stat key={metric} icon={History} label={`Best ${metric}`} value={formatPercent(best?.value ?? null)} detail={latestFull ? `Full score · ${Math.round(latestFull.practiceSpeedMultiplier * 100)}% speed` : 'Needs a full-score result'} /> })}
         </div>
       </section>
+
+      {mastery && <ArrangementMasteryPanel mastery={mastery} />}
 
       <section className="panel history-panel reveal delay-2">
         <SectionHeading title="Performance history" subtitle="Saved attempts retain the exact score, MIDI recording, and analysis snapshots" />
