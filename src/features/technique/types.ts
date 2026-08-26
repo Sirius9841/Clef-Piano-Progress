@@ -11,11 +11,17 @@ export const TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1 = 'technique-analysis-1.0.0'
 export const TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0 = 'technique-exercise-1.1.0'
 export const TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0 = 'technique-analysis-1.1.0'
 export const TECHNIQUE_EXERCISE_ENGINE_VERSION = 'technique-exercise-1.1.1'
-export const TECHNIQUE_ANALYSIS_ENGINE_VERSION = 'technique-analysis-1.1.1'
-export const SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2 = [TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_EXERCISE_ENGINE_VERSION] as const
-export const SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2 = [TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_ANALYSIS_ENGINE_VERSION] as const
-export type TechniqueExerciseEngineVersionV2 = typeof SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2[number]
-export type TechniqueAnalysisEngineVersionV2 = typeof SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2[number]
+export const TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_1 = 'technique-analysis-1.1.1'
+export const TECHNIQUE_ANALYSIS_ENGINE_VERSION = 'technique-analysis-1.1.2'
+export const SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2 = [
+  { exercise: TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0, analysis: TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0 },
+  { exercise: TECHNIQUE_EXERCISE_ENGINE_VERSION, analysis: TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_1 },
+  { exercise: TECHNIQUE_EXERCISE_ENGINE_VERSION, analysis: TECHNIQUE_ANALYSIS_ENGINE_VERSION },
+] as const
+export type TechniqueExerciseEngineVersionV2 = typeof SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2[number]['exercise']
+export type TechniqueAnalysisEngineVersionV2 = typeof SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2[number]['analysis']
+export const SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2: readonly TechniqueExerciseEngineVersionV2[] = [...new Set(SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2.map((pair) => pair.exercise))]
+export const SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2: readonly TechniqueAnalysisEngineVersionV2[] = [...new Set(SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2.map((pair) => pair.analysis))]
 
 export const TECHNIQUE_MODULE_IDS = ['sight-reading', 'rhythm', 'chord-fluency', 'scales', 'arpeggios', 'octaves', 'keyboard-jumps', 'tempo-control'] as const
 export type TechniqueModuleId = typeof TECHNIQUE_MODULE_IDS[number]
@@ -157,6 +163,19 @@ export interface TechniqueIntervalEvidence {
   readonly expectedIntervalMs: number; readonly performedIntervalMs: number; readonly ratio: number; readonly logRatio: number
   readonly signedDifferenceMs: number; readonly scorePosition: MusicalTime; readonly previousRole: TechniqueEventRole; readonly currentRole: TechniqueEventRole
   readonly transitionKind: TechniqueTransitionKind; readonly rhythmLoss: number; readonly sourceNoteResultIds: readonly string[]
+}
+
+export interface TechniqueTempoOpportunity {
+  readonly id: string
+  readonly startEventId: string
+  readonly endEventId: string
+  readonly startExpectedGroupId: string
+  readonly endExpectedGroupId: string
+  readonly startPosition: MusicalTime
+  readonly endPosition: MusicalTime
+  readonly windowScoreDuration: MusicalTime
+  readonly anchorCount: number
+  readonly targetQuarterBpm: number
 }
 
 export interface AnalyzeTechniqueInput {

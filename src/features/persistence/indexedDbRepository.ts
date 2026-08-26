@@ -37,6 +37,7 @@ import {
   TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1,
   TECHNIQUE_EXERCISE_ENGINE_VERSION_V1,
   SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2,
+  SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2,
   SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2,
   TECHNIQUE_FACET_IDS,
   TECHNIQUE_FACET_IDS_V1,
@@ -118,8 +119,7 @@ function inEnum(value: unknown, values: readonly string[]): value is string { re
 function supportedTechniqueExerciseEngine(value: unknown): boolean { return inEnum(value, SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2) }
 function supportedTechniqueAnalysisEngine(value: unknown): boolean { return inEnum(value, SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2) }
 function supportedTechniqueEnginePair(exercise: unknown, analysis: unknown): boolean {
-  const index = SUPPORTED_TECHNIQUE_EXERCISE_ENGINE_VERSIONS_V2.findIndex((version) => version === exercise)
-  return index >= 0 && SUPPORTED_TECHNIQUE_ANALYSIS_ENGINE_VERSIONS_V2[index] === analysis
+  return SUPPORTED_TECHNIQUE_ENGINE_PAIRS_V2.some((pair) => pair.exercise === exercise && pair.analysis === analysis)
 }
 function validTechniqueModule(value: unknown): boolean { return inEnum(value, TECHNIQUE_MODULE_IDS) }
 function validTechniqueTime(value: unknown, positive = false): boolean {

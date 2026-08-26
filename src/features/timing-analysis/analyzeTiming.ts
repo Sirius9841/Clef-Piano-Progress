@@ -6,6 +6,7 @@ import type { NoteGradingResult } from '../note-grading/types'
 import type { PerformanceRecording } from '../performance/types'
 import { clamp01, deepFreeze, median, smoothDeviationScore, stableHash, theilSenSlope, trimmedMean } from './math'
 import { resolveTimingAnalysisOptions, TIMING_ANALYSIS_ENGINE_VERSION, type TimingAnalysisOptions } from './options'
+import { buildLocalTempoWindowGeometry } from './localTempoWindowGeometry'
 import type {
   ChordSpreadDiagnostic,
   DirectionOutcome,
@@ -309,13 +310,14 @@ function localTempoSamples(
   options: TimingAnalysisOptions,
 ): LocalTempoSample[] {
   const samples: LocalTempoSample[] = []
-  let startIndex = 0
-  for (let endIndex = 1; endIndex < strong.length; endIndex += 1) {
-    while (startIndex + 1 < endIndex && endIndex - (startIndex + 1) + 1 >= options.minimumTempoWindowAnchors && compareTime(subtractTime(strong[endIndex]!.expectedGroup.position, strong[startIndex + 1]!.expectedGroup.position), options.localTempoWindowBeats) >= 0) startIndex += 1
-    const start = strong[startIndex]!
-    const end = strong[endIndex]!
-    const windowDuration = subtractTime(end.expectedGroup.position, start.expectedGroup.position)
-    if (endIndex - startIndex + 1 < options.minimumTempoWindowAnchors || compareTime(windowDuration, options.localTempoWindowBeats) < 0) continue
+  const windows = buildLocalTempoWindowGeometry(
+    strong.map((step) => ({ id: step.id, position: step.expectedGroup.position, step })),
+    options.localTempoWindowBeats,
+    options.minimumTempoWindowAnchors,
+  )
+  for (const window of windows) {
+    const start = window.start.step
+    const end = window.end.step
     const referenceIntervalMs = end.expectedGroup.referenceMs - start.expectedGroup.referenceMs
     const performedIntervalMs = end.performedGroup.representativeMs - start.performedGroup.representativeMs
     if (referenceIntervalMs <= 0 || performedIntervalMs <= 0) continue
@@ -328,8 +330,8 @@ function localTempoSamples(
       endExpectedGroupId: end.expectedGroup.id,
       position: { ...end.expectedGroup.position },
       measureNumbers: [...end.expectedGroup.measureNumbers],
-      windowScoreDuration: { ...windowDuration },
-      anchorCount: endIndex - startIndex + 1,
+      windowScoreDuration: { ...window.windowScoreDuration },
+      anchorCount: window.anchorCount,
       referenceIntervalMs,
       performedIntervalMs,
       localTimeScale,

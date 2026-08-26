@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { alignPerformance } from '../../alignment/alignPerformance'
 import { makeRecording } from '../../alignment/__tests__/fixtures'
+import { durationBetweenScorePositionsToMilliseconds } from '../../expected-performance/tempoTimeline'
+import { ZERO_TIME } from '../../musicxml/musicalTime'
 import { gradeNotes } from '../../note-grading/gradeNotes'
 import { analyzeTiming } from '../../timing-analysis/analyzeTiming'
 import { analyzeTechnique } from '../analyzeTechnique'
@@ -34,6 +36,25 @@ function analyzePerfect(spec: TechniqueExerciseSpec, intervalMs = 750) {
   const timingAnalysis = analyzeTiming({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, noteGrading })
   const novelty = { exerciseInstanceId: compiled.snapshot.id, priorSavedAttemptCount: 0, firstSavedAttempt: true }
   return analyzeTechnique({ exercise: compiled.snapshot, recording, alignment, noteGrading, timingAnalysis, novelty })
+}
+
+function analyzeAtAuthoredTempo(spec: TechniqueExerciseSpec, select: (midiNotes: readonly number[], index: number) => readonly number[] | null, timeScale = 1) {
+  const compiled = compileTechniqueExercise(spec)
+  const attacks = compiled.expectedPerformancePlan.onsetGroups.flatMap((group) => {
+    const ms = durationBetweenScorePositionsToMilliseconds(ZERO_TIME, group.position, compiled.expectedPerformancePlan.tempoTimeline, 1) * timeScale
+    return group.midiNotes.map((midi) => ({ midi, ms }))
+  })
+  const recording = makeRecording(attacks, { planId: compiled.expectedPerformancePlan.id })
+  const baseAlignment = alignPerformance(compiled.expectedPerformancePlan, recording)
+  const expectedIndex = new Map(baseAlignment.expectedGroups.map((group, index) => [group.id, index]))
+  const alignment = {
+    ...baseAlignment,
+    groupAlignments: baseAlignment.groupAlignments.filter((step) => step.kind !== 'correspondence' || select(step.expectedGroup.pitches, expectedIndex.get(step.expectedGroup.id)!) !== null),
+  }
+  const noteGrading = gradeNotes({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, options: { gradingScope: 'full-plan' } })
+  const timingAnalysis = analyzeTiming({ expectedPlan: compiled.expectedPerformancePlan, recording, alignment, noteGrading })
+  const novelty = { exerciseInstanceId: compiled.snapshot.id, priorSavedAttemptCount: 0, firstSavedAttempt: true }
+  return { compiled, recording, alignment, noteGrading, timingAnalysis, result: analyzeTechnique({ exercise: compiled.snapshot, recording, alignment, noteGrading, timingAnalysis, novelty }) }
 }
 
 describe('Technique exercise compiler', () => {
@@ -91,7 +112,7 @@ describe('Technique exercise compiler', () => {
   it('generates only with the current V2 engine while retaining historical versions as persistence types', () => {
     expect(defaultTechniqueSpec('scales').exerciseEngineVersion).toBe('technique-exercise-1.1.1')
     expect(TECHNIQUE_EXERCISE_ENGINE_VERSION).toBe('technique-exercise-1.1.1')
-    expect(TECHNIQUE_ANALYSIS_ENGINE_VERSION).toBe('technique-analysis-1.1.1')
+    expect(TECHNIQUE_ANALYSIS_ENGINE_VERSION).toBe('technique-analysis-1.1.2')
     expect(() => compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), exerciseEngineVersion: 'technique-exercise-1.1.0' })).toThrow(/1\.1\.1/)
   })
 
@@ -205,6 +226,47 @@ describe('Technique exercise compiler', () => {
     expect(turn.facets.find((facet) => facet.id === 'direction-change-continuity')).toMatchObject({ status: 'unavailable', evidenceCount: 0, eligibleCount: 2, coverage: 0 })
   })
 
+  it('uses authored local-tempo windows as the target and stability denominator', () => {
+    const spec = { ...defaultTechniqueSpec('tempo-control'), eventCount: 11, tempoShape: 'arch' as const }
+    const complete = analyzeAtAuthoredTempo(spec, (notes) => notes).result
+    expect(complete.facets.find((facet) => facet.id === 'target-tempo-control')).toMatchObject({ score: 100, evidenceCount: 10, eligibleCount: 10, coverage: 1, reliability: 'reliable' })
+    expect(complete.facets.find((facet) => facet.id === 'tempo-stability')).toMatchObject({ evidenceCount: 10, eligibleCount: 10, coverage: 1, reliability: 'reliable' })
+
+    const missingMiddle = analyzeAtAuthoredTempo(spec, (notes, index) => index === 4 || index === 5 ? null : notes).result
+    const target = missingMiddle.facets.find((facet) => facet.id === 'target-tempo-control')!
+    expect(target).toMatchObject({ score: 100, evidenceCount: 7, eligibleCount: 10, coverage: .7, reliability: 'limited' })
+    expect(missingMiddle.observations.filter((item) => item.facetId === 'target-tempo-control').every((item) => item.score === 100)).toBe(true)
+  })
+
+  it('keeps untouched Tempo tail windows outside the denominator', () => {
+    const result = analyzeAtAuthoredTempo({ ...defaultTechniqueSpec('tempo-control'), eventCount: 16, tempoShape: 'steady' }, (notes, index) => index < 10 ? notes : null).result
+    expect(result.completion).toMatchObject({ expectedEventCount: 16, attemptedEventCount: 10, reachedSpanEndIndex: 9, spanReachedRatio: .625 })
+    expect(result.facets.find((facet) => facet.id === 'target-tempo-control')).toMatchObject({ evidenceCount: 9, eligibleCount: 9, coverage: 1, reliability: 'limited' })
+  })
+
+  it('keeps Tempo quality separate from facet coverage and reliability', () => {
+    const highSparse = analyzeAtAuthoredTempo({ ...defaultTechniqueSpec('tempo-control'), eventCount: 11, tempoShape: 'arch' }, (notes, index) => index === 4 || index === 5 ? null : notes).result
+    expect(highSparse.facets.find((facet) => facet.id === 'target-tempo-control')).toMatchObject({ score: 100, coverage: .7, reliability: 'limited' })
+
+    const slowButComplete = analyzeAtAuthoredTempo({ ...defaultTechniqueSpec('tempo-control'), eventCount: 11, tempoShape: 'steady' }, (notes) => notes, 1.5).result
+    const target = slowButComplete.facets.find((facet) => facet.id === 'target-tempo-control')!
+    expect(target.score).toBeLessThan(50)
+    expect(target).toMatchObject({ coverage: 1, reliability: 'reliable' })
+  })
+
+  it('counts attempted authored tempo transitions even when a middle sample is missing', () => {
+    const spec = { ...defaultTechniqueSpec('tempo-control'), eventCount: 16, tempoShape: 'accelerate' as const }
+    const complete = analyzeAtAuthoredTempo(spec, (notes) => notes).result.facets.find((facet) => facet.id === 'tempo-transition-control')!
+    const missing = analyzeAtAuthoredTempo(spec, (notes, index) => index === 7 ? null : notes).result.facets.find((facet) => facet.id === 'tempo-transition-control')!
+    expect(complete.eligibleCount).toBeGreaterThan(0)
+    expect(missing.eligibleCount).toBe(complete.eligibleCount)
+    expect(missing.evidenceCount).toBeLessThan(complete.evidenceCount)
+    expect(missing.coverage).toBeLessThan(1)
+
+    const steady = analyzeAtAuthoredTempo({ ...spec, tempoShape: 'steady' }, (notes) => notes).result.facets.find((facet) => facet.id === 'tempo-transition-control')!
+    expect(steady).toMatchObject({ status: 'unavailable', score: null, evidenceCount: 0, eligibleCount: 0, coverage: 0 })
+  })
+
   it('refuses mismatched exercise-to-alignment structure without leaking observations or findings', () => {
     const source = analyzeSelected({ ...defaultTechniqueSpec('scales'), tonic: 0, direction: 'ascending' }, (notes) => notes)
     const different = compileTechniqueExercise({ ...defaultTechniqueSpec('scales'), tonic: 2, direction: 'ascending' })
@@ -215,6 +277,25 @@ describe('Technique exercise compiler', () => {
     expect(result.findings).toEqual([])
     expect(result.facets.every((facet) => facet.status === 'unavailable' && facet.eligibleCount === 0)).toBe(true)
     expect(result.warnings.join(' ')).toMatch(/frozen exercise events/i)
+  })
+
+  it('fails closed before evidence preparation or module dispatch for structural and identity mismatches', () => {
+    const source = analyzeSelected({ ...defaultTechniqueSpec('tempo-control'), eventCount: 11 }, (notes) => notes)
+    const cases = [
+      { exercise: { ...source.compiled.snapshot, events: source.compiled.snapshot.events.slice(0, -1) }, recording: source.recording },
+      { exercise: { ...source.compiled.snapshot, events: source.compiled.snapshot.events.map((event, index) => index === 3 ? { ...event, position: { numerator: event.position.numerator + 1, denominator: event.position.denominator } } : event) }, recording: source.recording },
+      { exercise: source.compiled.snapshot, recording: { ...source.recording, id: 'recording:different' } },
+    ]
+    for (const { exercise, recording } of cases) {
+      const timingAnalysis = structuredClone(source.timingAnalysis)
+      Object.defineProperty(timingAnalysis.tempo, 'localSamples', { get: () => { throw new Error('module semantics must not run') } })
+      const result = analyzeTechnique({ exercise, recording, alignment: source.alignment, noteGrading: source.noteGrading, timingAnalysis, novelty: { exerciseInstanceId: exercise.id, priorSavedAttemptCount: 0, firstSavedAttempt: true } })
+      expect(result).toMatchObject({ status: 'unavailable', observations: [], findings: [], exclusions: [] })
+      expect(result.facets.map((facet) => facet.id)).toEqual(['target-tempo-control', 'tempo-stability', 'tempo-transition-control'])
+      expect(result.facets.every((facet) => facet.status === 'unavailable' && facet.score === null)).toBe(true)
+      expect(Object.isFrozen(result)).toBe(true)
+      expect(result.warnings.join(' ')).toMatch(/before evidence preparation and module scoring/i)
+    }
   })
 
   it('separates actual event coverage from the reached span and freezes the complete V2 output', () => {

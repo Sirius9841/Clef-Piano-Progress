@@ -1,6 +1,6 @@
 # Technique Lab
 
-Phase 12.2 finalizes the evidence and notation integrity of the eight measured Technique modules: Sight reading, Rhythm, Chord fluency, Scales, Arpeggios, Octaves, Keyboard jumps, and Tempo control. Technique remains a separate product domain. A `TechniqueAttemptRecord` is never a Work, Arrangement, ScoreVersion, PracticeSession, or PerformanceAttempt.
+Phase 12.3 closes the evidence and notation integrity of the eight measured Technique modules: Sight reading, Rhythm, Chord fluency, Scales, Arpeggios, Octaves, Keyboard jumps, and Tempo control. Technique remains a separate product domain. A `TechniqueAttemptRecord` is never a Work, Arrangement, ScoreVersion, PracticeSession, or PerformanceAttempt.
 
 ## Versioned exercise identity
 
@@ -12,7 +12,7 @@ The challenge snapshot exposes tonic, mode, declared hand context, target BPM, e
 
 ## Evidence semantics
 
-New analysis uses `technique-analysis-1.1.1`. It consumes the frozen Alignment, NoteGrading, and TimingAnalysis snapshots and never reparses, realigns, or regrades. Before analysis, the generated event count, exact positions, and MIDI multisets must match the aligned expected groups; a mismatch makes every facet unavailable and emits no observations or findings. Technical interval evidence requires two adjacent, perfect correct-note groups. Wrong, missed, additional, ambiguous, and gap-bridged groups cannot become timing zeroes. Sparse evidence is unavailable rather than a fake zero.
+New analysis uses `technique-analysis-1.1.2`. It consumes the frozen Alignment, NoteGrading, and TimingAnalysis snapshots and never reparses, realigns, or regrades. Before evidence preparation or module dispatch, the generated event count, exact positions, and MIDI multisets must match the aligned expected groups, and recording/alignment, note, timing, and novelty identities must describe the same take. A mismatch returns a deeply frozen deterministic unavailable result with the expected module facets, no observations/findings, and a warning. Technical interval evidence requires two adjacent, perfect correct-note groups. Wrong, missed, additional, ambiguous, and gap-bridged groups cannot become timing zeroes. Sparse evidence is unavailable rather than a fake zero.
 
 Facets are independent measurements with explicit observation provenance, evidence family, context, minimum evidence, coverage, reliability, and exact challenge. They are not aliases:
 
@@ -28,14 +28,18 @@ The attempted span is the inclusive region between the first and last trustworth
 
 Facet coverage is trustworthy scored observations divided by attempted authored opportunities for that facet. Thus 8 trustworthy chord-spread observations from 20 attempted chords are 40% coverage, while wrong chords remain owned by Chord Accuracy and are not scored a second time as synchronization zeroes. Interval, jump, recovery, and turn denominators likewise use attempted relevant transitions rather than full-exercise length or the already-safe evidence population. Facet-specific coverage, overall event coverage, observation minima, and provisional correspondence all participate in reliability; a low score with strong coverage may still be reliable, while high but sparse evidence may not.
 
+Tempo follows the same separation. A pure score-side helper shared with TimingAnalysis selects the established local-tempo window geometry without changing the TimingAnalysis engine. Technique rebuilds those windows only inside the attempted span. Target-tempo and stability coverage use attempted authored windows as the denominator; exact start/end expected-group IDs map surviving `LocalTempoSample`s to those opportunities. An unmappable sample is excluded, so an interior wrong or missing anchor lowers coverage but never adds a zero. Tempo-transition coverage uses adjacent authored window pairs whose numeric target delta meets the existing threshold; a missing middle sample can remove two observations while both attempted transitions remain opportunities. Steady drills have no transition opportunities, so that facet is unavailable rather than zero. Tempo scores describe the quality of trustworthy samples, coverage describes evidence completeness, completion describes the take, and reliability describes confidence—not performance quality.
+
 Technical exactness is appropriate here because exactness is the declared exercise objective. It does not redefine repertoire performance: coherent rubato and interpretive timing remain contextual rather than errors merely for departing from a metronomic realization.
 
-There is no overall Technique score, Skill Rating, Mastery, Performance Score, personal best, or headline trend. Phase 12.2 does not infer fingering, actual physical hand use, tension, relaxation, biomechanics, injury risk, acoustic tone, velocity quality, or pedal quality.
+There is no overall Technique score, Skill Rating, Mastery, Performance Score, personal best, or headline trend. Phase 12.3 does not infer fingering, actual physical hand use, tension, relaxation, biomechanics, injury risk, acoustic tone, velocity quality, or pedal quality.
 
 ## Persistence and history
 
-IndexedDB remains schema 4 with the existing `techniqueAttempts` and rebuildable `techniqueAttemptSummaries` stores. Phase 12 `TechniqueAttemptRecordV1` and legacy summaries remain exact frozen `1.0.0` history. V2 `1.1.0` records remain frozen readable history; newly generated V2 records use `1.1.1`. No V3 record shape is introduced. V2 preserves generator/analysis engines, complete challenge, completion, novelty, and facet provenance for future summary-only aggregation.
+IndexedDB remains schema 4 with the existing `techniqueAttempts` and rebuildable `techniqueAttemptSummaries` stores. Phase 12 `TechniqueAttemptRecordV1` and legacy summaries remain exact frozen `1.0.0` history. V2 history accepts only three explicit exercise/analysis pairs: `1.1.0/1.1.0`, `1.1.1/1.1.1`, and current `1.1.1/1.1.2`. New V2 records keep `technique-exercise-1.1.1` and use `technique-analysis-1.1.2`; arbitrary versions and mixed pairs are corrupt. No V3 record shape or schema migration is introduced. V2 preserves generator/analysis engines, complete challenge, completion, novelty, and facet provenance for future summary-only aggregation.
 
 Full attempts and derived summaries save atomically. Before writing, persistence requires the frozen generated events and ExpectedPerformancePlan onset groups to have identical counts, exact positions, and MIDI multisets/cardinality; the plan must contain only `P1`, and the recording score identity must equal the plan score identity. It validates the explicit supported V2 engine pairs rather than accepting arbitrary `1.1.x` values. An exact retry is idempotent; reusing an attempt ID with different frozen content is an immutable-record integrity failure. The transaction rechecks sight-reading novelty. Reads use engine-specific deep validation and surface malformed records as typed `CORRUPT_RECORD` failures. Missing or corrupt summaries are never silently rebuilt during navigation.
+
+Phase 13 may consume only these frozen, validated summary snapshots. It must not regenerate, reanalyze, or reinterpret historical Technique attempts.
 
 `/technique/history/:attemptId` renders the exact V1 or V2 snapshot and labels its saved engine versions. Historical records are never regenerated, rewritten, or silently analyzed with current semantics. Technique history remains separate from repertoire progress, practice time, and Notes/Rhythm/Tempo personal bests.

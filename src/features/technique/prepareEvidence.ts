@@ -1,14 +1,17 @@
-import { clamp01, median } from '../timing-analysis/math'
+import { buildLocalTempoWindowGeometry } from '../timing-analysis/localTempoWindowGeometry'
+import { clamp01, median, stableHash } from '../timing-analysis/math'
+import { DEFAULT_TIMING_ANALYSIS_OPTIONS } from '../timing-analysis/options'
 import type { GroupNoteResult, NoteGradingResult } from '../note-grading/types'
 import type { AlignmentResult } from '../alignment/types'
 import type { TimingAnalysisResult } from '../timing-analysis/types'
 import { TECHNIQUE_ANALYSIS_OPTIONS } from './options'
-import type { TechniqueCompletionV2, TechniqueExerciseSnapshotV2, TechniqueIntervalEvidence } from './types'
+import type { TechniqueCompletionV2, TechniqueExerciseSnapshotV2, TechniqueIntervalEvidence, TechniqueTempoOpportunity } from './types'
 
 export interface PreparedTechniqueEvidence {
   readonly completion: TechniqueCompletionV2
   readonly eventGroups: readonly { readonly eventId: string; readonly expectedGroupId: string; readonly performedGroupId: string | null; readonly index: number; readonly participation: 'attempted' | 'outside-performed-span'; readonly noteResult: GroupNoteResult | null }[]
   readonly intervals: readonly TechniqueIntervalEvidence[]
+  readonly tempoOpportunities: readonly TechniqueTempoOpportunity[]
   readonly perfectExpectedGroupIds: ReadonlySet<string>
 }
 
@@ -51,7 +54,32 @@ export function prepareTechniqueEvidence(exercise: TechniqueExerciseSnapshotV2, 
       scorePosition: observation.expectedPosition, previousRole: exercise.events[previous.index]!.role, currentRole: exercise.events[current.index]!.role,
       transitionKind: exercise.events[current.index]!.transitionKind, rhythmLoss: observation.rhythmLoss, sourceNoteResultIds: [...(previous.noteResult?.expectedResultIds ?? []), ...(current.noteResult?.expectedResultIds ?? [])] }]
   })
-  return { completion, eventGroups, intervals, perfectExpectedGroupIds }
+  const attemptedTempoAnchors = eventGroups.filter((entry) => entry.participation === 'attempted').map((entry) => ({
+    ...entry,
+    position: exercise.events[entry.index]!.position,
+  }))
+  const tempoOpportunities = buildLocalTempoWindowGeometry(
+    attemptedTempoAnchors.map((entry) => ({ ...entry, id: entry.expectedGroupId })),
+    DEFAULT_TIMING_ANALYSIS_OPTIONS.localTempoWindowBeats,
+    DEFAULT_TIMING_ANALYSIS_OPTIONS.minimumTempoWindowAnchors,
+  ).map((window): TechniqueTempoOpportunity => {
+    const startEvent = exercise.events[window.start.index]!
+    const endEvent = exercise.events[window.end.index]!
+    const identity = `${window.start.expectedGroupId}|${startEvent.position.numerator}/${startEvent.position.denominator}|${window.end.expectedGroupId}|${endEvent.position.numerator}/${endEvent.position.denominator}`
+    return {
+      id: `technique-tempo-opportunity:${stableHash(identity)}`,
+      startEventId: startEvent.id,
+      endEventId: endEvent.id,
+      startExpectedGroupId: window.start.expectedGroupId,
+      endExpectedGroupId: window.end.expectedGroupId,
+      startPosition: { ...startEvent.position },
+      endPosition: { ...endEvent.position },
+      windowScoreDuration: { ...window.windowScoreDuration },
+      anchorCount: window.anchorCount,
+      targetQuarterBpm: endEvent.targetTempoBpm,
+    }
+  })
+  return { completion, eventGroups, intervals, tempoOpportunities, perfectExpectedGroupIds }
 }
 
 export function centeredIntervalScores(intervals: readonly TechniqueIntervalEvidence[], tolerance: number): readonly { evidence: TechniqueIntervalEvidence; score: number; centeredRatio: number }[] {

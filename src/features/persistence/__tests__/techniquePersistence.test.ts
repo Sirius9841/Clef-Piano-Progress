@@ -7,7 +7,7 @@ import { analyzeTiming } from '../../timing-analysis/analyzeTiming'
 import { analyzeTechnique } from '../../technique/analyzeTechnique'
 import { defaultTechniqueSpec } from '../../technique/catalog'
 import { compileTechniqueExercise } from '../../technique/exerciseCompiler'
-import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION_V1, TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0 } from '../../technique/types'
+import { TECHNIQUE_ANALYSIS_ENGINE_VERSION, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V1, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0, TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_1, TECHNIQUE_EXERCISE_ENGINE_VERSION, TECHNIQUE_EXERCISE_ENGINE_VERSION_V1, TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0 } from '../../technique/types'
 import { IndexedDbPianoProgressRepository } from '../indexedDbRepository'
 import { createTechniqueAttemptSummary, PERSISTENCE_SCHEMA_VERSION, type TechniqueAttemptRecordV1, type TechniqueAttemptRecordV2 } from '../types'
 
@@ -108,9 +108,13 @@ describe('Technique persistence', () => {
     expect(summaries.find((summary) => summary.id === v2.id)).toMatchObject({ schemaVersion: 2, exerciseEngineVersion: TECHNIQUE_EXERCISE_ENGINE_VERSION, techniqueAnalysisEngineVersion: TECHNIQUE_ANALYSIS_ENGINE_VERSION })
   })
 
-  it('reads historical V2 1.1.0 and current V2 1.1.1 records without a schema bump', async () => {
+  it('reads every explicit historical/current V2 engine pair without a schema bump', async () => {
     const repository = new IndexedDbPianoProgressRepository({ databaseName: 'technique-v2-engine-compatibility-test' })
     const current = attempt('technique-attempt:v2-current', 'v2-current')
+    const historical111Mutable = structuredClone(attempt('technique-attempt:v2-historical-111', 'v2-historical-111')) as unknown as Record<string, unknown>
+    record(historical111Mutable.techniqueAnalysis).analysisEngineVersion = TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_1
+    record(historical111Mutable.engineVersions).techniqueAnalysis = TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_1
+    const historical111 = historical111Mutable as unknown as TechniqueAttemptRecordV2
     const historicalMutable = structuredClone(attempt('technique-attempt:v2-historical', 'v2-historical')) as unknown as Record<string, unknown>
     record(record(historicalMutable.exercise).spec).exerciseEngineVersion = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
     record(historicalMutable.techniqueAnalysis).analysisEngineVersion = TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0
@@ -118,11 +122,13 @@ describe('Technique persistence', () => {
     record(historicalMutable.engineVersions).techniqueAnalysis = TECHNIQUE_ANALYSIS_ENGINE_VERSION_V2_1_1_0
     const historical = historicalMutable as unknown as TechniqueAttemptRecordV2
     await expect(repository.saveTechniqueAttempt(historical)).resolves.toMatchObject({ created: true })
+    await expect(repository.saveTechniqueAttempt(historical111)).resolves.toMatchObject({ created: true })
     await expect(repository.saveTechniqueAttempt(current)).resolves.toMatchObject({ created: true })
     await expect(repository.getTechniqueAttempt(historical.id)).resolves.toEqual(historical)
     await expect(repository.listTechniqueAttemptSummaries()).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: historical.id, exerciseEngineVersion: 'technique-exercise-1.1.0', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.0' }),
-      expect.objectContaining({ id: current.id, exerciseEngineVersion: 'technique-exercise-1.1.1', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.1' }),
+      expect.objectContaining({ id: historical111.id, exerciseEngineVersion: 'technique-exercise-1.1.1', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.1' }),
+      expect.objectContaining({ id: current.id, exerciseEngineVersion: 'technique-exercise-1.1.1', techniqueAnalysisEngineVersion: 'technique-analysis-1.1.2' }),
     ]))
     expect(PERSISTENCE_SCHEMA_VERSION).toBe(4)
   })
@@ -137,6 +143,14 @@ describe('Technique persistence', () => {
     record(record(mixed.exercise).spec).exerciseEngineVersion = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
     record(mixed.engineVersions).exercise = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
     await expect(repository.saveTechniqueAttempt(mixed as unknown as TechniqueAttemptRecordV2)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    const unsupportedAnalysis = structuredClone(attempt('technique-attempt:unsupported-analysis')) as unknown as Record<string, unknown>
+    record(unsupportedAnalysis.techniqueAnalysis).analysisEngineVersion = 'technique-analysis-1.1.9'
+    record(unsupportedAnalysis.engineVersions).techniqueAnalysis = 'technique-analysis-1.1.9'
+    await expect(repository.saveTechniqueAttempt(unsupportedAnalysis as unknown as TechniqueAttemptRecordV2)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
+    const oldExerciseWithCurrentAnalysis = structuredClone(attempt('technique-attempt:old-current')) as unknown as Record<string, unknown>
+    record(record(oldExerciseWithCurrentAnalysis.exercise).spec).exerciseEngineVersion = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
+    record(oldExerciseWithCurrentAnalysis.engineVersions).exercise = TECHNIQUE_EXERCISE_ENGINE_VERSION_V2_1_1_0
+    await expect(repository.saveTechniqueAttempt(oldExerciseWithCurrentAnalysis as unknown as TechniqueAttemptRecordV2)).rejects.toMatchObject({ code: 'REFERENTIAL_INTEGRITY' })
   })
 
   it('enforces frozen exercise-to-plan semantics and P1 score identity before saving', async () => {

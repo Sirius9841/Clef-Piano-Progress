@@ -62,7 +62,21 @@ Interpretation-integrity hardening: current-intent reference Voicing with immuta
 
 Technique Lab now provides eight deterministic, notation-backed MIDI exercise modules, challenge-qualified independent facets, exact-instance sight-reading novelty, dedicated local-first TechniqueAttempt persistence, and frozen historical results. It intentionally does not create an overall score, Skill Rating, Mastery, or repertoire progress claim.
 
+## Phase 12.1 — complete
+
 Phase 12.1 hardens that evidence boundary: musically exact scale/arpeggio generation, true turn/register/jump-transition identity, purpose-specific safe configuration, separate facet observation families, actual event coverage, V1/V2 frozen history, Phase-13-ready V2 summaries, deep repository validation, and same-ID collision protection. Generator/analysis engines advance to `1.1.0`; IndexedDB remains schema 4.
+
+## Phase 12.2 — complete
+
+Attempted-span semantics, facet-specific authored-opportunity coverage, key-aware notation, current `technique-exercise-1.1.1`, frozen exercise-plan validation, and fail-closed evidence integrity.
+
+## Phase 12.3 — complete
+
+Score-side Tempo opportunity denominators shared with TimingAnalysis window geometry, exact sample-to-opportunity mapping, authored transition coverage, pre-dispatch identity failure closure, and explicit frozen V2 engine-pair compatibility. Current analysis is `technique-analysis-1.1.2`; IndexedDB remains schema 4.
+
+## Phase 13 — next
+
+Phase 13 may build summary-driven transferable skill evidence from frozen, validated Technique summaries. It has not begun.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
