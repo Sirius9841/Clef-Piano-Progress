@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { derivePracticePlanning } from '../recommendations'
 import { preparePracticePlanningContext } from '../prepareContext'
 import { attemptFixture, repositoryFixture } from './fixtures'
 
@@ -111,5 +112,62 @@ describe('Practice Planning bounded preparation', () => {
     const context = await preparePracticePlanningContext({ repository: fixture.repository, arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1', asOf: AS_OF })
     expect(Object.isFrozen(context.attemptSummaries[0])).toBe(true)
     expect(Object.isFrozen(attempt.summary)).toBe(false)
+  })
+
+  it('exposes one deeply frozen resolved policy on context and result', async () => {
+    const fixture = repositoryFixture([attemptFixture('attempt')])
+    const context = await preparePracticePlanningContext({ repository: fixture.repository, arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1', asOf: AS_OF })
+    const result = derivePracticePlanning(context)
+    expect(Object.isFrozen(context.policy)).toBe(true)
+    expect(Object.isFrozen(context.policy.progressionControlThresholds)).toBe(true)
+    expect(result.policy).toBe(context.policy)
+    expect(Object.isFrozen(result.policy)).toBe(true)
+  })
+
+  it('uses the exact custom preparation policy for bounded reads and derivation', async () => {
+    const attempts = Array.from({ length: 4 }, (_, index) => attemptFixture(`attempt-${index}`, {
+      sessionId: `session-${index}`,
+      performedAt: `2026-08-${20 + index}T12:00:00.000Z`,
+    }))
+    const fixture = repositoryFixture(attempts)
+    const context = await preparePracticePlanningContext({
+      repository: fixture.repository,
+      arrangementId: 'arrangement-1',
+      scoreVersionId: 'score-version-1',
+      asOf: AS_OF,
+      options: { latestSessionLimit: 2, attemptsPerSessionLimit: 1, meaningfulWeaknessThreshold: 0.15 },
+    })
+    const result = derivePracticePlanning(context)
+    expect(context.diagnostics).toMatchObject({ selectedSessionCount: 2, selectedSummaryCount: 2, fullAttemptReadCount: 2 })
+    expect(result.policy).toEqual(expect.objectContaining({ latestSessionLimit: 2, attemptsPerSessionLimit: 1, meaningfulWeaknessThreshold: 0.15 }))
+    expect(result.policy).toBe(context.policy)
+  })
+
+  it('rejects a derive-time policy override instead of silently combining policies', async () => {
+    const fixture = repositoryFixture([])
+    const context = await preparePracticePlanningContext({ repository: fixture.repository, arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1', asOf: AS_OF })
+    const incompatibleInput = { options: { latestSessionLimit: 1 } } as unknown as { availableMinutes?: number }
+    expect(() => derivePracticePlanning(context, incompatibleInput)).toThrow(/locked by context preparation/)
+  })
+
+  it('produces deterministic, JSON-stable policy provenance from equivalent inputs', async () => {
+    const firstFixture = repositoryFixture([attemptFixture('attempt')])
+    const secondFixture = repositoryFixture([attemptFixture('attempt')])
+    const first = derivePracticePlanning(await preparePracticePlanningContext({
+      repository: firstFixture.repository,
+      arrangementId: 'arrangement-1',
+      scoreVersionId: 'score-version-1',
+      asOf: AS_OF,
+      options: { latestSessionLimit: 4, attemptsPerSessionLimit: 2 },
+    }))
+    const second = derivePracticePlanning(await preparePracticePlanningContext({
+      repository: secondFixture.repository,
+      arrangementId: 'arrangement-1',
+      scoreVersionId: 'score-version-1',
+      asOf: AS_OF,
+      options: { attemptsPerSessionLimit: 2, latestSessionLimit: 4 },
+    }))
+    expect(first).toEqual(second)
+    expect(JSON.parse(JSON.stringify(first.policy))).toEqual(first.policy)
   })
 })

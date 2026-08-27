@@ -3,8 +3,9 @@ import type { AttemptSummary, TechniqueAttemptSummary } from '../persistence/typ
 import type { PerformanceResultsReliability, ResultConfidenceCategory, ResultDimension } from '../performance-results/types'
 import type { SkillRating } from '../skill-model'
 import type { TechniqueModuleId } from '../technique/types'
+import type { PracticePlanningPolicy } from './options'
 
-export const PRACTICE_PLANNING_MODEL_VERSION = 'practice-planning-1.0.0'
+export const PRACTICE_PLANNING_MODEL_VERSION = 'practice-planning-1.0.1'
 
 export type PlanningDimension = ResultDimension
 export type PlanningEvidenceStrength = 'insufficient' | 'single-session' | 'tentative' | 'supported' | 'strong'
@@ -144,6 +145,7 @@ export type PracticeRecommendationReasonCode =
   | 'supported-section-weakness'
   | 'strong-section-control-at-speed'
   | 'supported-section-weakness-at-speed'
+  | 'frontier-needs-verification'
   | 'mastery-needs-repetition'
   | 'mastery-needs-current-support'
   | 'supported-technique-opportunity'
@@ -174,6 +176,7 @@ export interface PracticeRecommendation {
   readonly rank: number
   readonly kind: PracticeRecommendationKind
   readonly target: PracticeRecommendationTarget
+  readonly sourcePracticeSpeedMultiplier: number | null
   readonly suggestedPracticeSpeedMultiplier: number | null
   readonly evidenceStrength: PlanningEvidenceStrength
   readonly reasons: readonly PracticeRecommendationReason[]
@@ -195,8 +198,9 @@ export interface PracticeSessionPlanBlock {
   readonly order: number
   readonly kind: PracticeSessionBlockKind
   readonly suggestedMinutes: number
-  readonly recommendationId: string
+  readonly recommendationIds: readonly string[]
   readonly target: PracticeRecommendationTarget
+  readonly suggestedPracticeSpeedMultiplier: number | null
 }
 
 export interface PracticeSessionPlan {
@@ -222,6 +226,7 @@ export interface PracticePlanningContext {
   readonly arrangementId: string
   readonly scoreVersionId: string
   readonly asOf: string
+  readonly policy: PracticePlanningPolicy
   readonly attempts: readonly PlanningAttemptEvidence[]
   readonly attemptSummaries: readonly AttemptSummary[]
   readonly techniqueSummaries: readonly TechniqueAttemptSummary[]
@@ -237,6 +242,7 @@ export interface PracticePlanningResult {
   readonly arrangementId: string
   readonly scoreVersionId: string
   readonly asOf: string
+  readonly policy: PracticePlanningPolicy
   readonly status: 'ready' | 'insufficient-evidence'
   readonly sectionHistories: readonly SectionHistory[]
   readonly recommendations: readonly PracticeRecommendation[]

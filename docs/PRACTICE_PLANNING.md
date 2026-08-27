@@ -2,7 +2,7 @@
 
 Practice Planning answers one current product question: **given the trustworthy evidence Clef already has, what should the pianist practice next, and why?** It is a deterministic, explainable read model. It does not grade a new performance, rewrite history, judge musicality, manage repertoire, or claim universal piano pedagogy.
 
-The current model version is `practice-planning-1.0.0`.
+The current model version is `practice-planning-1.0.1`.
 
 ## Boundaries
 
@@ -65,17 +65,21 @@ An initial `focus-section` claim requires the weakness in at least one available
 - at least 2 distinct supporting sessions;
 - at least `1.25` effective session support.
 
-Three sessions and `2.25` effective session support qualify as strong evidence. These are centralized product heuristics, not universal teaching standards. Trend is intentionally `insufficient` in version 1.0.0; mixed practice speeds are never turned into a naive regression claim.
+Three sessions and `2.25` effective session support qualify as strong evidence. These are centralized product heuristics, not universal teaching standards. Trend is intentionally `insufficient` in version 1.0.1; mixed practice speeds are never turned into a naive regression claim.
 
 ## Ranking and overlap
 
 Recommendations are ordered deterministically, not assigned a pseudo-scientific aggregate score. Established repeated weakness precedes one-session uncertainty; then larger supported dimension deficit, greater effective independent-session support, newer evidence, musical order, and stable identity break ties. Overlapping section targets are suppressed within their action family at a centralized 50% overlap threshold, while distinct non-overlapping problems remain eligible. Each returned item has an explicit rank, exact target, reason codes, evidence strength, timestamps, and exact supporting attempt/session IDs.
 
-## Practice-speed actions
+## Practice-speed frontier and actions
 
-Speed advice uses `practiceSpeedMultiplier`, never invented BPM. Speed contexts are evaluated separately. A single excellent take, or several excellent takes in one session, cannot trigger progression. A `+0.05` increase requires Notes, Rhythm, and Tempo control in the exact speed context, at least 2 distinct current sessions, and at least `1.5` effective session support for every dimension; suggestions are capped at `1.00`.
+Speed advice uses `practiceSpeedMultiplier`, never invented BPM. Speed contexts are evaluated separately, then the planner selects one coherent frontier: the highest meaningfully attempted speed and the highest supported controlled speed. The highest speed is preferred deterministically before support, recency, or lower historical control can influence the action.
 
-A reduction is never based on one take. Repeated same-speed weakness must first satisfy independent-session persistence; severe weakness (`0.30`) with progression-level support may suggest `-0.05`, bounded below by `0.50`, while less severe supported weakness holds the current speed. The planner only suggests actions and never changes practice speed automatically. Wider-context work is permitted only when actual safe context provenance exists; the core does not fabricate adjacent measure IDs.
+A single excellent take, or several excellent takes in one session, cannot trigger progression. A `+0.05` increase may originate only from the highest attempted frontier when that exact bucket has Notes, Rhythm, and Tempo control, at least 2 distinct current sessions, and at least `1.5` effective session support for every dimension. If a higher speed has already been attempted, lower controlled buckets cannot emit misleading progression advice. Tentative higher work produces verification/hold semantics; persistent weakness there owns hold/reduce semantics. When `1.00` is already controlled, no increase exists.
+
+A reduction is never based on one take. Repeated frontier weakness must first satisfy independent-session persistence; severe weakness (`0.30`) with progression-level support may suggest `-0.05`, bounded below by `0.50`, while less severe supported weakness holds the frontier. At `0.50`, severe weakness becomes `hold-speed`, never a no-op reduction. Every speed recommendation retains `sourcePracticeSpeedMultiplier`: increase is strictly greater than its source, reduction strictly lower, hold exactly equal, and numeric suggestions stay within `0.50`–`1.00`. Evidence outside those suggestion bounds can request verification without fabricating an in-range speed action.
+
+The planner only suggests actions and never changes practice speed automatically. Wider-context work is permitted only when actual safe context provenance exists; the core does not fabricate adjacent measure IDs.
 
 ## Mastery and Skill inputs
 
@@ -87,7 +91,13 @@ Skill Ratings must use model `1.1.1` at the same `asOf`. A low-quality medium/hi
 
 When `availableMinutes` is omitted, only recommendations are returned. A supplied budget must be a positive integer. The deterministic composer uses at most 4 positive-duration blocks, never exceeds the budget, gives earlier supported priorities more time than later tentative work, and handles short sessions without zero-length filler.
 
+One canonical section identity can consume at most one timed block. When focus/verification and speed actions refer to the same section, the block retains all represented `recommendationIds` and the applicable `suggestedPracticeSpeedMultiplier`. Distinct section identities remain distinct even when display text matches; Technique and full-run targets are never merged with sections. `primary-section` and `secondary-section` therefore always describe distinct canonical section targets.
+
 A full-run block is included only when recent comparable accepted full-plan durations establish an evidence-backed median duration at the relevant Mastery speed and it fits. No duration is invented. The result labels composition as `product-heuristic-not-universal-pedagogy`; it is a scheduling aid, not a scientifically optimal lesson plan.
+
+## Locked planning policy
+
+Context preparation resolves every planning option once and exposes the complete deeply frozen `policy` snapshot. The same policy controls bounded summary selection, per-session caps, recency and authority, speed bucketing, recommendation thresholds, overlap handling, and session composition. Derivation uses that exact context policy and exposes the same provenance on its result; an independent derive-time options override is rejected rather than silently combined. Equivalent policy inputs produce deterministic serializable policy values.
 
 ## Typed exclusions
 

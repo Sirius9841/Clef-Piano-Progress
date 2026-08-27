@@ -59,7 +59,7 @@ A SkillRating measures a transferable ability such as sight reading, rhythm, cho
 
 ## Practice Planning
 
-Practice Planning `practice-planning-1.0.0` is a transient current-state projection for one Arrangement and exact current ScoreVersion at an explicit `asOf`. It combines supported frozen section evidence, current Mastery `1.1.1`, and independent Skill Ratings `1.1.1` into ordered actions with exact evidence provenance. A planning section is identified by ScoreVersion, exact measure-index bounds, and canonical source-measure IDs—not by display text or an attempt-local SectionResult ID.
+Practice Planning `practice-planning-1.0.1` is a transient current-state projection for one Arrangement and exact current ScoreVersion at an explicit `asOf`. It combines supported frozen section evidence, current Mastery `1.1.1`, and independent Skill Ratings `1.1.1` into ordered actions with exact evidence provenance. A planning section is identified by ScoreVersion, exact measure-index bounds, and canonical source-measure IDs—not by display text or an attempt-local SectionResult ID. Its context and result expose one identical resolved policy, and each composed block identifies every recommendation it represents plus applicable speed provenance.
 
 Planning is not a persisted entity, score, grade, repertoire status, or historical attempt. It may suggest practice and speed changes but never applies them. Technique targets are independent evidence lanes and never imply that a Skill caused a repertoire error. See `PRACTICE_PLANNING.md`.
 

@@ -38,7 +38,7 @@ interface AttemptRead {
 export async function preparePracticePlanningContext(input: PreparePracticePlanningContextInput): Promise<PracticePlanningContext> {
   parseExplicitAsOf(input.asOf)
   if (!input.arrangementId.trim() || !input.scoreVersionId.trim()) throw new RangeError('Practice Planning requires exact Arrangement and ScoreVersion IDs.')
-  const options = resolvePracticePlanningOptions(input.options)
+  const policy = resolvePracticePlanningOptions(input.options)
   const [arrangement, scoreVersion, summaries, techniqueSummaries] = await Promise.all([
     input.repository.getArrangement(input.arrangementId),
     input.repository.getScoreVersion(input.scoreVersionId),
@@ -50,7 +50,7 @@ export async function preparePracticePlanningContext(input: PreparePracticePlann
   if (!scoreVersion) exclusions.push(exclusion('score-version-not-found', `ScoreVersion ${input.scoreVersionId} is not available.`))
   if (scoreVersion && scoreVersion.arrangementId !== input.arrangementId) exclusions.push(exclusion('score-version-arrangement-mismatch', 'The requested ScoreVersion does not belong to the requested Arrangement.'))
 
-  const selection = selectBoundedAttemptSummaries(summaries, input.arrangementId, input.scoreVersionId, input.asOf, options)
+  const selection = selectBoundedAttemptSummaries(summaries, input.arrangementId, input.scoreVersionId, input.asOf, policy)
   exclusions.push(...selection.exclusions)
   const identityAvailable = arrangement !== null && scoreVersion !== null && scoreVersion.arrangementId === input.arrangementId
   const reads: AttemptRead[] = identityAvailable ? await Promise.all(selection.selected.map(async (summary): Promise<AttemptRead> => {
@@ -82,12 +82,13 @@ export async function preparePracticePlanningContext(input: PreparePracticePlann
   const mastery = deriveArrangementMastery({ arrangementId: input.arrangementId, scoreVersionId: input.scoreVersionId, attempts: summaries, asOf: input.asOf })
   const skills = deriveAllSkillRatings(techniqueSummaries, input.asOf)
   const preferredFullRunSpeed = mastery.demonstratedSpeedCandidateMultiplier ?? mastery.demonstratedSpeedMultiplier
-  const fullRunDuration = deriveFullRunDurationEvidence(orderedAccepted, preferredFullRunSpeed, options)
+  const fullRunDuration = deriveFullRunDurationEvidence(orderedAccepted, preferredFullRunSpeed, policy)
   return deepFreeze({
     modelVersion: PRACTICE_PLANNING_MODEL_VERSION,
     arrangementId: input.arrangementId,
     scoreVersionId: input.scoreVersionId,
     asOf: input.asOf,
+    policy,
     attempts: orderedAccepted,
     attemptSummaries: cloneSerializable(selection.selected),
     techniqueSummaries: cloneSerializable(techniqueSummaries),

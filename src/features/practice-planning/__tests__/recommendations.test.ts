@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRACTICE_PLANNING_OPTIONS } from '../options'
 import { derivePracticePlanning } from '../recommendations'
 import { preparePracticePlanningContext } from '../prepareContext'
+import { createPlanningSectionIdentity } from '../sectionIdentity'
 import { composePracticeSessionPlan } from '../sessionPlan'
-import type { PracticeRecommendation } from '../types'
+import type { PracticeRecommendation, PracticeRecommendationKind, PracticeRecommendationTarget } from '../types'
 import { attemptFixture, repositoryFixture, techniqueSummary } from './fixtures'
 
 const AS_OF = '2026-08-26T12:00:00.000Z'
@@ -11,6 +12,36 @@ const AS_OF = '2026-08-26T12:00:00.000Z'
 async function prepare(fixtures: readonly ReturnType<typeof attemptFixture>[], techniques = [] as ReturnType<typeof techniqueSummary>[]) {
   const source = repositoryFixture(fixtures, techniques)
   return preparePracticePlanningContext({ repository: source.repository, arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1', asOf: AS_OF })
+}
+
+function directRecommendation(
+  id: string,
+  rank: number,
+  kind: PracticeRecommendationKind,
+  target: PracticeRecommendationTarget,
+  sourcePracticeSpeedMultiplier: number | null = null,
+  suggestedPracticeSpeedMultiplier: number | null = null,
+): PracticeRecommendation {
+  return {
+    id,
+    rank,
+    kind,
+    target,
+    sourcePracticeSpeedMultiplier,
+    suggestedPracticeSpeedMultiplier,
+    evidenceStrength: kind === 'verify-section' ? 'single-session' : 'supported',
+    reasons: [],
+    evidenceAttemptIds: [],
+    evidenceSessionIds: [],
+    lastEvidenceAt: null,
+  }
+}
+
+function controlledSpeed(speed: number, prefix: string, score = 0.96) {
+  return [
+    attemptFixture(`${prefix}-a`, { sessionId: 'S1', score, speed, performedAt: '2026-08-24T12:00:00.000Z' }),
+    attemptFixture(`${prefix}-b`, { sessionId: 'S2', score, speed, performedAt: '2026-08-23T12:00:00.000Z' }),
+  ]
 }
 
 describe('Practice Planning recommendations and session composition', () => {
@@ -30,7 +61,56 @@ describe('Practice Planning recommendations and session composition', () => {
       attemptFixture('excellent-a', { sessionId: 'S1', score: 0.96, speed: 0.8 }),
       attemptFixture('excellent-b', { sessionId: 'S2', score: 0.95, speed: 0.8, performedAt: '2026-08-23T12:00:00.000Z' }),
     ]))
-    expect(result.recommendations).toContainEqual(expect.objectContaining({ kind: 'increase-speed', suggestedPracticeSpeedMultiplier: 0.85 }))
+    expect(result.recommendations).toContainEqual(expect.objectContaining({ kind: 'increase-speed', sourcePracticeSpeedMultiplier: 0.8, suggestedPracticeSpeedMultiplier: 0.85 }))
+  })
+
+  it('does not let historical 80 percent control override supported target-speed control', async () => {
+    const result = derivePracticePlanning(await prepare([...controlledSpeed(0.8, 'slow'), ...controlledSpeed(1, 'target')]))
+    expect(result.recommendations.some((item) => item.kind === 'increase-speed')).toBe(false)
+  })
+
+  it('advances only from the highest controlled speed frontier', async () => {
+    const result = derivePracticePlanning(await prepare([
+      ...controlledSpeed(0.7, 'slow'),
+      ...controlledSpeed(0.8, 'middle'),
+      ...controlledSpeed(0.9, 'frontier'),
+    ]))
+    const increases = result.recommendations.filter((item) => item.kind === 'increase-speed')
+    expect(increases).toEqual([expect.objectContaining({ sourcePracticeSpeedMultiplier: 0.9, suggestedPracticeSpeedMultiplier: 0.95 })])
+  })
+
+  it('holds a tentatively attempted higher frontier instead of advising a lower historical increase', async () => {
+    const result = derivePracticePlanning(await prepare([
+      ...controlledSpeed(0.8, 'controlled'),
+      attemptFixture('tentative-90', { sessionId: 'S3', speed: 0.9, score: 0.5, performedAt: '2026-08-25T12:00:00.000Z' }),
+    ]))
+    expect(result.recommendations.some((item) => item.kind === 'increase-speed')).toBe(false)
+    expect(result.recommendations).toContainEqual(expect.objectContaining({
+      kind: 'hold-speed',
+      sourcePracticeSpeedMultiplier: 0.9,
+      suggestedPracticeSpeedMultiplier: 0.9,
+      reasons: expect.arrayContaining([expect.objectContaining({ code: 'frontier-needs-verification' })]),
+    }))
+  })
+
+  it('lets persistent weakness at the higher frontier win over lower-speed control', async () => {
+    const result = derivePracticePlanning(await prepare([
+      ...controlledSpeed(0.8, 'controlled'),
+      attemptFixture('weak-90-a', { sessionId: 'S1', speed: 0.9, score: 0.5, performedAt: '2026-08-25T12:00:00.000Z' }),
+      attemptFixture('weak-90-b', { sessionId: 'S2', speed: 0.9, score: 0.55, performedAt: '2026-08-24T13:00:00.000Z' }),
+    ]))
+    expect(result.recommendations.some((item) => item.kind === 'increase-speed')).toBe(false)
+    expect(result.recommendations).toContainEqual(expect.objectContaining({ kind: 'reduce-speed', sourcePracticeSpeedMultiplier: 0.9, suggestedPracticeSpeedMultiplier: 0.85 }))
+  })
+
+  it('does not increase from 90 percent when target speed is already controlled', async () => {
+    const result = derivePracticePlanning(await prepare([...controlledSpeed(0.9, 'frontier'), ...controlledSpeed(1, 'target')]))
+    expect(result.recommendations.some((item) => item.kind === 'increase-speed')).toBe(false)
+  })
+
+  it('selects the same speed frontier regardless of input ordering', async () => {
+    const fixtures = [...controlledSpeed(0.7, 'slow'), ...controlledSpeed(0.8, 'middle'), ...controlledSpeed(0.9, 'frontier')]
+    expect(derivePracticePlanning(await prepare(fixtures)).recommendations).toEqual(derivePracticePlanning(await prepare([...fixtures].reverse())).recommendations)
   })
 
   it('caps suggested speed at 100 percent', async () => {
@@ -49,6 +129,45 @@ describe('Practice Planning recommendations and session composition', () => {
   it('does not reduce speed after one poor take', async () => {
     const result = derivePracticePlanning(await prepare([attemptFixture('poor', { score: 0.5, speed: 0.8 })]))
     expect(result.recommendations.some((item) => item.kind === 'reduce-speed')).toBe(false)
+  })
+
+  it('holds at the configured floor instead of emitting a no-op reduction', async () => {
+    const result = derivePracticePlanning(await prepare([
+      attemptFixture('floor-a', { sessionId: 'S1', score: 0.5, speed: 0.5 }),
+      attemptFixture('floor-b', { sessionId: 'S2', score: 0.5, speed: 0.5, performedAt: '2026-08-23T12:00:00.000Z' }),
+    ]))
+    expect(result.recommendations).toContainEqual(expect.objectContaining({ kind: 'hold-speed', sourcePracticeSpeedMultiplier: 0.5, suggestedPracticeSpeedMultiplier: 0.5 }))
+    expect(result.recommendations.some((item) => item.kind === 'reduce-speed')).toBe(false)
+  })
+
+  it('keeps every speed action numerically consistent with its label and configured bounds', async () => {
+    const results = await Promise.all([
+      prepare(controlledSpeed(0.8, 'increase')).then((context) => derivePracticePlanning(context)),
+      prepare([
+        attemptFixture('reduce-a', { sessionId: 'S1', score: 0.5, speed: 0.8 }),
+        attemptFixture('reduce-b', { sessionId: 'S2', score: 0.5, speed: 0.8, performedAt: '2026-08-23T12:00:00.000Z' }),
+      ]).then((context) => derivePracticePlanning(context)),
+      prepare([
+        attemptFixture('floor-a', { sessionId: 'S1', score: 0.5, speed: 0.5 }),
+        attemptFixture('floor-b', { sessionId: 'S2', score: 0.5, speed: 0.5, performedAt: '2026-08-23T12:00:00.000Z' }),
+      ]).then((context) => derivePracticePlanning(context)),
+      prepare([
+        attemptFixture('above-target-a', { sessionId: 'S1', score: 0.5, speed: 1.25 }),
+        attemptFixture('above-target-b', { sessionId: 'S2', score: 0.5, speed: 1.25, performedAt: '2026-08-23T12:00:00.000Z' }),
+      ]).then((context) => derivePracticePlanning(context)),
+      prepare(controlledSpeed(0.4, 'below-floor')).then((context) => derivePracticePlanning(context)),
+    ])
+    expect(results.flatMap((result) => result.recommendations).filter((item) => item.suggestedPracticeSpeedMultiplier !== null).every((item) => item.suggestedPracticeSpeedMultiplier! >= 0.5 && item.suggestedPracticeSpeedMultiplier! <= 1)).toBe(true)
+    const actions = results.flatMap((result) => result.recommendations).filter((item) => ['increase-speed', 'hold-speed', 'reduce-speed'].includes(item.kind))
+    for (const action of actions) {
+      expect(action.sourcePracticeSpeedMultiplier).not.toBeNull()
+      expect(action.suggestedPracticeSpeedMultiplier).not.toBeNull()
+      expect(action.suggestedPracticeSpeedMultiplier!).toBeGreaterThanOrEqual(0.5)
+      expect(action.suggestedPracticeSpeedMultiplier!).toBeLessThanOrEqual(1)
+      if (action.kind === 'increase-speed') expect(action.suggestedPracticeSpeedMultiplier!).toBeGreaterThan(action.sourcePracticeSpeedMultiplier!)
+      if (action.kind === 'reduce-speed') expect(action.suggestedPracticeSpeedMultiplier!).toBeLessThan(action.sourcePracticeSpeedMultiplier!)
+      if (action.kind === 'hold-speed') expect(action.suggestedPracticeSpeedMultiplier).toBe(action.sourcePracticeSpeedMultiplier)
+    }
   })
 
   it('may hold or reduce only after repeated same-speed weakness across independent sessions', async () => {
@@ -140,25 +259,63 @@ describe('Practice Planning recommendations and session composition', () => {
   })
 
   it('allocates more time to a primary supported recommendation than a tentative one', () => {
-    const recommendation = (id: string, evidenceStrength: PracticeRecommendation['evidenceStrength']): PracticeRecommendation => ({
-      id,
-      rank: id === 'supported' ? 1 : 2,
-      kind: id === 'supported' ? 'focus-section' : 'verify-section',
-      target: { type: 'arrangement', arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1' },
-      suggestedPracticeSpeedMultiplier: null,
-      evidenceStrength,
-      reasons: [],
-      evidenceAttemptIds: [],
-      evidenceSessionIds: [],
-      lastEvidenceAt: null,
-    })
     const plan = composePracticeSessionPlan(
-      [recommendation('supported', 'supported'), recommendation('tentative', 'tentative')],
+      [
+        directRecommendation('supported', 1, 'focus-section', { type: 'arrangement', arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1' }),
+        directRecommendation('tentative', 2, 'verify-section', { type: 'arrangement', arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1' }),
+      ],
       15,
       { estimatedMinutes: null, practiceSpeedMultiplier: null, evidenceAttemptIds: [], lastMeasuredAt: null },
       DEFAULT_PRACTICE_PLANNING_OPTIONS,
     )
     expect(plan.blocks[0]!.suggestedMinutes).toBeGreaterThan(plan.blocks[1]!.suggestedMinutes)
+  })
+
+  it.each([
+    { label: 'severe', score: 0.5, speedKind: 'reduce-speed', expectedSpeed: 0.75 },
+    { label: 'moderate', score: 0.75, speedKind: 'hold-speed', expectedSpeed: 0.8 },
+  ] as const)('merges focus and $speedKind provenance into one timed section block for $label weakness', async ({ label, score, speedKind, expectedSpeed }) => {
+    const result = derivePracticePlanning(await prepare([
+      attemptFixture(`${label}-a`, { sessionId: 'S1', score, speed: 0.8 }),
+      attemptFixture(`${label}-b`, { sessionId: 'S2', score, speed: 0.8, performedAt: '2026-08-23T12:00:00.000Z' }),
+    ]), { availableMinutes: 15 })
+    const focus = result.recommendations.find((item) => item.kind === 'focus-section')!
+    const speed = result.recommendations.find((item) => item.kind === speedKind)!
+    const sectionBlocks = result.sessionPlan!.blocks.filter((block) => block.target.type === 'section')
+    expect(sectionBlocks).toHaveLength(1)
+    expect(sectionBlocks[0]).toMatchObject({ recommendationIds: [focus.id, speed.id], suggestedPracticeSpeedMultiplier: expectedSpeed })
+  })
+
+  it('keeps distinct canonical sections separate even when their display text matches', () => {
+    const first = createPlanningSectionIdentity('score-version-1', { startMeasureIndex: 0, endMeasureIndex: 1, sourceMeasureIds: ['source-a:0', 'source-a:1'], displayRange: 'Measures 1–2' })
+    const second = createPlanningSectionIdentity('score-version-1', { startMeasureIndex: 0, endMeasureIndex: 1, sourceMeasureIds: ['source-b:0', 'source-b:1'], displayRange: 'Measures 1–2' })
+    const plan = composePracticeSessionPlan([
+      directRecommendation('first', 1, 'focus-section', { type: 'section', section: first }),
+      directRecommendation('second', 2, 'focus-section', { type: 'section', section: second }),
+    ], 15, { estimatedMinutes: null, practiceSpeedMultiplier: null, evidenceAttemptIds: [], lastMeasuredAt: null }, DEFAULT_PRACTICE_PLANNING_OPTIONS)
+    expect(plan.blocks.map((block) => block.kind)).toEqual(['primary-section', 'secondary-section'])
+    expect(new Set(plan.blocks.map((block) => block.target.type === 'section' ? block.target.section.id : '')).size).toBe(2)
+  })
+
+  it('does not merge section, Technique, or full-run targets', () => {
+    const section = createPlanningSectionIdentity('score-version-1', { startMeasureIndex: 0, endMeasureIndex: 1, sourceMeasureIds: ['source:0', 'source:1'], displayRange: 'Measures 1–2' })
+    const plan = composePracticeSessionPlan([
+      directRecommendation('section', 1, 'focus-section', { type: 'section', section }),
+      directRecommendation('technique', 2, 'technique-drill', { type: 'technique', moduleId: 'scales', requiresNewStimulus: false }),
+      directRecommendation('run', 3, 'full-run', { type: 'arrangement', arrangementId: 'arrangement-1', scoreVersionId: 'score-version-1' }, null, 0.8),
+    ], 20, { estimatedMinutes: 5, practiceSpeedMultiplier: 0.8, evidenceAttemptIds: ['run-attempt'], lastMeasuredAt: AS_OF }, DEFAULT_PRACTICE_PLANNING_OPTIONS)
+    expect(plan.blocks).toHaveLength(3)
+    expect(plan.blocks.map((block) => block.kind)).toEqual(['primary-section', 'technique-target', 'full-run'])
+    expect(plan.blocks[2]).toMatchObject({ recommendationIds: ['run'], suggestedPracticeSpeedMultiplier: 0.8 })
+  })
+
+  it('never labels one canonical section as both primary and secondary', async () => {
+    const result = derivePracticePlanning(await prepare([
+      attemptFixture('poor-a', { sessionId: 'S1', score: 0.5 }),
+      attemptFixture('poor-b', { sessionId: 'S2', score: 0.5, performedAt: '2026-08-23T12:00:00.000Z' }),
+    ]), { availableMinutes: 15 })
+    const sectionBlocks = result.sessionPlan!.blocks.filter((block) => block.target.type === 'section')
+    expect(new Set(sectionBlocks.map((block) => block.target.type === 'section' ? block.target.section.id : '')).size).toBe(sectionBlocks.length)
   })
 
   it('rejects invalid session budgets', async () => {

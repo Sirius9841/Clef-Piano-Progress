@@ -22,7 +22,7 @@ const CORE_SOURCE = [indexSource, typesSource, optionsSource, sectionIdentitySou
 
 describe('Practice Planning architectural boundaries', () => {
   it('uses the frozen Phase 14 model version', () => {
-    expect(PRACTICE_PLANNING_MODEL_VERSION).toBe('practice-planning-1.0.0')
+    expect(PRACTICE_PLANNING_MODEL_VERSION).toBe('practice-planning-1.0.1')
   })
 
   it('has no React or OSMD dependency in the planning core', () => {

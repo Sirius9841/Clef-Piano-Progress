@@ -200,17 +200,21 @@ This repository builds a serious piano progress and performance-analysis applica
 
 ## Practice-planning rules
 
-- Practice Planning `practice-planning-1.0.0` is a current derived read model, separate from frozen Phase 7 per-attempt Practice Priority. Never rewrite or aggregate historical `confidenceAdjustedPriority` to rank current work.
+- Practice Planning `practice-planning-1.0.1` is a current derived read model, separate from frozen Phase 7 per-attempt Practice Priority. Never rewrite or aggregate historical `confidenceAdjustedPriority` to rank current work.
 - Planning consumes only supported frozen PerformanceResults `1.0.0` semantics from the exact Arrangement/current ScoreVersion. Use lightweight summaries to bound full reads to the latest 8 sessions and latest 3 attempts per session; never regrade history.
 - Canonical section identity includes ScoreVersion, exact start/end measure indexes, and canonical source-measure IDs. Display text is never identity, and a partial take contributes only when the full section window is inside scope.
 - Notes, Rhythm, and Tempo remain independent planning dimensions. Unavailable evidence stays null; Dynamics, Articulation, Pedal, Voicing, references, and artistic quality remain outside Phase 14 ranking.
 - Planning authority is reliability × section confidence × no-floor 45-day recency. Retain at most three dimension observations per session and cap each session's authority at one.
 - Persistent weakness requires independent-session evidence. Same-session repetition never equals independent persistence; one poor take may request verification but cannot establish a main problem or speed reduction.
 - Keep speed contexts separate. Mixed practice speeds never create a naive regression claim, and progression or reduction requires repeated current support at the exact speed.
+- Speed advice comes only from the highest meaningfully attempted frontier. Lower historical control cannot emit an increase past already-attempted or controlled higher work; target-speed control emits no increase.
+- Every speed action retains its source multiplier. `increase-speed` must be numerically greater, `reduce-speed` strictly lower, and `hold-speed` equal; no suggestion may fall outside the configured 0.50–1.00 bounds.
 - Recommendation ordering uses explicit evidence and deterministic tie-breaks, not an overall Practice Score. Reasons retain exact source evidence, attempt/session provenance, and timestamps.
 - Mastery and Skill inputs must match their current model versions and the exact planning `asOf`. Technique may be an independent target but is never asserted to have caused a repertoire problem.
 - Planning may suggest sections, Technique work, speed changes, or verification. It never mutates Mastery, repertoire status, or practice speed.
 - Session composition is a bounded product heuristic, not universal pedagogy. Never invent full-run duration evidence.
+- One canonical section target receives at most one timed session block. Merge compatible recommendation IDs and speed advice into that block; primary and secondary sections must be distinct identities.
+- Context preparation owns one deeply frozen resolved planning policy. Derivation uses and exposes that exact policy and rejects independent derive-time overrides.
 - The Practice Planning core remains independent of React, OSMD, IndexedDB internals, and UI copy. It creates no store, attempt version, or persisted recommendation.
 
 ## Pedal-analysis rules

@@ -2,7 +2,7 @@ import { MASTERY_MODEL_VERSION } from '../mastery-model'
 import { SKILL_MODEL_VERSION } from '../skill-model'
 import type { TechniqueModuleId } from '../technique/types'
 import { deriveSectionHistories } from './evidence'
-import type { PracticePlanningOptions } from './options'
+import type { PracticePlanningPolicy } from './options'
 import { resolvePracticePlanningOptions } from './options'
 import { sectionOverlapRatio } from './sectionIdentity'
 import { composePracticeSessionPlan } from './sessionPlan'
@@ -26,6 +26,7 @@ import { deepFreeze, uniqueSorted } from './utils'
 interface RecommendationCandidate {
   readonly kind: PracticeRecommendationKind
   readonly target: PracticeRecommendationTarget
+  readonly sourcePracticeSpeedMultiplier: number | null
   readonly suggestedPracticeSpeedMultiplier: number | null
   readonly evidenceStrength: PlanningEvidenceStrength
   readonly reasons: readonly PracticeRecommendationReason[]
@@ -35,6 +36,8 @@ interface RecommendationCandidate {
   readonly musicalOrder: number
   readonly suppressionFamily: 'section-focus' | 'section-speed' | 'none'
 }
+
+const DIMENSIONS: readonly PlanningDimension[] = ['notes', 'rhythm', 'tempo']
 
 const KIND_PRIORITY: Readonly<Record<PracticeRecommendationKind, number>> = Object.freeze({
   'focus-section': 0,
@@ -92,7 +95,7 @@ function evidenceStrength(values: readonly PlanningEvidenceStrength[]): Planning
   return 'insufficient'
 }
 
-function sectionCandidates(history: SectionHistory, options: PracticePlanningOptions): readonly RecommendationCandidate[] {
+function sectionCandidates(history: SectionHistory, options: PracticePlanningPolicy): readonly RecommendationCandidate[] {
   const weak = history.dimensions.filter((dimension) => dimension.weaknessEstimate !== null && dimension.weaknessEstimate >= options.meaningfulWeaknessThreshold)
   const persistent = weak.filter((dimension) => dimension.rawSessionCount >= options.persistentWeaknessMinimumSessions && dimension.effectiveSessionSupport >= options.persistentWeaknessMinimumEffectiveSessionSupport)
   const candidates: RecommendationCandidate[] = []
@@ -101,6 +104,7 @@ function sectionCandidates(history: SectionHistory, options: PracticePlanningOpt
     candidates.push({
       kind: 'focus-section',
       target: { type: 'section', section: history.section },
+      sourcePracticeSpeedMultiplier: null,
       suggestedPracticeSpeedMultiplier: null,
       evidenceStrength: evidenceStrength(persistent.map((dimension) => dimension.evidenceStrength)),
       reasons,
@@ -115,6 +119,7 @@ function sectionCandidates(history: SectionHistory, options: PracticePlanningOpt
     candidates.push({
       kind: 'verify-section',
       target: { type: 'section', section: history.section },
+      sourcePracticeSpeedMultiplier: null,
       suggestedPracticeSpeedMultiplier: null,
       evidenceStrength: evidenceStrength(weak.map((dimension) => dimension.evidenceStrength)),
       reasons,
@@ -132,53 +137,81 @@ function sectionCandidates(history: SectionHistory, options: PracticePlanningOpt
     values.set(dimension.dimension, speed)
     bySpeed.set(speed.practiceSpeedMultiplier, values)
   }
-  for (const [practiceSpeedMultiplier, dimensions] of [...bySpeed.entries()].sort((left, right) => right[0] - left[0])) {
-    const values = (['notes', 'rhythm', 'tempo'] as const).map((dimension) => dimensions.get(dimension)).filter((value): value is SectionDimensionSpeedHistory => value !== undefined)
-    const controlled = values.length === 3 && (['notes', 'rhythm', 'tempo'] as const).every((dimension) => {
-      const value = dimensions.get(dimension)!
-      return value.qualityEstimate !== null
-        && value.qualityEstimate >= options.progressionControlThresholds[dimension]
-        && value.rawSessionCount >= options.progressionMinimumSessions
-        && value.effectiveSessionSupport >= options.progressionMinimumEffectiveSessionSupport
-    })
-    if (controlled && practiceSpeedMultiplier < options.maximumSuggestedSpeed) {
-      const reasons = (['notes', 'rhythm', 'tempo'] as const).map((dimension) => dimensionReason('strong-section-control-at-speed', dimensions.get(dimension)!, dimension))
-      candidates.push({
-        kind: 'increase-speed',
-        target: { type: 'section', section: history.section },
-        suggestedPracticeSpeedMultiplier: Math.min(options.maximumSuggestedSpeed, Math.round((practiceSpeedMultiplier + options.speedStep) * 100) / 100),
-        evidenceStrength: evidenceStrength(values.map((value) => value.evidenceStrength)),
-        reasons,
-        maximumWeakness: 0,
-        effectiveSessionSupport: Math.min(...values.map((value) => value.effectiveSessionSupport)),
-        lastEvidenceAt: latest(values.map((value) => value.lastMeasuredAt)),
-        musicalOrder: history.section.startMeasureIndex,
-        suppressionFamily: 'section-speed',
+  const speedBuckets = [...bySpeed.entries()].sort((left, right) => right[0] - left[0])
+  const isControlled = (dimensions: ReadonlyMap<PlanningDimension, SectionDimensionSpeedHistory>): boolean => DIMENSIONS.every((dimension) => {
+    const value = dimensions.get(dimension)
+    return value !== undefined
+      && value.qualityEstimate !== null
+      && value.qualityEstimate >= options.progressionControlThresholds[dimension]
+      && value.rawSessionCount >= options.progressionMinimumSessions
+      && value.effectiveSessionSupport >= options.progressionMinimumEffectiveSessionSupport
+  })
+  const highestControlled = speedBuckets.find(([, dimensions]) => isControlled(dimensions))
+  const frontier = speedBuckets[0]
+  if (frontier) {
+    const [practiceSpeedMultiplier, dimensions] = frontier
+    const values = DIMENSIONS.map((dimension) => dimensions.get(dimension)).filter((value): value is SectionDimensionSpeedHistory => value !== undefined)
+    const frontierWithinSuggestionBounds = practiceSpeedMultiplier >= options.minimumSuggestedSpeed && practiceSpeedMultiplier <= options.maximumSuggestedSpeed
+    if (isControlled(dimensions)) {
+      const suggested = Math.min(options.maximumSuggestedSpeed, Math.round((practiceSpeedMultiplier + options.speedStep) * options.speedBucketPrecision) / options.speedBucketPrecision)
+      if (frontierWithinSuggestionBounds && suggested > practiceSpeedMultiplier) {
+        const reasons = DIMENSIONS.map((dimension) => dimensionReason('strong-section-control-at-speed', dimensions.get(dimension)!, dimension))
+        candidates.push({
+          kind: 'increase-speed',
+          target: { type: 'section', section: history.section },
+          sourcePracticeSpeedMultiplier: practiceSpeedMultiplier,
+          suggestedPracticeSpeedMultiplier: suggested,
+          evidenceStrength: evidenceStrength(values.map((value) => value.evidenceStrength)),
+          reasons,
+          maximumWeakness: 0,
+          effectiveSessionSupport: Math.min(...values.map((value) => value.effectiveSessionSupport)),
+          lastEvidenceAt: latest(values.map((value) => value.lastMeasuredAt)),
+          musicalOrder: history.section.startMeasureIndex,
+          suppressionFamily: 'section-speed',
+        })
+      }
+    } else {
+      const persistentWeak = [...dimensions.entries()].filter((entry): entry is [PlanningDimension, SectionDimensionSpeedHistory] => {
+        const value = entry[1]
+        return value.weaknessEstimate !== null
+          && value.weaknessEstimate >= options.meaningfulWeaknessThreshold
+          && value.rawSessionCount >= options.persistentWeaknessMinimumSessions
+          && value.effectiveSessionSupport >= options.persistentWeaknessMinimumEffectiveSessionSupport
       })
-      continue
+      if (persistentWeak.length > 0) {
+        const severe = persistentWeak.some(([, value]) => value.weaknessEstimate! >= options.severeWeaknessThreshold && value.effectiveSessionSupport >= options.progressionMinimumEffectiveSessionSupport)
+        const reducedSpeed = Math.max(options.minimumSuggestedSpeed, Math.round((practiceSpeedMultiplier - options.speedStep) * options.speedBucketPrecision) / options.speedBucketPrecision)
+        const canReduce = frontierWithinSuggestionBounds && severe && reducedSpeed < practiceSpeedMultiplier
+        const reasons = persistentWeak.map(([dimension, value]) => dimensionReason('supported-section-weakness-at-speed', value, dimension))
+        candidates.push({
+          kind: frontierWithinSuggestionBounds ? (canReduce ? 'reduce-speed' : 'hold-speed') : 'verify-section',
+          target: { type: 'section', section: history.section },
+          sourcePracticeSpeedMultiplier: practiceSpeedMultiplier,
+          suggestedPracticeSpeedMultiplier: frontierWithinSuggestionBounds ? (canReduce ? reducedSpeed : practiceSpeedMultiplier) : null,
+          evidenceStrength: evidenceStrength(persistentWeak.map(([, value]) => value.evidenceStrength)),
+          reasons,
+          maximumWeakness: Math.max(...persistentWeak.map(([, value]) => value.weaknessEstimate!)),
+          effectiveSessionSupport: Math.max(...persistentWeak.map(([, value]) => value.effectiveSessionSupport)),
+          lastEvidenceAt: latest(persistentWeak.map(([, value]) => value.lastMeasuredAt)),
+          musicalOrder: history.section.startMeasureIndex,
+          suppressionFamily: 'section-speed',
+        })
+      } else if (highestControlled && practiceSpeedMultiplier > highestControlled[0]) {
+        candidates.push({
+          kind: frontierWithinSuggestionBounds ? 'hold-speed' : 'verify-section',
+          target: { type: 'section', section: history.section },
+          sourcePracticeSpeedMultiplier: practiceSpeedMultiplier,
+          suggestedPracticeSpeedMultiplier: frontierWithinSuggestionBounds ? practiceSpeedMultiplier : null,
+          evidenceStrength: evidenceStrength(values.map((value) => value.evidenceStrength)),
+          reasons: [...dimensions.entries()].map(([dimension, value]) => dimensionReason('frontier-needs-verification', value, dimension)),
+          maximumWeakness: Math.max(0, ...values.map((value) => value.weaknessEstimate ?? 0)),
+          effectiveSessionSupport: Math.max(0, ...values.map((value) => value.effectiveSessionSupport)),
+          lastEvidenceAt: latest(values.map((value) => value.lastMeasuredAt)),
+          musicalOrder: history.section.startMeasureIndex,
+          suppressionFamily: 'section-speed',
+        })
+      }
     }
-    const persistentWeak = [...dimensions.entries()].filter((entry): entry is [PlanningDimension, SectionDimensionSpeedHistory] => {
-      const value = entry[1]
-      return value.weaknessEstimate !== null
-        && value.weaknessEstimate >= options.meaningfulWeaknessThreshold
-        && value.rawSessionCount >= options.persistentWeaknessMinimumSessions
-        && value.effectiveSessionSupport >= options.persistentWeaknessMinimumEffectiveSessionSupport
-    })
-    if (persistentWeak.length === 0) continue
-    const severe = persistentWeak.some(([, value]) => value.weaknessEstimate! >= options.severeWeaknessThreshold && value.effectiveSessionSupport >= options.progressionMinimumEffectiveSessionSupport)
-    const reasons = persistentWeak.map(([dimension, value]) => dimensionReason('supported-section-weakness-at-speed', value, dimension))
-    candidates.push({
-      kind: severe ? 'reduce-speed' : 'hold-speed',
-      target: { type: 'section', section: history.section },
-      suggestedPracticeSpeedMultiplier: severe ? Math.max(options.minimumSuggestedSpeed, Math.round((practiceSpeedMultiplier - options.speedStep) * 100) / 100) : practiceSpeedMultiplier,
-      evidenceStrength: evidenceStrength(persistentWeak.map(([, value]) => value.evidenceStrength)),
-      reasons,
-      maximumWeakness: Math.max(...persistentWeak.map(([, value]) => value.weaknessEstimate!)),
-      effectiveSessionSupport: Math.max(...persistentWeak.map(([, value]) => value.effectiveSessionSupport)),
-      lastEvidenceAt: latest(persistentWeak.map(([, value]) => value.lastMeasuredAt)),
-      musicalOrder: history.section.startMeasureIndex,
-      suppressionFamily: 'section-speed',
-    })
   }
   return candidates
 }
@@ -191,6 +224,7 @@ function masteryCandidate(context: PracticePlanningContext): RecommendationCandi
   return {
     kind: 'full-run',
     target: { type: 'arrangement', arrangementId: context.arrangementId, scoreVersionId: context.scoreVersionId },
+    sourcePracticeSpeedMultiplier: null,
     suggestedPracticeSpeedMultiplier: mastery.demonstratedSpeedCandidateMultiplier,
     evidenceStrength,
     reasons: [reason(code, {
@@ -209,7 +243,7 @@ function masteryCandidate(context: PracticePlanningContext): RecommendationCandi
   }
 }
 
-function skillCandidates(context: PracticePlanningContext, options: PracticePlanningOptions): readonly RecommendationCandidate[] {
+function skillCandidates(context: PracticePlanningContext, options: PracticePlanningPolicy): readonly RecommendationCandidate[] {
   return context.skills.flatMap((skill): RecommendationCandidate[] => {
     if (skill.status !== 'established' || skill.qualityEstimate === null || skill.qualityEstimate >= options.supportedSkillOpportunityThreshold) return []
     const supported = skill.confidence === 'medium' || skill.confidence === 'high'
@@ -219,6 +253,7 @@ function skillCandidates(context: PracticePlanningContext, options: PracticePlan
     return [{
       kind,
       target,
+      sourcePracticeSpeedMultiplier: null,
       suggestedPracticeSpeedMultiplier: null,
       evidenceStrength: supported ? (skill.confidence === 'high' ? 'strong' : 'supported') : 'single-session',
       reasons: [reason(code, {
@@ -252,7 +287,7 @@ function compareCandidates(left: RecommendationCandidate, right: RecommendationC
     || JSON.stringify(left.target).localeCompare(JSON.stringify(right.target))
 }
 
-function suppressOverlaps(candidates: readonly RecommendationCandidate[], options: PracticePlanningOptions): readonly RecommendationCandidate[] {
+function suppressOverlaps(candidates: readonly RecommendationCandidate[], options: PracticePlanningPolicy): readonly RecommendationCandidate[] {
   const kept: RecommendationCandidate[] = []
   for (const candidate of [...candidates].sort(compareCandidates)) {
     if (candidate.target.type !== 'section' || candidate.suppressionFamily === 'none') {
@@ -268,15 +303,16 @@ function suppressOverlaps(candidates: readonly RecommendationCandidate[], option
   return kept
 }
 
-function materialize(candidates: readonly RecommendationCandidate[], options: PracticePlanningOptions): readonly PracticeRecommendation[] {
+function materialize(candidates: readonly RecommendationCandidate[], options: PracticePlanningPolicy): readonly PracticeRecommendation[] {
   return [...suppressOverlaps(candidates, options)].sort(compareCandidates).slice(0, options.maximumRecommendations).map((candidate, index) => {
     const evidenceAttemptIds = uniqueSorted(candidate.reasons.flatMap((item) => item.evidenceAttemptIds))
     const evidenceSessionIds = uniqueSorted(candidate.reasons.flatMap((item) => item.evidenceSessionIds))
     return {
-      id: JSON.stringify([PRACTICE_PLANNING_MODEL_VERSION, candidate.kind, candidate.target, candidate.suggestedPracticeSpeedMultiplier, evidenceAttemptIds]),
+      id: JSON.stringify([PRACTICE_PLANNING_MODEL_VERSION, candidate.kind, candidate.target, candidate.sourcePracticeSpeedMultiplier, candidate.suggestedPracticeSpeedMultiplier, evidenceAttemptIds]),
       rank: index + 1,
       kind: candidate.kind,
       target: candidate.target,
+      sourcePracticeSpeedMultiplier: candidate.sourcePracticeSpeedMultiplier,
       suggestedPracticeSpeedMultiplier: candidate.suggestedPracticeSpeedMultiplier,
       evidenceStrength: candidate.evidenceStrength,
       reasons: candidate.reasons,
@@ -293,26 +329,30 @@ function validateContext(context: PracticePlanningContext): void {
     throw new RangeError('Mastery provenance must exactly match the Practice Planning context.')
   }
   if (context.skills.some((skill) => skill.modelVersion !== SKILL_MODEL_VERSION || skill.asOf !== context.asOf)) throw new RangeError('Skill provenance must use the exact current model and asOf.')
+  const resolvedPolicy = resolvePracticePlanningOptions(context.policy)
+  if (!Object.isFrozen(context.policy) || !Object.isFrozen(context.policy.progressionControlThresholds) || JSON.stringify(resolvedPolicy) !== JSON.stringify(context.policy)) throw new RangeError('Practice Planning context policy must be an exact frozen resolved policy.')
 }
 
 export function derivePracticePlanning(
   context: PracticePlanningContext,
-  input: Readonly<{ availableMinutes?: number; options?: Partial<PracticePlanningOptions> }> = {},
+  input: Readonly<{ availableMinutes?: number }> = {},
 ): PracticePlanningResult {
   validateContext(context)
-  const options = resolvePracticePlanningOptions(input.options)
-  const sectionHistories = deriveSectionHistories(context.attempts, context.asOf, options)
-  const candidates = sectionHistories.flatMap((history) => sectionCandidates(history, options))
+  if ('options' in input) throw new RangeError('Practice Planning policy is locked by context preparation and cannot be overridden during derivation.')
+  const policy = context.policy
+  const sectionHistories = deriveSectionHistories(context.attempts, context.asOf, policy)
+  const candidates = sectionHistories.flatMap((history) => sectionCandidates(history, policy))
   const mastery = masteryCandidate(context)
   if (mastery) candidates.push(mastery)
-  candidates.push(...skillCandidates(context, options))
-  const recommendations = materialize(candidates, options)
-  const sessionPlan = input.availableMinutes === undefined ? null : composePracticeSessionPlan(recommendations, input.availableMinutes, context.fullRunDuration, options)
+  candidates.push(...skillCandidates(context, policy))
+  const recommendations = materialize(candidates, policy)
+  const sessionPlan = input.availableMinutes === undefined ? null : composePracticeSessionPlan(recommendations, input.availableMinutes, context.fullRunDuration, policy)
   return deepFreeze({
     modelVersion: PRACTICE_PLANNING_MODEL_VERSION,
     arrangementId: context.arrangementId,
     scoreVersionId: context.scoreVersionId,
     asOf: context.asOf,
+    policy,
     status: recommendations.length > 0 ? 'ready' : 'insufficient-evidence',
     sectionHistories,
     recommendations,

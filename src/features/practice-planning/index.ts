@@ -1,6 +1,6 @@
 export { selectBoundedAttemptSummaries, extractPlanningAttemptEvidence, deriveSectionHistories, deriveFullRunDurationEvidence } from './evidence'
 export { DEFAULT_PRACTICE_PLANNING_OPTIONS, resolvePracticePlanningOptions } from './options'
-export type { PracticePlanningOptions } from './options'
+export type { PracticePlanningOptions, PracticePlanningPolicy } from './options'
 export { preparePracticePlanningContext } from './prepareContext'
 export type { PreparePracticePlanningContextInput } from './prepareContext'
 export { derivePracticePlanning } from './recommendations'

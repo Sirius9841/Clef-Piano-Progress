@@ -1,4 +1,4 @@
-export interface PracticePlanningOptions {
+export interface PracticePlanningPolicy {
   readonly latestSessionLimit: number
   readonly attemptsPerSessionLimit: number
   readonly sectionDimensionAttemptsPerSessionLimit: number
@@ -25,8 +25,10 @@ export interface PracticePlanningOptions {
   readonly minimumNonRunBlockMinutes: number
 }
 
+export type PracticePlanningOptions = PracticePlanningPolicy
+
 /** Product planning heuristics, not universal piano-pedagogy laws. */
-export const DEFAULT_PRACTICE_PLANNING_OPTIONS: PracticePlanningOptions = Object.freeze({
+export const DEFAULT_PRACTICE_PLANNING_OPTIONS: PracticePlanningPolicy = Object.freeze({
   latestSessionLimit: 8,
   attemptsPerSessionLimit: 3,
   sectionDimensionAttemptsPerSessionLimit: 3,
@@ -69,7 +71,7 @@ function percentage(value: number, label: string): void {
   if (!Number.isFinite(value) || value < 0 || value > 100) throw new RangeError(`${label} must be between 0 and 100.`)
 }
 
-export function resolvePracticePlanningOptions(partial: Partial<PracticePlanningOptions> = {}): PracticePlanningOptions {
+export function resolvePracticePlanningOptions(partial: Partial<PracticePlanningPolicy> = {}): PracticePlanningPolicy {
   const options = { ...DEFAULT_PRACTICE_PLANNING_OPTIONS, ...partial, progressionControlThresholds: { ...DEFAULT_PRACTICE_PLANNING_OPTIONS.progressionControlThresholds, ...partial.progressionControlThresholds } }
   positiveInteger(options.latestSessionLimit, 'Latest session limit')
   positiveInteger(options.attemptsPerSessionLimit, 'Attempts per session limit')

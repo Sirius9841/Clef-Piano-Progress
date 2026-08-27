@@ -92,6 +92,10 @@ Deterministic longitudinal section history, independent-session persistence, spe
 
 Phase 14 UI integration is intentionally deferred while the final Clef interface is being designed. No unfinished UI is implied by the core milestone.
 
+## Phase 14.1 — complete
+
+Practice Planning `1.0.1` finalizes progression integrity with one deterministic highest-speed frontier, strictly consistent source/suggested speed actions, canonical one-section/one-block session composition with merged recommendation provenance, and one locked resolved policy shared by context and result. IndexedDB remains schema 4, historical records remain unchanged, and UI integration remains intentionally deferred. Phase 14 is closed.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.
