@@ -33,3 +33,9 @@ Practice time is the sum of completed PracticeSession durations in the selected 
 Personal-best and trend logic deliberately excludes Mastery, Dynamics, Articulation, Pedal, Voicing, Technique ratings, reference similarity, and any overall performance score. Phase 13 presents Skill Ratings as a separate summary-derived section and Arrangement Mastery on exact Arrangement detail; neither enters repertoire charts, Practice Priority, or personal-best claims. A selected reference remains an interpretive comparison preference, never a record to beat.
 
 The Progress page's 7-day, 30-day, and all-time selector applies only to practice volume and performance trends. Skill Ratings intentionally consume all eligible Technique history, then apply their own bounded per-context model window and current-state recency. “Model window” means count-bounded evidence, not necessarily recent evidence. Filtering Technique summaries by the Progress selector would discard the model's evidence semantics and is forbidden.
+
+## Practice planning is a separate current read model
+
+Phase 7 `PracticePriority` remains frozen per-attempt evidence. It answers which section looked weak in that one result and retains its historical 45/35/20 Notes/Rhythm/Tempo semantics. Phase 14 never changes or aggregates that number into progress.
+
+Practice Planning instead derives current, exact-ScoreVersion section histories from the underlying frozen Notes, Rhythm, Tempo, confidence, reliability, speed, scope, and provenance. It protects independent-session evidence, decays current authority without a floor, and keeps mixed speed contexts separate. Its ordered recommendations are not a trend, personal best, Mastery mutation, or overall performance/practice score. See `PRACTICE_PLANNING.md`.

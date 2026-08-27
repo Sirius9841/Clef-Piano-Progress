@@ -57,6 +57,12 @@ Skill Model `1.1.1` derives exactly eight independent current Technique ratings 
 
 A SkillRating measures a transferable ability such as sight reading, rhythm, chord fluency, scales, or tempo control. It is independent of arrangement mastery.
 
+## Practice Planning
+
+Practice Planning `practice-planning-1.0.0` is a transient current-state projection for one Arrangement and exact current ScoreVersion at an explicit `asOf`. It combines supported frozen section evidence, current Mastery `1.1.1`, and independent Skill Ratings `1.1.1` into ordered actions with exact evidence provenance. A planning section is identified by ScoreVersion, exact measure-index bounds, and canonical source-measure IDs—not by display text or an attempt-local SectionResult ID.
+
+Planning is not a persisted entity, score, grade, repertoire status, or historical attempt. It may suggest practice and speed changes but never applies them. Technique targets are independent evidence lanes and never imply that a Skill caused a repertoire error. See `PRACTICE_PLANNING.md`.
+
 ## Expected performance plan
 
 `ExpectedPerformancePlan` is a deterministic, derived view of one `NormalizedScore` and an explicit part selection. It distinguishes required attacks, exact onset groups, logical sounding spans, and flexible or excluded notation. Tie continuations extend one sounding span, rests create no attacks, grace timing remains flexible, cue notes are excluded, and non-MIDI pitches are never rounded. The plan contains no observed performance and no grade.

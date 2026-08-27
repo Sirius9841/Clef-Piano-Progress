@@ -53,3 +53,9 @@ A PracticeSession spans the first saved take's recording start through the lates
 Data stays on the current browser profile and device. There is no account, server, upload, cloud sync, or remote backup. Browser or operating-system storage controls can erase the database. Settings reports record counts and offers one explicit destructive clear-all confirmation. A successful clear also clears the active in-memory Practice session so deleted score identity cannot remain playable; a failed clear preserves the session and reports a retryable error. User-triggered clear and remove actions surface typed failures without claiming success or navigating away. Removing an Arrangement from active Repertoire preserves its history.
 
 Repertoire status is user-controlled metadata. Updating it validates the allowed status, changes only the active RepertoireEntry and its `updatedAt`, notifies repository subscribers, and preserves the Work, Arrangement, immutable ScoreVersions, sessions, and attempts.
+
+## Derived Practice Planning reads
+
+Phase 14 adds no persistence. `PERSISTENCE_SCHEMA_VERSION` remains `4`; the existing stores and PerformanceAttempt V1–V4 / TechniqueAttempt V1–V2 record families remain unchanged. No recommendation, PracticePlan, Mastery snapshot, or Skill snapshot is stored.
+
+The planner first selects lightweight summaries for the exact Arrangement/current ScoreVersion, latest 8 sessions, and latest 3 attempts per session, then loads at most 24 authoritative full attempts through `PianoProgressRepository.getAttempt`. Missing, unreadable, mismatched, future, provisional, incompatible, or corrupt evidence is excluded explicitly. Historical PerformanceResults and their Phase 7 Practice Priority remain immutable and are never regraded or repaired.

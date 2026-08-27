@@ -86,6 +86,12 @@ Skill Model `1.1.0` bounds both rating and confidence evidence to the latest thr
 
 Skill Model `1.1.1` synchronizes challenge identity with the displayed envelope, exposes template, subdivision, event-count, and non-tonal starting-pitch provenance across all eight modules, and calls the retained latest-three evidence a model window rather than implying recency. Mastery Model `1.1.1` requires current, bucket-local effective session authority for High-confidence demonstrated speed, while preserving separate raw session provenance. Same-session repetitions may establish a speed but cannot produce High confidence; stale or other-speed sessions cannot substitute for current independent support. Persistence remains schema 4 with no new stores or record versions. Phase 13 is closed.
 
+## Phase 14 — Intelligent Practice Planning Core — complete
+
+Deterministic longitudinal section history, independent-session persistence, speed-aware progression, Mastery-aware verification, independent Technique recommendations, time-budget session composition, and structured recommendation provenance are complete in `practice-planning-1.0.0`. The core is a pure derived read model: frozen Phase 7 Practice Priority and all historical records remain unchanged, and IndexedDB remains schema 4.
+
+Phase 14 UI integration is intentionally deferred while the final Clef interface is being designed. No unfinished UI is implied by the core milestone.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.
