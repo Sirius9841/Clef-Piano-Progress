@@ -789,62 +789,91 @@ function assertRepertoireEntry(value: unknown): asserts value is RepertoireEntry
   }
 }
 
-export async function validatePersistenceSnapshot(snapshot: PersistenceSnapshot, checkedAt: string): Promise<IntegrityReport> {
+interface SnapshotValidationResult {
+  readonly report: IntegrityReport
+  readonly hasSummaryIssue: boolean
+}
+
+function buildSummaryRepairCandidate(snapshot: PersistenceSnapshot): PersistenceSnapshot | null {
+  try {
+    const performanceAttempts: PerformanceAttemptRecord[] = []
+    const techniqueAttempts: TechniqueAttemptRecord[] = []
+    for (const value of snapshot.performanceAttempts as readonly unknown[]) {
+      assertAttempt(value)
+      performanceAttempts.push(value)
+    }
+    for (const value of snapshot.techniqueAttempts as readonly unknown[]) {
+      assertTechniqueAttempt(value)
+      techniqueAttempts.push(value)
+    }
+    return {
+      ...snapshot,
+      performanceAttempts,
+      attemptSummaries: performanceAttempts.map(createAttemptSummary),
+      techniqueAttempts,
+      techniqueAttemptSummaries: techniqueAttempts.map(createTechniqueAttemptSummary),
+    }
+  } catch {
+    return null
+  }
+}
+
+async function validatePersistenceSnapshotCore(snapshot: PersistenceSnapshot, checkedAt: string): Promise<SnapshotValidationResult> {
   const retainedIssues: IntegrityIssue[] = []
   let totalIssueCount = 0
-  let onlySummaryIssues = true
-  let hasMalformedRecords = false
+  let hasSummaryIssue = false
   const issue = (value: IntegrityIssue) => {
     totalIssueCount += 1
-    if (value.recordFamily !== 'attemptSummaries' && value.recordFamily !== 'techniqueAttemptSummaries') onlySummaryIssues = false
+    if (value.recordFamily === 'attemptSummaries' || value.recordFamily === 'techniqueAttemptSummaries') hasSummaryIssue = true
     if (retainedIssues.length < 100) retainedIssues.push(Object.freeze(value))
   }
   const recordIssue = (recordFamily: keyof PersistenceSnapshot, recordId: string | undefined, code: string, detail: string) => issue({ code, severity: 'error', recordFamily, ...(recordId ? { recordId } : {}), detail })
   const finishReport = (): IntegrityReport => {
     const warnings: IntegrityIssue[] = []
-    const summaryOnlyRepairable = totalIssueCount > 0 && onlySummaryIssues
-    return Object.freeze({ status: totalIssueCount === 0 ? 'healthy' : 'issues-found', checkedAt, counts: Object.freeze(snapshotCounts(snapshot)), issues: Object.freeze(retainedIssues), warnings: Object.freeze(warnings), totalIssueCount, summaryOnlyRepairable })
+    return Object.freeze({ status: totalIssueCount === 0 ? 'healthy' : 'issues-found', checkedAt, counts: Object.freeze(snapshotCounts(snapshot)), issues: Object.freeze(retainedIssues), warnings: Object.freeze(warnings), totalIssueCount, summaryOnlyRepairable: false })
   }
-  const validateFamily = (family: keyof PersistenceSnapshot, values: readonly unknown[], validate: (value: unknown) => void) => {
+  const validateFamily = <T>(family: keyof PersistenceSnapshot, values: readonly unknown[], validate: (value: unknown) => void): T[] => {
     const ids = new Set<string>()
+    const valid: T[] = []
     for (const value of values) {
       const recordId = value !== null && typeof value === 'object' && !Array.isArray(value) && typeof (value as { readonly id?: unknown }).id === 'string'
         ? (value as { readonly id: string }).id
         : undefined
       if (recordId && ids.has(recordId)) recordIssue(family, recordId, 'DUPLICATE_RECORD_ID', `More than one ${family} record uses this ID.`)
       if (recordId) ids.add(recordId)
-      try { validate(value) } catch (cause) {
-        hasMalformedRecords = true
+      try {
+        validate(value)
+        valid.push(value as T)
+      } catch (cause) {
         recordIssue(family, recordId, 'MALFORMED_RECORD', cause instanceof Error ? cause.message : `The ${family} record is malformed.`)
       }
     }
+    return valid
   }
-  validateFamily('works', snapshot.works, assertWork)
-  validateFamily('arrangements', snapshot.arrangements, assertArrangement)
-  validateFamily('scoreVersions', snapshot.scoreVersions, assertScoreVersion)
-  validateFamily('repertoireEntries', snapshot.repertoireEntries, assertRepertoireEntry)
-  validateFamily('practiceSessions', snapshot.practiceSessions, assertPracticeSession)
-  validateFamily('performanceAttempts', snapshot.performanceAttempts, assertAttempt)
-  validateFamily('attemptSummaries', snapshot.attemptSummaries, assertAttemptSummary)
-  validateFamily('techniqueAttempts', snapshot.techniqueAttempts, assertTechniqueAttempt)
-  validateFamily('techniqueAttemptSummaries', snapshot.techniqueAttemptSummaries, assertTechniqueSummary)
+  const workRecords = validateFamily<PersistedWork>('works', snapshot.works, assertWork)
+  const arrangementRecords = validateFamily<PersistedArrangement>('arrangements', snapshot.arrangements, assertArrangement)
+  const versionRecords = validateFamily<PersistedScoreVersion>('scoreVersions', snapshot.scoreVersions, assertScoreVersion)
+  const repertoireRecords = validateFamily<RepertoireEntry>('repertoireEntries', snapshot.repertoireEntries, assertRepertoireEntry)
+  const sessionRecords = validateFamily<PracticeSessionRecord>('practiceSessions', snapshot.practiceSessions, assertPracticeSession)
+  const attemptRecords = validateFamily<PerformanceAttemptRecord>('performanceAttempts', snapshot.performanceAttempts, assertAttempt)
+  const attemptSummaryRecords = validateFamily<AttemptSummary>('attemptSummaries', snapshot.attemptSummaries, assertAttemptSummary)
+  const techniqueAttemptRecords = validateFamily<TechniqueAttemptRecord>('techniqueAttempts', snapshot.techniqueAttempts, assertTechniqueAttempt)
+  const techniqueSummaryRecords = validateFamily<TechniqueAttemptSummary>('techniqueAttemptSummaries', snapshot.techniqueAttemptSummaries, assertTechniqueSummary)
 
-  if (hasMalformedRecords) return finishReport()
+  const works = new Map(workRecords.map((value) => [value.id, value]))
+  const arrangements = new Map(arrangementRecords.map((value) => [value.id, value]))
+  const versions = new Map(versionRecords.map((value) => [value.id, value]))
+  const sessions = new Map(sessionRecords.map((value) => [value.id, value]))
+  const attempts = new Map(attemptRecords.map((value) => [value.id, value]))
+  const attemptSummaries = new Map(attemptSummaryRecords.map((value) => [value.id, value]))
+  const techniqueAttempts = new Map(techniqueAttemptRecords.map((value) => [value.id, value]))
+  const techniqueSummaries = new Map(techniqueSummaryRecords.map((value) => [value.id, value]))
 
-  const works = new Map(snapshot.works.map((value) => [value.id, value]))
-  const arrangements = new Map(snapshot.arrangements.map((value) => [value.id, value]))
-  const versions = new Map(snapshot.scoreVersions.map((value) => [value.id, value]))
-  const sessions = new Map(snapshot.practiceSessions.map((value) => [value.id, value]))
-  const attempts = new Map(snapshot.performanceAttempts.map((value) => [value.id, value]))
-  const attemptSummaries = new Map(snapshot.attemptSummaries.map((value) => [value.id, value]))
-  const techniqueAttempts = new Map(snapshot.techniqueAttempts.map((value) => [value.id, value]))
-  const techniqueSummaries = new Map(snapshot.techniqueAttemptSummaries.map((value) => [value.id, value]))
-
-  for (const arrangement of snapshot.arrangements) {
+  for (const arrangement of arrangementRecords) {
     if (!works.has(arrangement.workId)) recordIssue('arrangements', arrangement.id, 'MISSING_WORK', 'The Arrangement references a missing Work.')
   }
   const versionsByArrangement = new Map<string, PersistedScoreVersion[]>()
-  for (const version of snapshot.scoreVersions) {
+  for (const version of versionRecords) {
     if (!arrangements.has(version.arrangementId)) recordIssue('scoreVersions', version.id, 'MISSING_ARRANGEMENT', 'The ScoreVersion references a missing Arrangement.')
     const siblings = versionsByArrangement.get(version.arrangementId) ?? []
     siblings.push(version); versionsByArrangement.set(version.arrangementId, siblings)
@@ -869,12 +898,21 @@ export async function validatePersistenceSnapshot(snapshot: PersistenceSnapshot,
     const arrangement = arrangements.get(arrangementId)
     if (latest && arrangement && !samePartSelection(latest.includedPartIds, arrangement.includedPartIds)) recordIssue('arrangements', arrangement.id, 'LATEST_PART_SELECTION_MISMATCH', 'The Arrangement part metadata does not match its latest ScoreVersion.')
   }
-  for (const entry of snapshot.repertoireEntries) if (!arrangements.has(entry.arrangementId)) recordIssue('repertoireEntries', entry.id, 'MISSING_ARRANGEMENT', 'The Repertoire entry references a missing Arrangement.')
+  const repertoireMemberships = new Map<string, string>()
+  for (const entry of repertoireRecords) {
+    if (!arrangements.has(entry.arrangementId)) recordIssue('repertoireEntries', entry.id, 'MISSING_ARRANGEMENT', 'The Repertoire entry references a missing Arrangement.')
+    const existingEntryId = repertoireMemberships.get(entry.arrangementId)
+    if (existingEntryId) recordIssue('repertoireEntries', entry.id, 'DUPLICATE_REPERTOIRE_MEMBERSHIP', `Arrangement ${entry.arrangementId} has more than one Repertoire membership (${existingEntryId} and ${entry.id}).`)
+    else repertoireMemberships.set(entry.arrangementId, entry.id)
+  }
   const sessionOwnership = new Map<string, string>()
-  for (const session of snapshot.practiceSessions) {
+  for (const session of sessionRecords) {
     const version = versions.get(session.scoreVersionId)
     if (!arrangements.has(session.arrangementId) || !version || version.arrangementId !== session.arrangementId) recordIssue('practiceSessions', session.id, 'SESSION_IDENTITY_MISMATCH', 'The PracticeSession does not reference one exact Arrangement and ScoreVersion.')
+    const sessionAttemptIds = new Set<string>()
     for (const attemptId of session.attemptIds) {
+      if (sessionAttemptIds.has(attemptId)) recordIssue('practiceSessions', session.id, 'DUPLICATE_SESSION_ATTEMPT', `Attempt ${attemptId} is listed more than once in this PracticeSession.`)
+      sessionAttemptIds.add(attemptId)
       const previousOwner = sessionOwnership.get(attemptId)
       if (previousOwner && previousOwner !== session.id) recordIssue('practiceSessions', session.id, 'ATTEMPT_IN_MULTIPLE_SESSIONS', `Attempt ${attemptId} is listed by more than one PracticeSession.`)
       sessionOwnership.set(attemptId, session.id)
@@ -883,7 +921,7 @@ export async function validatePersistenceSnapshot(snapshot: PersistenceSnapshot,
       else if (attempt.practiceSessionId !== session.id) recordIssue('practiceSessions', session.id, 'SESSION_ATTEMPT_BACKLINK_MISMATCH', `Attempt ${attemptId} points to another PracticeSession.`)
     }
   }
-  for (const attempt of snapshot.performanceAttempts) {
+  for (const attempt of attemptRecords) {
     const arrangement = arrangements.get(attempt.arrangementId)
     const version = versions.get(attempt.scoreVersionId)
     const session = sessions.get(attempt.practiceSessionId)
@@ -898,14 +936,14 @@ export async function validatePersistenceSnapshot(snapshot: PersistenceSnapshot,
     if (!summary) recordIssue('attemptSummaries', attempt.id, 'ATTEMPT_SUMMARY_MISSING', 'The authoritative PerformanceAttempt has no derived summary.')
     else if (!semanticEqual(summary, createAttemptSummary(attempt))) recordIssue('attemptSummaries', attempt.id, 'ATTEMPT_SUMMARY_MISMATCH', 'The derived summary does not exactly match its authoritative PerformanceAttempt.')
   }
-  for (const summary of snapshot.attemptSummaries) if (!attempts.has(summary.id)) recordIssue('attemptSummaries', summary.id, 'ATTEMPT_SUMMARY_ORPHAN', 'The summary has no authoritative PerformanceAttempt.')
-  for (const attempt of snapshot.techniqueAttempts) {
+  for (const summary of attemptSummaryRecords) if (!attempts.has(summary.id)) recordIssue('attemptSummaries', summary.id, 'ATTEMPT_SUMMARY_ORPHAN', 'The summary has no authoritative PerformanceAttempt.')
+  for (const attempt of techniqueAttemptRecords) {
     const summary = techniqueSummaries.get(attempt.id)
     if (!summary) recordIssue('techniqueAttemptSummaries', attempt.id, 'TECHNIQUE_SUMMARY_MISSING', 'The authoritative TechniqueAttempt has no derived summary.')
     else if (!semanticEqual(summary, createTechniqueAttemptSummary(attempt))) recordIssue('techniqueAttemptSummaries', attempt.id, 'TECHNIQUE_SUMMARY_MISMATCH', 'The derived summary does not exactly match its authoritative TechniqueAttempt.')
   }
-  for (const summary of snapshot.techniqueAttemptSummaries) if (!techniqueAttempts.has(summary.id)) recordIssue('techniqueAttemptSummaries', summary.id, 'TECHNIQUE_SUMMARY_ORPHAN', 'The summary has no authoritative TechniqueAttempt.')
-  for (const arrangement of snapshot.arrangements) {
+  for (const summary of techniqueSummaryRecords) if (!techniqueAttempts.has(summary.id)) recordIssue('techniqueAttemptSummaries', summary.id, 'TECHNIQUE_SUMMARY_ORPHAN', 'The summary has no authoritative TechniqueAttempt.')
+  for (const arrangement of arrangementRecords) {
     const preferences = arrangement.analysisPreferences
     if (!preferences) continue
     for (const [scoreVersionId, profile] of Object.entries(preferences.voicingByScoreVersion)) {
@@ -917,7 +955,16 @@ export async function validatePersistenceSnapshot(snapshot: PersistenceSnapshot,
       if (!version || version.arrangementId !== arrangement.id || !attempt || attempt.arrangementId !== arrangement.id || attempt.scoreVersionId !== scoreVersionId) recordIssue('arrangements', arrangement.id, 'INVALID_REFERENCE_PREFERENCE', `Reference preference ${attemptId} is missing or incompatible with ScoreVersion ${scoreVersionId}.`)
     }
   }
-  return finishReport()
+  return { report: finishReport(), hasSummaryIssue }
+}
+
+export async function validatePersistenceSnapshot(snapshot: PersistenceSnapshot, checkedAt: string): Promise<IntegrityReport> {
+  const current = await validatePersistenceSnapshotCore(snapshot, checkedAt)
+  if (current.report.status === 'healthy' || !current.hasSummaryIssue) return current.report
+  const candidate = buildSummaryRepairCandidate(snapshot)
+  if (!candidate) return current.report
+  const candidateResult = await validatePersistenceSnapshotCore(candidate, checkedAt)
+  return Object.freeze({ ...current.report, summaryOnlyRepairable: candidateResult.report.status === 'healthy' })
 }
 
 function compareIsoDescending(left: { performedAt: string; id: string }, right: { performedAt: string; id: string }): number {
@@ -1761,11 +1808,14 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
 
   async rebuildDerivedSummaries(): Promise<IntegrityReport> {
     const snapshot = await this.readSnapshot()
-    const report = await validatePersistenceSnapshot(snapshot, this.now().toISOString())
-    if (report.status === 'healthy') return report
-    if (!report.summaryOnlyRepairable) throw new PianoStorageError('CORRUPT_RECORD', 'Derived summaries cannot be rebuilt because authoritative or non-summary data has integrity issues.')
-    for (const attempt of snapshot.performanceAttempts) assertAttempt(attempt)
-    for (const attempt of snapshot.techniqueAttempts) assertTechniqueAttempt(attempt)
+    const checkedAt = this.now().toISOString()
+    const current = await validatePersistenceSnapshotCore(snapshot, checkedAt)
+    if (current.report.status === 'healthy') return current.report
+    if (!current.hasSummaryIssue) throw new PianoStorageError('CORRUPT_RECORD', 'Derived summaries cannot be rebuilt because the database has no summary-only repair target.')
+    const candidate = buildSummaryRepairCandidate(snapshot)
+    if (!candidate) throw new PianoStorageError('CORRUPT_RECORD', 'Derived summaries cannot be rebuilt because an authoritative attempt is corrupt.')
+    const candidateValidation = await validatePersistenceSnapshotCore(candidate, checkedAt)
+    if (candidateValidation.report.status !== 'healthy') throw new PianoStorageError('CORRUPT_RECORD', 'Derived summaries cannot be rebuilt because the complete hypothetical repaired database still has integrity issues.')
     const database = await this.openDatabase()
     const transaction = database.transaction([STORE.summaries, STORE.techniqueSummaries], 'readwrite')
     const completion = transactionComplete(transaction)
@@ -1773,16 +1823,18 @@ export class IndexedDbPianoProgressRepository implements PianoProgressRepository
       const summaries = transaction.objectStore(STORE.summaries)
       const techniqueSummaries = transaction.objectStore(STORE.techniqueSummaries)
       await Promise.all([requestValue(summaries.clear()), requestValue(techniqueSummaries.clear())])
-      for (const attempt of snapshot.performanceAttempts) await requestValue(summaries.put(createAttemptSummary(attempt)))
-      for (const attempt of snapshot.techniqueAttempts) await requestValue(techniqueSummaries.put(createTechniqueAttemptSummary(attempt)))
+      for (const summary of candidate.attemptSummaries) await requestValue(summaries.put(summary))
+      for (const summary of candidate.techniqueAttemptSummaries) await requestValue(techniqueSummaries.put(summary))
       await completion
-      this.notify()
-      return this.verifyIntegrity()
     } catch (cause) {
       try { transaction.abort() } catch { /* transaction already aborted or completed */ }
       try { await completion } catch { /* preserve original error */ }
       throw asPianoStorageError(cause, 'Derived summaries could not be rebuilt.')
     }
+    const finalReport = await this.verifyIntegrity()
+    if (finalReport.status !== 'healthy') throw new PianoStorageError('CORRUPT_RECORD', 'Derived summaries were rebuilt, but final database integrity verification did not pass.')
+    this.notify()
+    return finalReport
   }
 
   async clearAll(): Promise<void> {

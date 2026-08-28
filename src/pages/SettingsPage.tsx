@@ -13,6 +13,7 @@ import { useAppearance } from '../features/preferences/AppearanceContext'
 import type { RequestedAppearance, ScoreAppearance } from '../features/preferences/appearance'
 import type { IntegrityReport, ValidatedBackup } from '../features/persistence/backup'
 import { asPianoStorageError } from '../features/persistence/errors'
+import { summaryRepairPresentation } from '../features/persistence/repairPresentation'
 
 export function SettingsPage() {
   const midi = useMidi()
@@ -92,7 +93,8 @@ export function SettingsPage() {
     setSafetyBusy('repair'); setSafetyError(null); setSafetyMessage(null)
     try {
       const report = await persistence.repository.rebuildDerivedSummaries()
-      setIntegrity(report); setSafetyMessage('Derived summaries rebuilt and integrity verified.')
+      const presentation = summaryRepairPresentation(report)
+      setIntegrity(report); setSafetyMessage(presentation.message); setSafetyError(presentation.error)
     } catch (cause) { setSafetyError(asPianoStorageError(cause).message) } finally { setSafetyBusy(null) }
   }
   return (

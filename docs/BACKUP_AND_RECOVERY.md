@@ -24,7 +24,7 @@ Appearance preferences, an unsaved take, the active in-memory PracticeSession, P
 
 ## Verify and export
 
-Opening IndexedDB is not an integrity check. Settings begins each app session at **Not verified this session**. **Verify integrity** reads one coherent all-store snapshot without mutation and applies the same deep historical validators used by repository reads, plus cross-store identity, score hash/parser, part-selection, session linkage, summary equivalence, Voicing preference, reference preference, and Technique engine-pair checks.
+Opening IndexedDB is not an integrity check. Settings begins each app session at **Not verified this session**. **Verify integrity** reads one coherent all-store snapshot without mutation and applies the same deep historical validators used by repository reads, plus cross-store identity, score hash/parser, part-selection, session linkage, summary equivalence, Voicing preference, reference preference, and Technique engine-pair checks. It also rejects multiple Repertoire entries for one Arrangement and repeated attempt IDs inside one PracticeSession.
 
 Export uses one readonly transaction across all nine stores. Clef validates that coherent snapshot before creating the digest, envelope, Blob, and download. Error-level corruption fails closed with: `Backup not created because local data did not pass integrity verification.` No local record is changed.
 
@@ -38,7 +38,7 @@ V1 does not guess or migrate future backup formats or persistence schemas.
 
 ## Narrow summary repair
 
-AttemptSummaries and TechniqueAttemptSummaries are deterministic query projections. If and only if verification finds summary-only missing, mismatched, malformed, or orphan records, Settings may offer **Rebuild derived summaries**. Clef first validates authoritative PerformanceAttempts and TechniqueAttempts, then transactionally replaces only the two summary stores using `createAttemptSummary` and `createTechniqueAttemptSummary`.
+AttemptSummaries and TechniqueAttemptSummaries are deterministic query projections. If and only if verification finds summary corruption and proves that replacing both summary families would make the complete hypothetical snapshot healthy, Settings may offer **Rebuild derived summaries**. Clef independently rebuilds that candidate in memory, fully validates every record and relationship, and only then transactionally replaces the two summary stores using `createAttemptSummary` and `createTechniqueAttemptSummary`. A successful repair returns only after final database verification is healthy.
 
 Repair never reruns alignment, grading, timing, expression, pedal, voicing, reference comparison, or Technique analysis. It never changes scores, sessions, attempts, repertoire metadata, raw MIDI, or immutable history. Authoritative corruption refuses repair.
 

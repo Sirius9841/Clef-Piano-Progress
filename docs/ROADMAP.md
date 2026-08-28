@@ -112,6 +112,10 @@ Clef now has deterministic lossless local backup format `1`, SHA-256 payload int
 
 Clef is a **V1 release candidate**, not a publicly released product. Real MIDI hardware and final manual checklist acceptance remain pending release gates.
 
+## Phase 15.1.1 — Final Recovery Integrity Closure — complete
+
+Summary repairability is now proven from a fully validated hypothetical post-repair snapshot rather than inferred from the currently visible issue families. The repair write path repeats that fail-before-mutation proof and returns only a healthy final report. Backup inspection also enforces unique logical Repertoire membership and unique attempt IDs within each PracticeSession. Schema `4`, backup format `clef-local-backup` version `1`, all historical record families, and every musical engine/model version remain unchanged.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

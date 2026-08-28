@@ -71,12 +71,23 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error); transaction.onabort = () => reject(transaction.error) })
 }
 
-async function putRaw(databaseName: string, storeName: 'techniqueAttempts' | 'techniqueAttemptSummaries', value: unknown): Promise<void> {
+const logicalStores = ['works', 'arrangements', 'scoreVersions', 'repertoire', 'practiceSessions', 'performanceAttempts', 'attemptSummaries', 'techniqueAttempts', 'techniqueAttemptSummaries'] as const
+
+async function putRaw(databaseName: string, storeName: typeof logicalStores[number], value: unknown): Promise<void> {
   const database = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open(databaseName); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
   const transaction = database.transaction(storeName, 'readwrite')
   transaction.objectStore(storeName).put(value)
   await transactionDone(transaction)
   database.close()
+}
+
+async function readAllLogicalStores(databaseName: string): Promise<Record<typeof logicalStores[number], readonly unknown[]>> {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open(databaseName); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
+  const transaction = database.transaction(logicalStores, 'readonly')
+  const entries = await Promise.all(logicalStores.map((storeName) => new Promise<readonly unknown[]>((resolve, reject) => { const request = transaction.objectStore(storeName).getAll(); request.onsuccess = () => resolve(request.result as unknown[]); request.onerror = () => reject(request.error) })))
+  await transactionDone(transaction)
+  database.close()
+  return Object.fromEntries(logicalStores.map((storeName, index) => [storeName, entries[index]])) as Record<typeof logicalStores[number], readonly unknown[]>
 }
 
 async function deleteRaw(databaseName: string, storeName: 'techniqueAttempts' | 'techniqueAttemptSummaries', id: string): Promise<void> {
@@ -114,6 +125,33 @@ describe('Technique persistence', () => {
     await expect(repository.rebuildDerivedSummaries()).resolves.toMatchObject({ status: 'healthy' })
     expect(await repository.getTechniqueAttempt(saved.id)).toEqual(before)
     expect(await repository.listTechniqueAttemptSummaries()).toEqual([createTechniqueAttemptSummary(saved)])
+  })
+
+  it('repairs a pure malformed Technique summary and preserves the authoritative attempt exactly', async () => {
+    const name = 'technique-malformed-summary-repair'
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: name })
+    const saved = attempt('technique-repair:malformed', 'repair-malformed')
+    await repository.saveTechniqueAttempt(saved)
+    const authoritativeBefore = structuredClone(await repository.getTechniqueAttempt(saved.id))
+    await putRaw(name, 'techniqueAttemptSummaries', { id: saved.id })
+    await expect(repository.verifyIntegrity()).resolves.toMatchObject({ status: 'issues-found', summaryOnlyRepairable: true })
+    await expect(repository.rebuildDerivedSummaries()).resolves.toMatchObject({ status: 'healthy', summaryOnlyRepairable: false })
+    expect(await repository.getTechniqueAttempt(saved.id)).toEqual(authoritativeBefore)
+  })
+
+  it('classifies malformed Technique summary plus a missing linked Work as non-repairable and mutates no store', async () => {
+    const name = 'technique-mixed-summary-corruption'
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: name })
+    const saved = attempt('technique-repair:mixed', 'repair-mixed')
+    await repository.saveTechniqueAttempt(saved)
+    await putRaw(name, 'techniqueAttemptSummaries', { id: saved.id })
+    await putRaw(name, 'arrangements', { id: 'orphan-arrangement', workId: 'missing-work', name: 'Orphan', difficulty: 'Intermediate', source: 'user-imported', includedPartIds: ['P1'], createdAt: '2026-08-28T12:00:00.000Z', updatedAt: '2026-08-28T12:00:00.000Z' })
+    const before = await readAllLogicalStores(name)
+    const report = await repository.verifyIntegrity()
+    expect(report).toMatchObject({ status: 'issues-found', summaryOnlyRepairable: false })
+    expect(report.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(['MALFORMED_RECORD', 'MISSING_WORK']))
+    await expect(repository.rebuildDerivedSummaries()).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+    expect(await readAllLogicalStores(name)).toEqual(before)
   })
 
   it('refuses summary repair when an authoritative Technique attempt is corrupt', async () => {

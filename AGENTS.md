@@ -276,6 +276,8 @@ This repository builds a serious piano progress and performance-analysis applica
 - Export reads one coherent all-store snapshot and fails closed on error-level integrity issues. Restore validates before mutation, replaces all stores in one transaction, and clears in-memory Practice state only after commit.
 - Integrity verification reuses authoritative deep record validators and adds cross-store, score hash/parser/identity, exact part selection, session linkage, summary, Voicing preference, and reference preference checks.
 - The only repair operation may transactionally rebuild AttemptSummaries and TechniqueAttemptSummaries from valid authoritative attempts. Never regrade, reanalyze, or mutate frozen records.
+- Summary repairability is true only when replacing both summary families with exact derivations makes the complete hypothetical snapshot healthy; rebuild must prove that state independently before mutation and return only a healthy final report.
+- Backup and database integrity reject duplicate logical Repertoire membership for one Arrangement and duplicate attempt IDs inside one PracticeSession.
 - Removing Repertoire membership preserves all history. Clear All and restore replacement require accessible, truthful confirmations; never make a backup or recovery success claim before completion.
 - Clef V1 remains a release candidate until real MIDI hardware and the manual release checklist pass. Automated/simulated MIDI tests never justify a real-device claim.
 
