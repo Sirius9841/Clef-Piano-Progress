@@ -7,6 +7,8 @@ import { analyzeVoicing } from '../../voicing-analysis/analyzeVoicing'
 import { buildInterpretationProfile } from '../../reference-comparison/interpretationProfile'
 import { compareInterpretations } from '../../reference-comparison/compareInterpretations'
 import { ZERO_TIME } from '../../musicxml/musicalTime'
+import { parseMusicXml } from '../../musicxml/parser'
+import { buildExpectedPerformancePlan } from '../../expected-performance/builder'
 import type { PedalAnalysisResult } from '../../pedal-analysis/types'
 import { clearCurrentTake } from '../../practice/takeWorkspace'
 import { PERSISTENCE_SCHEMA_VERSION, type PerformanceAttemptRecord, type PerformanceAttemptRecordV2, type PerformanceAttemptRecordV3, type PerformanceAttemptRecordV4, type PracticeSessionRecord } from '../types'
@@ -249,6 +251,49 @@ function createLegacyV3Database(name: string): Promise<void> {
 }
 
 describe('IndexedDbPianoProgressRepository', () => {
+  it('backs up frozen PerformanceAttempt V1 through V4 snapshots losslessly', async () => {
+    const xml = `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><staff>1</staff></note><note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><staff>1</staff></note></measure></part></score-partwise>`
+    const score = parseMusicXml(xml)
+    const plan = buildExpectedPerformancePlan(score, { includedPartIds: ['P1'], fallbackQuarterBpm: 120 })
+    const repo = repository('backup-performance-versions')
+    const imported = await repo.importScore({ ...importInput(xml), normalizedScoreId: score.id, parserVersion: 'musicxml-parser-1.2.0' })
+    const records: PerformanceAttemptRecord[] = []
+    for (const schemaVersion of [1, 2, 3, 4] as const) {
+      const recordingBase = recordingForPlan(plan)
+      const recording = schemaVersion >= 3 ? { ...recordingBase, initialSustain: { observed: false, down: null, value: null } as const } : recordingBase
+      const analysis = analyzeResult(plan, recording)
+      const performedAt = `2026-08-2${schemaVersion}T10:00:00.000Z`
+      const sessionId = `backup-session-v${schemaVersion}`
+      const base = {
+        id: `backup-attempt-v${schemaVersion}`, arrangementId: imported.arrangement.id, scoreVersionId: imported.scoreVersion.id, practiceSessionId: sessionId,
+        performedAt, practiceSpeedMultiplier: 1, gradingScope: 'full-plan' as const, includedPartIds: ['P1'], expectedPerformancePlan: plan,
+        recording, alignment: analysis.alignment, noteGrading: analysis.noteGrading, timingAnalysis: analysis.timingAnalysis, performanceResults: analysis.results,
+      }
+      const baseVersions = { alignment: analysis.alignment.diagnostics.alignmentEngineVersion, noteGrading: analysis.noteGrading.diagnostics.noteGradingEngineVersion, timingAnalysis: analysis.timingAnalysis.diagnostics.timingAnalysisEngineVersion, resultAggregation: analysis.results.diagnostics.resultAggregationVersion }
+      let attempt: PerformanceAttemptRecord
+      if (schemaVersion === 1) attempt = { ...base, schemaVersion, engineVersions: baseVersions }
+      else {
+        const expressionAnalysis = analyzeExpression({ normalizedScore: score, expectedPlan: plan, recording, alignment: analysis.alignment, noteGrading: analysis.noteGrading })
+        if (schemaVersion === 2) attempt = { ...base, schemaVersion, expressionAnalysis, engineVersions: { ...baseVersions, expressionAnalysis: expressionAnalysis.diagnostics.expressionAnalysisEngineVersion } }
+        else {
+          const pedalAnalysis = analyzePedal({ normalizedScore: score, expectedPlan: plan, recording, alignment: analysis.alignment, noteGrading: analysis.noteGrading, expressionAnalysis })
+          if (schemaVersion === 3) attempt = { ...base, schemaVersion, expressionAnalysis, pedalAnalysis, engineVersions: { ...baseVersions, expressionAnalysis: expressionAnalysis.diagnostics.expressionAnalysisEngineVersion, pedalAnalysis: pedalAnalysis.diagnostics.pedalAnalysisEngineVersion } }
+          else {
+            const voicingAnalysis = analyzeVoicing({ normalizedScore: score, scoreVersionId: imported.scoreVersion.id, expectedPlan: plan, recording, alignment: analysis.alignment, noteGrading: analysis.noteGrading, expressionAnalysis, intentProfile: null })
+            const current = buildInterpretationProfile({ attemptId: base.id, arrangementId: imported.arrangement.id, scoreVersionId: imported.scoreVersion.id, includedPartIds: ['P1'], performedAt, practiceSpeed: 1, schemaVersion: 4, recordingId: recording.id, fullPlanStart: ZERO_TIME, fullPlanEnd: plan.statistics.totalScoreDuration, expectedGroupPositions: plan.onsetGroups.map((group) => ({ id: group.id, position: group.position })), timingAnalysis: analysis.timingAnalysis, expressionAnalysis, pedalAnalysis, voicingAnalysis, engineVersions: { ...baseVersions, expressionAnalysis: expressionAnalysis.diagnostics.expressionAnalysisEngineVersion, pedalAnalysis: pedalAnalysis.diagnostics.pedalAnalysisEngineVersion, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion } })
+            const referenceComparison = compareInterpretations({ current, reference: null, currentVoicingAnalysisId: voicingAnalysis.id })
+            attempt = { ...base, schemaVersion, expressionAnalysis, pedalAnalysis, voicingAnalysis, referenceComparison, engineVersions: { ...baseVersions, expressionAnalysis: expressionAnalysis.diagnostics.expressionAnalysisEngineVersion, pedalAnalysis: pedalAnalysis.diagnostics.pedalAnalysisEngineVersion, voicingAnalysis: voicingAnalysis.diagnostics.voicingAnalysisEngineVersion, referenceComparison: referenceComparison.diagnostics.referenceComparisonEngineVersion } }
+          }
+        }
+      }
+      const session: PracticeSessionRecord = { id: sessionId, arrangementId: imported.arrangement.id, scoreVersionId: imported.scoreVersion.id, startedAt: performedAt, endedAt: new Date(new Date(performedAt).getTime() + recording.durationMs).toISOString(), durationMs: recording.durationMs, attemptIds: [attempt.id] }
+      await repo.saveAttempt({ attempt, session }); records.push(attempt)
+    }
+    const exported = await repo.createBackup()
+    expect(exported.envelope.payload.performanceAttempts).toEqual(records)
+    expect(exported.envelope.payload.performanceAttempts.map((attempt) => attempt.schemaVersion)).toEqual([1, 2, 3, 4])
+    await expect(repo.inspectBackup(exported.json)).resolves.toMatchObject({ integrity: { status: 'healthy' } })
+  })
   it('initializes a fresh versioned database and starts empty', async () => {
     const repo = repository('fresh-db')
     await repo.initialize()

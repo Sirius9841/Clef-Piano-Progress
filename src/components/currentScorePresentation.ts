@@ -10,6 +10,10 @@ export function latestAttemptForScoreVersion(attempts: readonly AttemptSummary[]
   return [...attemptsForScoreVersion(attempts, scoreVersionId)].sort((left, right) => right.performedAt.localeCompare(left.performedAt) || left.id.localeCompare(right.id))[0] ?? null
 }
 
+export function latestCurrentAttemptForRepertoireItem(item: Pick<RepertoireListItem, 'arrangement' | 'scoreVersion'>, attempts: readonly AttemptSummary[]): AttemptSummary | null {
+  return latestAttemptForScoreVersion(attempts.filter((attempt) => attempt.arrangementId === item.arrangement.id), item.scoreVersion.id)
+}
+
 export function currentScorePersonalBestEvents(
   events: readonly PersonalBestHistoryEvent[],
   attempts: readonly AttemptSummary[],

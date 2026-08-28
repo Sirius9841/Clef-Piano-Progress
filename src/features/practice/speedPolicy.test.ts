@@ -15,4 +15,10 @@ describe('practice speed policy', () => {
     expect(resolvePracticeSpeedChange(0.75, 1, 'idle')).toBe(1)
     expect(capturedTakeSpeed(null, 1)).toBe(1)
   })
+
+  it('preserves an exact planner-provided 85% target and captured speed', () => {
+    const recording = { practiceContext: { speedMultiplier: 0.85 } } as PerformanceRecording
+    expect(resolvePracticeSpeedChange(0.85, 0.85, 'idle')).toBe(0.85)
+    expect(capturedTakeSpeed(recording, 1)).toBe(0.85)
+  })
 })

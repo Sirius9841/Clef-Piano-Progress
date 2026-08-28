@@ -43,3 +43,9 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 Unavailable evidence is never displayed as zero. Empty repertoire, missing attempts, absent Technique evidence, unconfigured Voicing, unavailable authored Pedal targets, absent planner recommendations, malformed imports, and repository failures use explicit factual states. Recovery and backup success are not claimed without real infrastructure.
 
 Controls use native link, button, radio, select, and dialog semantics. Icon-only controls have names, destructive clearing uses a focus-managed confirmation dialog, focus indicators are visible, disabled controls remain distinguishable, and information is never color-only. V1 is intentionally desktop-first and verified at 1440×900, 1280×800, and 1024×768 without horizontal overflow.
+
+## Local Data and release recovery
+
+Settings is the V1 safety surface. It reports browser-local location and real counts, begins at **Not verified this session**, and exposes explicit verify, export, inspect/restore, conditionally available summary repair, and Clear All actions. Backup files are keyboard-selectable and described as unencrypted. Restore previews use semantic headings and state plainly that restore replaces the current local database before the focus-managed confirmation appears.
+
+Remove from Repertoire uses the shared accessible dialog and distinguishes membership removal from deletion. Clear All may offer **Export backup first** when records exist but never forces or fabricates a backup. Unexpected route errors retain a recoverable application screen. Planner-provided non-preset speeds remain exact and visibly appear as `Current · 85%`; current-context Home cards use only exact-current-ScoreVersion results. Long histories reveal older rows incrementally without truncating storage.

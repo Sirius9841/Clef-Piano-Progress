@@ -8,10 +8,14 @@ import { deriveAllSkillRatings } from '../features/skill-model'
 import { SkillRatingsPanel } from '../components/Phase13Panels'
 import type { TechniqueAttemptSummary } from '../features/persistence/types'
 import type { SkillRating } from '../features/skill-model'
+import { useState } from 'react'
+
+const TECHNIQUE_HISTORY_PAGE_SIZE = 40
 
 const icons = { 'sight-reading': Eye, rhythm: Activity, 'chord-fluency': Blocks, scales: Layers3, arpeggios: MoveHorizontal, octaves: Gauge, 'keyboard-jumps': ArrowRight, 'tempo-control': TimerReset } as const
 
 export function TechniquePage() {
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(TECHNIQUE_HISTORY_PAGE_SIZE)
   const history = useRepositoryQuery<{ readonly attempts: readonly TechniqueAttemptSummary[]; readonly skills: readonly SkillRating[] }>(async (repository) => { const attempts = await repository.listTechniqueAttemptSummaries(); return { attempts, skills: deriveAllSkillRatings(attempts, new Date().toISOString()) } }, 'technique-home')
   const attempts = history.status === 'ready' ? history.data.attempts : []
   return (
@@ -24,7 +28,7 @@ export function TechniquePage() {
         return <article className="technique-card" key={module.id}><div className="technique-card-top"><span className="module-icon"><Icon /></span><StatusPill>{count} saved</StatusPill></div><h2>{module.name}</h2><p>{module.description}</p><div className="rating-row"><span>Independent evidence</span><strong>{module.facets.length} facets</strong></div><small>{module.facets.join(' · ')}</small><Link className="button secondary" to={`/technique/${module.id}`}><Play size={14} /> Open workspace</Link></article>
       })}</div>
       {history.status === 'ready' && <SkillRatingsPanel skills={history.data.skills} />}
-      {attempts.length > 0 && <section className="panel technique-history"><div className="section-heading"><div><span>Saved locally</span><h2>Recent Technique takes</h2></div></div>{attempts.slice(0, 8).map((attempt) => <Link to={`/technique/history/${attempt.id}`} className="technique-history-row" key={attempt.id}><span><strong>{TECHNIQUE_MODULES.find((item) => item.id === attempt.moduleId)?.name}</strong><small>{new Date(attempt.performedAt).toLocaleString()}</small></span><span>{Math.round(techniqueSummaryCoverageRatio(attempt) * 100)}% {'schemaVersion' in attempt ? 'event coverage' : 'reached'}</span><ArrowRight size={15} /></Link>)}</section>}
+      {attempts.length > 0 && <section className="panel technique-history"><div className="section-heading"><div><span>Saved locally</span><h2>Technique history</h2></div></div>{attempts.slice(0, visibleHistoryCount).map((attempt) => <Link to={`/technique/history/${attempt.id}`} className="technique-history-row" key={attempt.id}><span><strong>{TECHNIQUE_MODULES.find((item) => item.id === attempt.moduleId)?.name}</strong><small>{new Date(attempt.performedAt).toLocaleString()}</small></span><span>{Math.round(techniqueSummaryCoverageRatio(attempt) * 100)}% {'schemaVersion' in attempt ? 'event coverage' : 'reached'}</span><ArrowRight size={15} /></Link>)}{visibleHistoryCount < attempts.length && <button className="button secondary history-load-more" onClick={() => setVisibleHistoryCount((value) => value + TECHNIQUE_HISTORY_PAGE_SIZE)}>Load older Technique takes</button>}</section>}
     </div>
   )
 }

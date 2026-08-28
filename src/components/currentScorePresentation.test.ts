@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PersistedArrangement, RepertoireListItem } from '../features/persistence/types'
 import { attemptFixture } from '../features/practice-planning/__tests__/fixtures'
-import { boundedRecentRepertoire, currentInterpretationStatus, currentScorePersonalBestEvents, latestAttemptForScoreVersion } from './currentScorePresentation'
+import { boundedRecentRepertoire, currentInterpretationStatus, currentScorePersonalBestEvents, latestAttemptForScoreVersion, latestCurrentAttemptForRepertoireItem } from './currentScorePresentation'
 
 const olderCurrent = attemptFixture('current', { arrangementId: 'arrangement-1', scoreVersionId: 'score-v2', performedAt: '2026-08-20T12:00:00.000Z' }).summary
 const newerHistorical = attemptFixture('historical', { arrangementId: 'arrangement-1', scoreVersionId: 'score-v1', performedAt: '2026-08-27T12:00:00.000Z' }).summary
@@ -10,6 +10,12 @@ describe('current ScoreVersion presentation boundaries', () => {
   it('never borrows a newer result from an older ScoreVersion', () => {
     expect(latestAttemptForScoreVersion([newerHistorical, olderCurrent], 'score-v2')?.id).toBe('current')
     expect(latestAttemptForScoreVersion([newerHistorical], 'score-v2')).toBeNull()
+  })
+
+  it('keeps Home continue-card evidence on the exact current ScoreVersion', () => {
+    const item = { arrangement: { id: 'arrangement-1' }, scoreVersion: { id: 'score-v2' } } as RepertoireListItem
+    expect(latestCurrentAttemptForRepertoireItem(item, [newerHistorical, olderCurrent])?.id).toBe('current')
+    expect(latestCurrentAttemptForRepertoireItem(item, [newerHistorical])).toBeNull()
   })
 
   it('filters personal-best events through exact attempt identity', () => {

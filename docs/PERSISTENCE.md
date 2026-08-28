@@ -15,6 +15,8 @@ Database-open promises are cached only while pending or successfully usable. A r
 | `practiceSessions` | One completed practice visit with one or more attempts | `arrangementId`, `startedAt`, `endedAt` |
 | `performanceAttempts` | Raw MIDI, expected plan, analysis snapshots, engine versions | arrangement, score version, session, date |
 | `attemptSummaries` | Rebuildable lightweight query projection | arrangement, score version, session, date |
+| `techniqueAttempts` | Immutable generated-exercise, recording, and analysis snapshots | module, exercise instance, date |
+| `techniqueAttemptSummaries` | Rebuildable lightweight Technique query projection | module, exercise instance, date |
 
 The summary store prevents Home, Repertoire, and Progress from deserializing raw MIDI and full measure maps. It is written in the same transaction as its source attempt and is never the sole source of a historical result. Date-range Progress reads use the `performedAt` and `endedAt` indexes; Repertoire fetches summaries and sessions only for active Arrangement IDs.
 
@@ -59,3 +61,11 @@ Repertoire status is user-controlled metadata. Updating it validates the allowed
 Phase 14 adds no persistence. `PERSISTENCE_SCHEMA_VERSION` remains `4`; the existing stores and PerformanceAttempt V1–V4 / TechniqueAttempt V1–V2 record families remain unchanged. No recommendation, PracticePlan, Mastery snapshot, or Skill snapshot is stored.
 
 The planner first selects lightweight summaries for the exact Arrangement/current ScoreVersion, latest 8 sessions, and latest 3 attempts per session, then loads at most 24 authoritative full attempts through `PianoProgressRepository.getAttempt`. Missing, unreadable, mismatched, future, provisional, incompatible, or corrupt evidence is excluded explicitly. Historical PerformanceResults and their Phase 7 Practice Priority remain immutable and are never regraded or repaired.
+
+## V1 data safety boundary
+
+Phase 15.1 adds no store and no migration. Schema `4`, PerformanceAttempt V1–V4, TechniqueAttempt V1–V2, and every musical engine/model version remain unchanged. The separate `clef-local-backup` format is version `1`.
+
+The adapter reads all nine stores in one readonly transaction for verification/export. Existing deep record validators remain authoritative; the integrity verifier adds relationships, ScoreVersion hash/parser/normalized-score/part identity, PracticeSession bidirectional attempt linkage, exact derived summaries, and ScoreVersion-specific Voicing/reference preference checks. Opening the database alone never produces a healthy claim.
+
+Restore accepts only a fully inspected current-format/current-schema backup. One readwrite transaction clears and replaces every store, so an abort retains the exact previous database. After successful completion, an explicit post-commit hook clears the pre-restore in-memory PracticeSession, then the repository notifies subscribers and rereads counts. Summary recovery is deliberately restricted to transactional regeneration of the two summary stores after authoritative attempts pass validation. See `BACKUP_AND_RECOVERY.md`.

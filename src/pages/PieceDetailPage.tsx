@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarDays, FileMusic, History, Layers3, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, PageHeader, SectionHeading, Stat } from '../components/ui'
 import { ArrangementMasteryPanel } from '../components/Phase13Panels'
@@ -16,6 +16,10 @@ import type { ArrangementMastery } from '../features/mastery-model'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
 import { PracticeLaunchButton } from '../components/PracticeLaunchButton'
 import { attemptsForScoreVersion, currentInterpretationStatus } from '../components/currentScorePresentation'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { boundedHistoryWindow, nextHistoryWindowSize } from '../components/boundedHistory'
+
+const HISTORY_PAGE_SIZE = 50
 
 interface PieceData {
   readonly item: RepertoireListItem | null
@@ -39,6 +43,10 @@ export function PieceDetailPage() {
   const persistence = usePersistence()
   const [actionError, setActionError] = useState<string | null>(null)
   const [mutationState, setMutationState] = useState<'idle' | 'saving'>('idle')
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [historyWindow, setHistoryWindow] = useState({ arrangementId, count: HISTORY_PAGE_SIZE })
+  const visibleAttemptCount = historyWindow.arrangementId === arrangementId ? historyWindow.count : HISTORY_PAGE_SIZE
+  const closeRemoveDialog = useCallback(() => setConfirmRemove(false), [])
   const state = useRepositoryQuery<PieceData>(async (repository) => {
     const [items, attempts, scoreVersions] = await Promise.all([repository.listRepertoire(), repository.listAttemptSummaries(arrangementId), repository.listScoreVersions(arrangementId)])
     return { item: items.find((candidate) => candidate.arrangement.id === arrangementId) ?? null, attempts, scoreVersions, asOf: new Date().toISOString() }
@@ -57,8 +65,6 @@ export function PieceDetailPage() {
 
   const remove = async () => {
     if (!item || !persistence.repository) return
-    const confirmed = window.confirm(`Remove “${item.work.title}” from Repertoire? Its score versions, sessions, and performance history will be preserved.`)
-    if (!confirmed) return
     setActionError(null)
     setMutationState('saving')
     const result = await removeRepertoireSafely(persistence.repository, item.arrangement.id)
@@ -120,11 +126,20 @@ export function PieceDetailPage() {
 
       <section className="panel history-panel reveal delay-2">
         <SectionHeading title="Performance history" subtitle="Saved attempts retain the exact score, MIDI recording, and analysis snapshots" />
-        {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <div className="attempt-history-list">{attempts.map((attempt) => { const version = scoreVersionNumberForAttempt(attempt, data?.scoreVersions ?? []); const compatible = attempt.scoreVersionId === item.scoreVersion.id; const selected = item.arrangement.analysisPreferences?.referenceByScoreVersion[item.scoreVersion.id] === attempt.id; return <div key={attempt.id} className="attempt-history-shell"><Link to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>{version === null ? 'Score version unavailable' : `Score v${version}`} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link><Button variant="ghost" disabled={!compatible || mutationState === 'saving'} onClick={() => void setReference(attempt)}>{selected ? 'Current reference' : compatible ? 'Use as interpretation reference' : 'Different ScoreVersion'}</Button></div> })}</div>}
+        {attempts.length === 0 ? <div className="take-empty">No saved attempts yet. Record, analyze, and explicitly save a take from Practice.</div> : <>
+          <div className="attempt-history-list">{boundedHistoryWindow(attempts, visibleAttemptCount).map((attempt) => {
+            const version = scoreVersionNumberForAttempt(attempt, data?.scoreVersions ?? [])
+            const compatible = attempt.scoreVersionId === item.scoreVersion.id
+            const selected = item.arrangement.analysisPreferences?.referenceByScoreVersion[item.scoreVersion.id] === attempt.id
+            return <div key={attempt.id} className="attempt-history-shell"><Link to={`/history/${attempt.id}`} className="attempt-history-row"><div><strong>{formatDate(attempt.performedAt)}</strong><span>{version === null ? 'Score version unavailable' : `Score v${version}`} · {Math.round(attempt.practiceSpeedMultiplier * 100)}% · {attempt.gradingScope === 'full-plan' ? 'Full score' : 'Played section'}</span></div><div><span>Notes <strong>{formatPercent(attempt.notes)}</strong></span><span>Rhythm <strong>{formatPercent(attempt.rhythm)}</strong></span><span>Tempo <strong>{formatPercent(attempt.tempo)}</strong></span></div></Link><Button variant="ghost" disabled={!compatible || mutationState === 'saving'} onClick={() => void setReference(attempt)}>{selected ? 'Current reference' : compatible ? 'Use as interpretation reference' : 'Different ScoreVersion'}</Button></div>
+          })}</div>
+          {visibleAttemptCount < attempts.length && <button className="button secondary history-load-more" onClick={() => setHistoryWindow({ arrangementId, count: nextHistoryWindowSize(visibleAttemptCount, attempts.length, HISTORY_PAGE_SIZE) })}>Load older attempts</button>}
+        </>}
       </section>
 
       <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire status</strong><p>This user-controlled status changes only active Repertoire membership metadata; score versions and history remain immutable.</p></div><label className="select-field"><span>Current status</span><select value={item.repertoire.status} disabled={mutationState === 'saving'} onChange={(event) => void updateStatus(event.target.value as RepertoireStatus)}>{REPERTOIRE_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label></section>
-      <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire membership</strong><p>Removing this arrangement hides it from active repertoire while preserving its immutable score and history.</p></div><Button variant="ghost" icon={Trash2} disabled={mutationState === 'saving'} onClick={() => void remove()}>{mutationState === 'saving' ? 'Saving…' : 'Remove from repertoire'}</Button></section>
+      <section className="panel local-data-actions reveal delay-3"><div><strong>Repertoire membership</strong><p>Removing this arrangement hides it from active repertoire while preserving its immutable score and history.</p></div><Button variant="ghost" icon={Trash2} disabled={mutationState === 'saving'} onClick={() => setConfirmRemove(true)}>{mutationState === 'saving' ? 'Saving…' : 'Remove from repertoire'}</Button></section>
+      <ConfirmDialog open={confirmRemove} title={`Remove “${item.work.title}” from Repertoire?`} confirmLabel="Remove from Repertoire" busy={mutationState === 'saving'} onCancel={closeRemoveDialog} onConfirm={() => void remove()}><p>This removes only active Repertoire membership.</p><p className="destructive-copy">The Work, Arrangement, every ScoreVersion, session, saved attempt, and complete performance history are preserved.</p></ConfirmDialog>
     </div>
   )
 }

@@ -22,6 +22,7 @@ import type {
 } from './types'
 import type { RepertoireStatus } from '../../domain/music'
 import type { VoiceLane, VoicingIntentProfile } from '../voicing-analysis/types'
+import type { BackupExport, IntegrityReport, ValidatedBackup } from './backup'
 
 export interface PianoProgressRepository {
   initialize(): Promise<void>
@@ -46,6 +47,11 @@ export interface PianoProgressRepository {
   removeFromRepertoire(arrangementId: string): Promise<void>
   getProgress(range: ProgressRange, now?: Date, timeZone?: string): Promise<ProgressSnapshot>
   getCounts(): Promise<StorageCounts>
+  verifyIntegrity(): Promise<IntegrityReport>
+  createBackup(): Promise<BackupExport>
+  inspectBackup(json: string): Promise<ValidatedBackup>
+  restoreBackup(backup: ValidatedBackup, afterCommit?: () => void): Promise<StorageCounts>
+  rebuildDerivedSummaries(): Promise<IntegrityReport>
   clearAll(): Promise<void>
   subscribe(listener: () => void): () => void
 }

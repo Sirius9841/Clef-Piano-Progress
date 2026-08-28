@@ -54,6 +54,21 @@ class FakeMidiAccess {
 }
 
 describe('WebMidiService lifecycle', () => {
+  it('reports a missing Web MIDI API without affecting non-MIDI application state', async () => {
+    const service = new WebMidiService(null)
+    expect(service.isSupported).toBe(false)
+    await expect(service.requestAccess()).rejects.toThrow('not supported')
+    expect(service.getDevices()).toEqual([])
+  })
+
+  it('surfaces denied MIDI access and remains safe to retry', async () => {
+    let requests = 0
+    const service = new WebMidiService(async () => { requests += 1; throw new DOMException('Permission denied', 'NotAllowedError') })
+    await expect(service.requestAccess()).rejects.toThrow('Permission denied')
+    await expect(service.requestAccess()).rejects.toThrow('Permission denied')
+    expect(requests).toBe(2)
+    expect(service.getDevices()).toEqual([])
+  })
   it('detaches locally when close rejects and can select a replacement device', async () => {
     const access = new FakeMidiAccess()
     const replacement = access.addInput('piano-2')

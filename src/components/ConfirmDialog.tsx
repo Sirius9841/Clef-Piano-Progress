@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
-export function ConfirmDialog({ open, title, children, confirmLabel, busy = false, onConfirm, onCancel }: {
+export function ConfirmDialog({ open, title, children, confirmLabel, busy = false, secondaryAction, onConfirm, onCancel }: {
   readonly open: boolean
   readonly title: string
   readonly children: React.ReactNode
   readonly confirmLabel: string
   readonly busy?: boolean
+  readonly secondaryAction?: { readonly label: string; readonly onClick: () => void; readonly disabled?: boolean }
   readonly onConfirm: () => void
   readonly onCancel: () => void
 }) {
@@ -44,7 +45,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, busy = fals
     <div ref={dialogRef} className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
       <header><h2 id="confirm-dialog-title">{title}</h2><button aria-label="Close confirmation" onClick={onCancel}><X /></button></header>
       <div className="confirm-dialog-body">{children}</div>
-      <footer><button ref={cancelRef} className="button secondary" disabled={busy} onClick={onCancel}>Cancel</button><button className="button danger" disabled={busy} onClick={onConfirm}>{busy ? 'Working…' : confirmLabel}</button></footer>
+      <footer><button ref={cancelRef} className="button secondary" disabled={busy} onClick={onCancel}>Cancel</button>{secondaryAction && <button className="button secondary" disabled={busy || secondaryAction.disabled} onClick={secondaryAction.onClick}>{secondaryAction.label}</button>}<button className="button danger" disabled={busy} onClick={onConfirm}>{busy ? 'Working…' : confirmLabel}</button></footer>
     </div>
   </div>
 }

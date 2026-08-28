@@ -106,6 +106,12 @@ The frozen premium desktop interface is integrated with the real local repositor
 
 Practice Planning actions now open the exact current persisted ScoreVersion with their suggested speed and session-local target identity, while Technique actions retain their dedicated routes. Current-result surfaces no longer borrow metrics, PBs, Voicing, or reference state from older ScoreVersions. Historical Results use one dominant score and a selectable seven-dimension saved-evidence inspector, with neutral reference context and current Phase 14 planning kept visibly separate from frozen Phase 7 take evidence. Repertoire rich cards are bounded while its filtered ledger remains complete. No domain model, engine, persistence schema, attempt family, or grading semantics changed.
 
+## Phase 15.1 — V1 Data Safety & Release Hardening — complete
+
+Clef now has deterministic lossless local backup format `1`, SHA-256 payload integrity, explicit database verification, inspect-before-mutate restore, atomic all-store replacement with rollback, and a narrow summary-only repair. Accessible destructive confirmations, product-route error recovery, truthful Web MIDI failure states, long-session coverage, bounded histories, exact planner speed presentation, current-ScoreVersion Home evidence, and a concrete release checklist complete the automated V1 hardening scope. IndexedDB remains schema `4`; historical attempt families and all musical engine/model versions remain unchanged.
+
+Clef is a **V1 release candidate**, not a publicly released product. Real MIDI hardware and final manual checklist acceptance remain pending release gates.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

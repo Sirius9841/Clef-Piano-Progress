@@ -79,7 +79,55 @@ async function putRaw(databaseName: string, storeName: 'techniqueAttempts' | 'te
   database.close()
 }
 
+async function deleteRaw(databaseName: string, storeName: 'techniqueAttempts' | 'techniqueAttemptSummaries', id: string): Promise<void> {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open(databaseName); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
+  const transaction = database.transaction(storeName, 'readwrite')
+  transaction.objectStore(storeName).delete(id)
+  await transactionDone(transaction)
+  database.close()
+}
+
 describe('Technique persistence', () => {
+  it('backs up frozen Technique V1 and V2 attempts and observations without rewriting them', async () => {
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: 'technique-backup-versions', now: () => new Date('2026-08-28T12:00:00.000Z') })
+    const v1 = legacyAttempt(attempt('technique-backup:v1', 'backup-v1'))
+    const v2 = attempt('technique-backup:v2', 'backup-v2')
+    await repository.saveTechniqueAttempt(v1)
+    await repository.saveTechniqueAttempt(v2)
+    const exported = await repository.createBackup()
+    expect(exported.envelope.payload.techniqueAttempts).toEqual([v1, v2])
+    expect(exported.envelope.payload.techniqueAttemptSummaries).toEqual([createTechniqueAttemptSummary(v1), createTechniqueAttemptSummary(v2)])
+    const inspected = await repository.inspectBackup(exported.json)
+    expect(inspected.integrity.status).toBe('healthy')
+  })
+
+  it('repairs missing, mismatched, and orphan Technique summaries without changing authoritative attempts', async () => {
+    const name = 'technique-summary-repair'
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: name })
+    const saved = attempt('technique-repair:attempt', 'repair')
+    await repository.saveTechniqueAttempt(saved)
+    const before = structuredClone(await repository.getTechniqueAttempt(saved.id))
+    await deleteRaw(name, 'techniqueAttemptSummaries', saved.id)
+    await putRaw(name, 'techniqueAttemptSummaries', { ...createTechniqueAttemptSummary(saved), id: 'orphan-summary' })
+    const report = await repository.verifyIntegrity()
+    expect(report).toMatchObject({ status: 'issues-found', summaryOnlyRepairable: true })
+    await expect(repository.rebuildDerivedSummaries()).resolves.toMatchObject({ status: 'healthy' })
+    expect(await repository.getTechniqueAttempt(saved.id)).toEqual(before)
+    expect(await repository.listTechniqueAttemptSummaries()).toEqual([createTechniqueAttemptSummary(saved)])
+  })
+
+  it('refuses summary repair when an authoritative Technique attempt is corrupt', async () => {
+    const name = 'technique-summary-repair-refusal'
+    const repository = new IndexedDbPianoProgressRepository({ databaseName: name })
+    const saved = attempt('technique-repair:corrupt', 'repair-corrupt')
+    await repository.saveTechniqueAttempt(saved)
+    const corrupt = structuredClone(saved) as unknown as Record<string, unknown>
+    record(corrupt.techniqueAnalysis).recordingId = 'wrong'
+    await putRaw(name, 'techniqueAttempts', corrupt)
+    await deleteRaw(name, 'techniqueAttemptSummaries', saved.id)
+    await expect(repository.rebuildDerivedSummaries()).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
   it('atomically stores a lossless attempt and lightweight summary, with idempotent retry and indexes', async () => {
     const repository = new IndexedDbPianoProgressRepository({ databaseName: 'technique-save-test' })
     const record = attempt()

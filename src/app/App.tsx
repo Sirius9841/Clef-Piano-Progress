@@ -8,6 +8,7 @@ import { PieceDetailPage } from '../pages/PieceDetailPage'
 import { ProgressPage } from '../pages/ProgressPage'
 import { RepertoirePage } from '../pages/RepertoirePage'
 import { SettingsPage } from '../pages/SettingsPage'
+import { AppErrorBoundary } from './AppErrorBoundary'
 
 const ImportsPage = lazy(() => import('../pages/ImportsPage').then((module) => ({ default: module.ImportsPage })))
 const PracticePage = lazy(() => import('../pages/PracticePage').then((module) => ({ default: module.PracticePage })))
@@ -23,7 +24,7 @@ function RouteLoader() {
 
 export function App() {
   return (
-    <Routes>
+    <AppErrorBoundary><Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
         <Route path="repertoire" element={<RepertoirePage />} />
@@ -40,6 +41,6 @@ export function App() {
         {Phase13QaPage && <Route path="qa/phase-13" element={<Suspense fallback={<RouteLoader />}><Phase13QaPage /></Suspense>} />}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
-    </Routes>
+    </Routes></AppErrorBoundary>
   )
 }

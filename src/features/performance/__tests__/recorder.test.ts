@@ -160,4 +160,27 @@ describe('PerformanceRecorder', () => {
     expect(second.events).toHaveLength(0)
     expect(first.events).toHaveLength(1)
   })
+
+  it('preserves 2+ hour timestamps, large event collections, and late sustain without truncation', () => {
+    const start = 50_000_000
+    const { recorder, setNow, startRecording } = harness(start)
+    startRecording()
+    const pairCount = 2_000
+    for (let index = 0; index < pairCount; index += 1) {
+      const attack = start + index * 4_000
+      recorder.capture(on(attack, 48 + index % 36, 40 + index % 80))
+      recorder.capture(off(attack + 320, 48 + index % 36))
+    }
+    const latePedalDown = start + 7_500_000
+    const latePedalUp = latePedalDown + 12_345
+    recorder.capture({ type: 'sustain', timestampMs: latePedalDown, channel: 0, down: true, value: 111 })
+    recorder.capture({ type: 'sustain', timestampMs: latePedalUp, channel: 0, down: false, value: 7 })
+    setNow(start + 8_000_123)
+    const recording = recorder.stop()!
+
+    expect(recording.durationMs).toBe(8_000_123)
+    expect(recording.events).toHaveLength(pairCount * 2 + 2)
+    expect(recording.events.at(-1)).toMatchObject({ sequence: pairCount * 2 + 1, relativeMs: 7_512_345, event: { type: 'sustain', value: 7 } })
+    expect(recording.statistics).toMatchObject({ eventCount: pairCount * 2 + 2, noteAttackCount: pairCount, noteReleaseCount: pairCount, sustainChangeCount: 2 })
+  })
 })

@@ -269,6 +269,16 @@ This repository builds a serious piano progress and performance-analysis applica
 - Historical reference evidence uses frozen Timing, Expression, and Pedal snapshots without regrading or mutating old attempts. Comparison-only Voicing derivation never changes historical presentation.
 - Future professional or imported reference performances remain alternative realizations, not the correct answer.
 
+## V1 data-safety and release rules
+
+- Keep `CLEF_BACKUP_FORMAT_VERSION` independent from IndexedDB schema version. V1 backups use `clef-local-backup` format 1 and include all nine schema-4 stores, including both derived summary stores.
+- Backup payload serialization is deterministic and lossless. SHA-256 verifies integrity only; backups are unencrypted and contain local musical history.
+- Export reads one coherent all-store snapshot and fails closed on error-level integrity issues. Restore validates before mutation, replaces all stores in one transaction, and clears in-memory Practice state only after commit.
+- Integrity verification reuses authoritative deep record validators and adds cross-store, score hash/parser/identity, exact part selection, session linkage, summary, Voicing preference, and reference preference checks.
+- The only repair operation may transactionally rebuild AttemptSummaries and TechniqueAttemptSummaries from valid authoritative attempts. Never regrade, reanalyze, or mutate frozen records.
+- Removing Repertoire membership preserves all history. Clear All and restore replacement require accessible, truthful confirmations; never make a backup or recovery success claim before completion.
+- Clef V1 remains a release candidate until real MIDI hardware and the manual release checklist pass. Automated/simulated MIDI tests never justify a real-device claim.
+
 ## Commands
 
 - Install: `npm install`
