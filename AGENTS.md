@@ -42,6 +42,18 @@ This repository builds a serious piano progress and performance-analysis applica
 - Do not introduce a backend, database, or large dependency before it is requested.
 - Keep dependencies lightweight and justified.
 
+## V1 interface rules
+
+- The Phase 15.0 interface and its warm charcoal/umber, brass, sienna, and sage visual language are frozen for V1. Treat the reference artifact as presentation guidance only, never as a domain contract or data source.
+- Application appearance (`Dark`, `Light`, `System`) and notation appearance (`Paper`, `Night`) are independent versioned UI preferences. Neither may alter canonical scores, analysis, or history.
+- The interface must never invent an overall Performance Score, overall Skill score, inferred repertoire status, fabricated recommendation, or unavailable metric shown as zero.
+- Repertoire status is manual. Mastery belongs to the exact Arrangement/current ScoreVersion, and demonstrated speed remains visibly separate from target speed and Mastery.
+- Headline PB and trend presentation is limited to canonical Notes, Rhythm, and Tempo comparability. Expression dimensions remain independent evidence.
+- Authored Pedal analysis and captured CC64 facts are separate. Voicing requires explicit intent. Reference performances are neutral comparison examples.
+- Technique configuration and result presentation use the current domain definitions and render actual `TechniqueAnalysisResult.facets`; never duplicate fixture enums or facet maps.
+- Phase 14 planning is a transient current read model with explicit provenance. Historical attempt snapshots remain immutable and Phase 7 per-take priority remains visually distinct.
+- OSMD is the notation renderer only. UI fixtures, SVG sketches, and visual mock data must never become canonical score or analysis truth.
+
 ## MusicXML and score-model rules
 
 - OSMD is a notation renderer, never the canonical score model. Do not import OSMD types into `features/musicxml` or future grading code.

@@ -96,6 +96,12 @@ Phase 14 UI integration is intentionally deferred while the final Clef interface
 
 Practice Planning `1.0.1` finalizes progression integrity with one deterministic highest-speed frontier, strictly consistent source/suggested speed actions, canonical one-section/one-block session composition with merged recommendation provenance, and one locked resolved policy shared by context and result. IndexedDB remains schema 4, historical records remain unchanged, and UI integration remains intentionally deferred. Phase 14 is closed.
 
+## Phase 15 — Product Completion — in progress
+
+## Phase 15.0 — Frozen V1 Interface Integration — complete
+
+The frozen premium desktop interface is integrated with the real local repository, canonical OSMD path, MIDI/Practice lifecycle, immutable Results, Mastery, Skill, and Practice Planning read models. Dark/Light/System application appearance and Paper/Night score appearance are independent presentation preferences. No persistence schema, attempt family, analysis engine, or evidence semantics changed. Phase 15.1 remains release and data-safety hardening; Clef V1 is not yet marked released.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

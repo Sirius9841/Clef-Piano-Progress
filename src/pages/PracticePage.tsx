@@ -1,5 +1,5 @@
-import { Activity, AlertCircle, ArrowLeft, Cable, CheckCircle2, CircleStop, Clock3, FileMusic, Gauge, Music2, Play, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { Activity, AlertCircle, ArrowLeft, Cable, CheckCircle2, CircleStop, Clock3, FileMusic, Gauge, Maximize2, Minimize2, Music2, Play, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, StatusPill } from '../components/ui'
 import { AlignmentPanel } from '../features/alignment/AlignmentPanel'
@@ -74,9 +74,22 @@ export function PracticePage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [personalBestEvents, setPersonalBestEvents] = useState<readonly PersonalBestEvent[]>([])
+  const [focusMode, setFocusMode] = useState(false)
   const practiceSessionId = useRef(`session:${globalThis.crypto.randomUUID()}`)
   const practiceSessionStartedAt = useRef<string | null>(null)
   const [savedRecordingId, setSavedRecordingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    document.body.classList.toggle('practice-focus', focusMode)
+    const handleKey = (event: KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return
+      if (event.key === 'Escape' && focusMode) setFocusMode(false)
+      if ((event.key === 'f' || event.key === 'F') && !event.ctrlKey && !event.metaKey && !event.altKey) setFocusMode((current) => !current)
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => { window.removeEventListener('keydown', handleKey); document.body.classList.remove('practice-focus') }
+  }, [focusMode])
   const session = arrangementId === 'session' ? practice.session : null
   const preferenceState = useRepositoryQuery<Phase11PreferenceData>(async (repository) => {
     if (!session?.arrangementId || !session.scoreVersionId) return { arrangement: null, candidates: [], referenceProfile: null }
@@ -272,12 +285,14 @@ export function PracticePage() {
   const referenceCandidates = (phase11Data?.candidates ?? []).filter((candidate) => candidate.id !== `attempt:${capture.recording?.id ?? ''}`)
 
   return (
-    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice phase-seven-practice ${capture.state.status}`}>
+    <div className={`page practice-page phase-three-practice phase-four-practice phase-five-practice phase-six-practice phase-seven-practice ${capture.state.status} ${focusMode ? 'focus-mode' : ''}`}>
       <Link to="/imports" className="back-link"><ArrowLeft size={15} /> Back to score import</Link>
       <header className="practice-header">
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
-        <div className="practice-speed"><span>{capture.recording ? `Captured take · ${Math.round(displayedSpeed * 100)}%` : 'Practice speed'}</span><div>{speeds.map((speed) => <button key={speed} className={displayedSpeed === speed ? 'active' : ''} disabled={speedLocked} onClick={() => practice.setSpeedMultiplier(resolvePracticeSpeedChange(session.speedMultiplier, speed, capture.state.status))}>{Math.round(speed * 100)}%</button>)}</div>{speedLocked && <small>Clear the current take before changing the target speed.</small>}</div>
+        <div className="practice-header-actions"><div className="practice-speed"><span>{capture.recording ? `Captured take · ${Math.round(displayedSpeed * 100)}%` : 'Practice speed'}</span><div>{speeds.map((speed) => <button key={speed} className={displayedSpeed === speed ? 'active' : ''} disabled={speedLocked} onClick={() => practice.setSpeedMultiplier(resolvePracticeSpeedChange(session.speedMultiplier, speed, capture.state.status))}>{Math.round(speed * 100)}%</button>)}</div>{speedLocked && <small>Clear the current take before changing the target speed.</small>}</div><Button variant="secondary" icon={focusMode ? Minimize2 : Maximize2} onClick={() => setFocusMode((current) => !current)}>{focusMode ? 'Exit Focus' : 'Focus mode'} <span className="kbd">F</span></Button></div>
       </header>
+
+      {focusMode && <button className="focus-exit" onClick={() => setFocusMode(false)}><Minimize2 /> Exit Focus <span className="kbd">Esc</span></button>}
 
       <div className="practice-workspace">
         <section className="panel notation-panel practice-notation">

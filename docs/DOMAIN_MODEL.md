@@ -6,6 +6,8 @@ The application deliberately separates musical identity, playable realization, g
 Work → Arrangement → ScoreVersion → PerformanceAttempt
 ```
 
+The V1 presentation layer is not a new domain or persistence family. Appearance preferences, current planning projections, Mastery/Skill presentations, and Evidence Inspector selections are browser UI state or derived read models. They never rewrite the immutable identities and evidence below.
+
 ## Work
 
 A Work is the musical identity: title, composer, small metadata, and an optional `derivedFromWorkId`. It does not own arrangement-specific mastery.
@@ -116,3 +118,7 @@ A PracticeSession represents one mounted practice visit and may own multiple Per
 ## Personal bests and progress
 
 Personal bests are derived from immutable attempt summaries rather than stored counters. Headline comparisons require the same Arrangement, ScoreVersion, full-plan scope, practice-speed multiplier, and a reliable or limited aggregate. Provisional, unavailable, and partial takes remain visible in history but never become headline records. Notes, Rhythm, and Tempo have separate records; there is no overall personal best.
+
+## V1 presentation semantics
+
+The frozen V1 interface preserves domain distinctions rather than flattening them for display. Repertoire status remains manual; Mastery is exact Arrangement/current-ScoreVersion state; demonstrated speed and target speed remain separate; Technique exposes eight independent Skill Ratings and the analyzer's actual facets; and Phase 14 planning remains an explicit-`asOf`, non-persisted projection. Historical Results present one immutable attempt and its stored provenance. Dynamics, Articulation, Pedal, and Voicing remain independent from Notes/Rhythm/Tempo PBs, trends, Mastery, Skill, and planning priority. Authored Pedal availability does not erase factual CC64 capture, and absent Voicing intent is unavailable rather than zero.

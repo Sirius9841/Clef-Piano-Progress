@@ -18,8 +18,8 @@ describe('truthful future-state pages', () => {
 
   it('keeps the Library metadata-only and cannot claim a score entered Repertoire', () => {
     const markup = renderToStaticMarkup(<MemoryRouter><LibraryPage /></MemoryRouter>)
-    expect(markup).toContain('Metadata preview only')
-    expect(markup).toContain('Score file not available yet')
+    expect(markup).toContain('No official editions are installed')
+    expect(markup).toContain('does not fabricate catalogue works or notation')
     expect(markup).not.toContain('Add to repertoire')
     expect(markup).not.toContain('In repertoire')
   })

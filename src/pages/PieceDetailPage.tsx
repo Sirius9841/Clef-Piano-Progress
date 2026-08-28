@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, PageHeader, SectionHeading, Stat } from '../components/ui'
 import { ArrangementMasteryPanel } from '../components/Phase13Panels'
+import { CurrentPracticePlanning } from '../components/PracticePlanningPanel'
 import { REPERTOIRE_STATUSES, type RepertoireStatus } from '../domain/music'
 import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
@@ -15,6 +16,7 @@ import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { buildPersistedPracticePlan } from '../features/practice/persistedPractice'
 import { deriveArrangementMastery } from '../features/mastery-model'
 import type { ArrangementMastery } from '../features/mastery-model'
+import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
 
 interface PieceData {
   readonly item: RepertoireListItem | null
@@ -133,6 +135,9 @@ export function PieceDetailPage() {
       </section>
 
       {mastery && <ArrangementMasteryPanel mastery={mastery} />}
+      <CurrentPracticePlanning arrangementId={item.arrangement.id} scoreVersionId={item.scoreVersion.id} limit={5} />
+
+      <section className="panel notation-panel dossier-score reveal delay-2"><div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Current analysis score</h2><p>{item.scoreVersion.sourceFileName} · exact ScoreVersion v{item.scoreVersion.version}</p></div></div></div><div className="notation-paper dossier-paper"><OsmdScoreRenderer musicXmlText={item.scoreVersion.canonicalMusicXml} zoom={0.58} /></div></section>
 
       <section className="panel history-panel reveal delay-2">
         <SectionHeading title="Performance history" subtitle="Saved attempts retain the exact score, MIDI recording, and analysis snapshots" />

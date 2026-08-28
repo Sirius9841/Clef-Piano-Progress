@@ -1,15 +1,19 @@
-import { ArrowRight, Clock3, FileMusic, Music, Play, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowRight, CircleGauge, Clock3, FileMusic, History, Music, Play, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { CurrentPracticePlanning } from '../components/PracticePlanningPanel'
+import { PracticeLaunchButton } from '../components/PracticeLaunchButton'
 import { PageHeader, SectionHeading, Stat, StatusPill } from '../components/ui'
 import { useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
 import type { AttemptSummary, ProgressSnapshot, RepertoireListItem } from '../features/persistence/types'
 import { derivePersonalBestHistory, formatPercent, selectLatestHeadlineAttempt, type PersonalBestEvent } from '../features/progress/model'
+import { deriveArrangementMastery } from '../features/mastery-model'
 
 interface HomeData {
   readonly repertoire: readonly RepertoireListItem[]
   readonly week: ProgressSnapshot
   readonly allAttempts: readonly AttemptSummary[]
+  readonly asOf: string
 }
 
 interface RecentImprovement {
@@ -25,10 +29,11 @@ function formatDuration(milliseconds: number): string {
 export function HomePage() {
   const state = useRepositoryQuery<HomeData>(async (repository) => {
     const [repertoire, week, allAttempts] = await Promise.all([repository.listRepertoire(), repository.getProgress('7d'), repository.listAttemptSummaries()])
-    return { repertoire, week, allAttempts }
+    return { repertoire, week, allAttempts, asOf: new Date().toISOString() }
   }, 'home')
   const data = state.status === 'ready' ? state.data : null
   const featured = data?.repertoire.slice(0, 3) ?? []
+  const current = featured[0] ?? null
   const latest = selectLatestHeadlineAttempt(data?.week.attempts ?? [])
   const recentImprovements: readonly RecentImprovement[] = data ? (() => {
     const attemptsById = new Map(data.allAttempts.map((attempt) => [attempt.id, attempt]))
@@ -37,6 +42,9 @@ export function HomePage() {
       return attempt ? [{ attempt, event }] : []
     }).slice(0, 3)
   })() : []
+  const currentAttempts = current && data ? data.allAttempts.filter((attempt) => attempt.arrangementId === current.arrangement.id) : []
+  const currentMastery = current && data ? deriveArrangementMastery({ arrangementId: current.arrangement.id, scoreVersionId: current.scoreVersion.id, attempts: currentAttempts, asOf: data.asOf }) : null
+  const currentPbMetrics = current ? recentImprovements.filter(({ attempt }) => attempt.arrangementId === current.arrangement.id).map(({ event }) => event.metric) : []
 
   return (
     <div className="page home-page">
@@ -45,6 +53,11 @@ export function HomePage() {
       {state.status === 'error' && <PersistenceErrorState title="Local progress could not be opened" error={state.error} />}
       {data && featured.length === 0 && <section className="panel import-hero"><div className="empty-state"><FileMusic /><h2>Your first score becomes your first real arrangement</h2><p>Clef will preserve its exact MusicXML, practice sessions, MIDI takes, and analysis history locally.</p><Link className="button primary" to="/imports">Import MusicXML</Link></div></section>}
       {data && featured.length > 0 && <>
+        {current && currentMastery && <section className="continue-hero panel reveal delay-1">
+          <div className="continue-hero-copy"><span className="eyebrow">Continue practice</span><div className="hero-status"><StatusPill>{current.repertoire.status}</StatusPill><span>ScoreVersion v{current.scoreVersion.version}</span>{currentPbMetrics.length > 0 && <span className="pb-chip settle"><Sparkles /> PB · {currentPbMetrics.join(' / ')}</span>}</div><h2>{current.work.title}</h2><p>{current.work.composer} · {current.arrangement.name}</p><div className="hero-actions"><PracticeLaunchButton item={current}>Practice</PracticeLaunchButton>{current.latestAttempt && <Link className="button secondary" to={`/history/${current.latestAttempt.id}`}><History /> Review latest take</Link>}<Link className="text-link" to={`/repertoire/${current.arrangement.id}`}>Piece dossier <ArrowRight /></Link></div></div>
+          <div className="continue-hero-metrics"><div><span>Mastery</span><strong>{currentMastery.mastery === null ? 'Not established' : `${currentMastery.mastery.toFixed(1)}%`}</strong><small>{currentMastery.confidence} confidence · current exact score</small></div><div><span>Demonstrated speed</span><strong>{currentMastery.demonstratedSpeedMultiplier === null ? '—' : `${Math.round(currentMastery.demonstratedSpeedMultiplier * 100)}%`}</strong><small>{currentMastery.demonstratedSpeedStatus.replaceAll('-', ' ')}</small></div><div><span>Target speed</span><strong>100%</strong><small>{current.arrangement.targetTempoBpm ? `${current.arrangement.targetTempoBpm} BPM authored target` : 'Score-authored tempo'}</small></div><CircleGauge className="hero-watermark" /></div>
+        </section>}
+        {current && <CurrentPracticePlanning arrangementId={current.arrangement.id} scoreVersionId={current.scoreVersion.id} limit={3} />}
         <section className="hero-grid reveal delay-1">
           <div className="panel continue-panel">
             <SectionHeading title="Continue practicing" subtitle="Recently practiced arrangements" action={<Link className="text-link" to="/repertoire">All repertoire <ArrowRight size={15} /></Link>} />

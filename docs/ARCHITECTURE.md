@@ -1,6 +1,6 @@
 # Frontend architecture
 
-Phase 13.2 is a React, strict TypeScript, Vite, and Tailwind local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
+Phase 15.0 is a React, strict TypeScript, Vite, and local-first application with no backend. React Router provides the application shell and routes. Imports, Practice, and historical Results are lazy-loaded so score, capture, alignment, grading, and notation workflows remain outside the initial Home route chunk.
 
 ```text
                     UI / React presentation
@@ -71,10 +71,15 @@ The expected and observed Phase 3 outputs remain independent truth layers. Phase
 - `src/features/persistence`: repository contract, serializable records, typed storage errors, local-calendar keys, SHA-256 score fingerprinting, indexed range queries, and the isolated versioned IndexedDB adapter.
 - `src/features/progress`: pure personal-best, comparability, rolling-average, and trend derivations.
 - `src/features/practice-planning`: bounded context preparation plus pure longitudinal section history, explainable recommendations, speed-context decisions, and optional time-budget composition.
+- `src/features/preferences`: versioned browser-local application and score appearance preferences, including live system-theme resolution. These preferences are presentation-only and do not change IndexedDB schema 4.
 - `src/features/repertoire`: deterministic presentation sorting for persisted Repertoire entries.
 - `src/features/score-renderer`: the isolated OSMD adapter. This is the only feature that imports OSMD.
 - `src/pages`: route-level compositions.
 - `src/styles`: the design system and responsive layout.
+
+The Phase 15 presentation layer consumes repository summaries and existing pure read models. `CurrentPracticePlanning` prepares and derives the current `practice-planning-1.0.1` projection for an exact Arrangement/current ScoreVersion and renders WHAT, WHY, evidence authority, speed provenance, and exact supporting identities without persisting recommendations. Home, Repertoire, Piece Detail, Progress, and historical Results derive Mastery, Skills, PBs, trends, and planning from their canonical owners rather than recreating formulas in JSX. See `UI_SYSTEM.md`.
+
+Application appearance and score appearance are sibling concerns. `AppearanceProvider` persists a small versioned localStorage preference, retains `System` as the requested application value, resolves it through live `prefers-color-scheme`, and exposes an independent `Paper` or `Night` notation preference. CSS presentation may re-ink OSMD output for Night mode, but it never modifies MusicXML, `NormalizedScore`, expected plans, or frozen results.
 
 `WebMidiService` owns browser access and input subscriptions. It detaches local selection and message handlers before awaiting browser-driver close, tolerates close rejection, and uses operation identity so stale async teardown/open work cannot clear or restore a newer selection. Re-requested access detaches the previous state handler. `parseMidiMessage` is a pure boundary that converts bytes into typed events carrying the browser's monotonic `MIDImessageEvent.timeStamp`. `MidiProvider` exposes connection state, devices, selection, active notes, sustain, recent events, errors, and normalized-event subscription without leaking raw messages into page components. Its own latest-request gate prevents a stale selection completion or error from changing React state after a newer select or deselect. Provider runtime state treats a same-ID port whose state becomes disconnected as unavailable, clears physical-key state, and drives the recorder's explicit disconnect lifecycle.
 
