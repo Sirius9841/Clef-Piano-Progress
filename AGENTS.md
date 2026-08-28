@@ -228,6 +228,16 @@ This repository builds a serious piano progress and performance-analysis applica
 - One canonical section target receives at most one timed session block. Merge compatible recommendation IDs and speed advice into that block; primary and secondary sections must be distinct identities.
 - Context preparation owns one deeply frozen resolved planning policy. Derivation uses and exposes that exact policy and rejects independent derive-time overrides.
 - The Practice Planning core remains independent of React, OSMD, IndexedDB internals, and UI copy. It creates no store, attempt version, or persisted recommendation.
+- A repertoire planning CTA must launch the exact current persisted ScoreVersion through the canonical parser/expected-plan path, apply its suggested speed once, and retain exact section identity only as session-local presentation intent. Technique recommendations keep their Technique routes.
+
+## Frozen V1 presentation-integrity rules
+
+- Current-result presentation on Home, Repertoire, and Piece pages must filter attempts and PB provenance to the exact current ScoreVersion. Older versions remain historical evidence and never fill a missing current value.
+- Historical Results present exactly seven independent evidence dimensions: Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and Voicing. Reference comparison is neutral optional context, not a scored dimension.
+- Historical dimension selection reads frozen saved snapshots. It never regrades, mutates history, creates an overall Performance Score, or treats unavailable evidence as zero.
+- Keep frozen Phase 7 per-take evidence visibly separate from current Phase 14 planning. A factual lowest-core statement may compare only available Notes, Rhythm, and Tempo values.
+- Authored Pedal analysis and physical CC64 capture are separate facts. Historical Voicing without saved configured intent is descriptive/unavailable and current preferences never rewrite it.
+- Repertoire rich cards are a bounded current/recent view; the filtered ledger remains complete and coherent with the active controls.
 
 ## Pedal-analysis rules
 

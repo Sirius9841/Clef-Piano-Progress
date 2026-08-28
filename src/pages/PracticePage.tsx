@@ -22,6 +22,7 @@ import type { ScoreHighlightModel } from '../features/performance-results/highli
 import { usePerformanceResults } from '../features/performance-results/usePerformanceResults'
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
+import { practiceIntentLabel } from '../features/practice/practicePresentation'
 import { capturedTakeSpeed, isPracticeSpeedLocked, resolvePracticeSpeedChange } from '../features/practice/speedPolicy'
 import { clearCurrentTake, takeClearActionCopy } from '../features/practice/takeWorkspace'
 import { usePersistence } from '../features/persistence/PersistenceContext'
@@ -291,6 +292,11 @@ export function PracticePage() {
         <div><StatusPill tone={session.isDemo ? 'violet' : 'positive'}><FileMusic size={12} /> {session.isDemo ? 'Demo score' : 'Imported score'}</StatusPill><h1>{session.score.metadata.title ?? 'Untitled Score'}</h1><p>{session.score.metadata.composer ?? 'Unknown composer'} · {session.sourceLabel}</p></div>
         <div className="practice-header-actions"><div className="practice-speed"><span>{capture.recording ? `Captured take · ${Math.round(displayedSpeed * 100)}%` : 'Practice speed'}</span><div>{speeds.map((speed) => <button key={speed} className={displayedSpeed === speed ? 'active' : ''} disabled={speedLocked} onClick={() => practice.setSpeedMultiplier(resolvePracticeSpeedChange(session.speedMultiplier, speed, capture.state.status))}>{Math.round(speed * 100)}%</button>)}</div>{speedLocked && <small>Clear the current take before changing the target speed.</small>}</div><Button variant="secondary" icon={focusMode ? Minimize2 : Maximize2} onClick={() => setFocusMode((current) => !current)}>{focusMode ? 'Exit Focus' : 'Focus mode'} <span className="kbd">F</span></Button></div>
       </header>
+
+      {session.presentationIntent && <section className="practice-target-context panel" aria-label="Suggested practice target">
+        <div><span>Practice Planning hand-off</span><strong>Suggested target · {practiceIntentLabel(session.presentationIntent)}</strong><small>{session.presentationIntent.recommendationKind.replaceAll('-', ' ')} · {Math.round(session.speedMultiplier * 100)}% practice speed</small></div>
+        {session.presentationIntent.type === 'section' ? <details><summary>Exact section identity</summary><code>{session.presentationIntent.section.scoreVersionId}</code><span>Measure indexes {session.presentationIntent.section.startMeasureIndex}–{session.presentationIntent.section.endMeasureIndex}</span><span>Source measures: {session.presentationIntent.section.sourceMeasureIds.join(', ')}</span></details> : <p>The recommendation carries arrangement-level context and does not fabricate a section boundary.</p>}
+      </section>}
 
       {focusMode && <button className="focus-exit" onClick={() => setFocusMode(false)}><Minimize2 /> Exit Focus <span className="kbd">Esc</span></button>}
 

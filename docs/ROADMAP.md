@@ -102,6 +102,10 @@ Practice Planning `1.0.1` finalizes progression integrity with one deterministic
 
 The frozen premium desktop interface is integrated with the real local repository, canonical OSMD path, MIDI/Practice lifecycle, immutable Results, Mastery, Skill, and Practice Planning read models. Dark/Light/System application appearance and Paper/Night score appearance are independent presentation preferences. No persistence schema, attempt family, analysis engine, or evidence semantics changed. Phase 15.1 remains release and data-safety hardening; Clef V1 is not yet marked released.
 
+## Phase 15.0.1 — Final Frozen V1 Presentation Integrity — complete
+
+Practice Planning actions now open the exact current persisted ScoreVersion with their suggested speed and session-local target identity, while Technique actions retain their dedicated routes. Current-result surfaces no longer borrow metrics, PBs, Voicing, or reference state from older ScoreVersions. Historical Results use one dominant score and a selectable seven-dimension saved-evidence inspector, with neutral reference context and current Phase 14 planning kept visibly separate from frozen Phase 7 take evidence. Repertoire rich cards are bounded while its filtered ledger remains complete. No domain model, engine, persistence schema, attempt family, or grading semantics changed.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

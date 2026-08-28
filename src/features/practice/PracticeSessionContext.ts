@@ -1,6 +1,11 @@
 import { createContext, useContext } from 'react'
 import type { ExpectedPerformancePlan } from '../expected-performance/types'
 import type { LoadedMusicXml, NormalizedScore } from '../musicxml/types'
+import type { PlanningSectionIdentity, PracticeRecommendationKind } from '../practice-planning/types'
+
+export type PracticePresentationIntent =
+  | Readonly<{ type: 'section'; recommendationId: string; recommendationKind: PracticeRecommendationKind; section: PlanningSectionIdentity }>
+  | Readonly<{ type: 'full-run' | 'wider-context' | 'arrangement'; recommendationId: string; recommendationKind: PracticeRecommendationKind }>
 
 export interface PracticeSession {
   arrangementId: string | null
@@ -11,6 +16,8 @@ export interface PracticeSession {
   sourceLabel: string
   isDemo: boolean
   speedMultiplier: number
+  /** Session-local UI context only. It is never copied into persisted attempts or plans. */
+  presentationIntent?: PracticePresentationIntent | null
 }
 
 export interface PracticeSessionContextValue {

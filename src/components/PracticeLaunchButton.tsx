@@ -1,17 +1,17 @@
 import { Play } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { parseMusicXml } from '../features/musicxml/parser'
-import type { RepertoireListItem } from '../features/persistence/types'
-import { usePracticeSession } from '../features/practice/PracticeSessionContext'
-import { buildPersistedPracticePlan } from '../features/practice/persistedPractice'
+import { usePracticeSession, type PracticePresentationIntent } from '../features/practice/PracticeSessionContext'
+import { launchPersistedPractice, type PersistedPracticeSource } from '../features/practice/launchPersistedPractice'
 import { Button } from './ui'
 
-export function PracticeLaunchButton({ item, children = 'Practice', variant = 'primary', className }: {
-  readonly item: RepertoireListItem
+export function PracticeLaunchButton({ item, children = 'Practice', variant = 'primary', className, speedMultiplier, presentationIntent }: {
+  readonly item: PersistedPracticeSource
   readonly children?: ReactNode
   readonly variant?: 'primary' | 'secondary' | 'ghost'
   readonly className?: string
+  readonly speedMultiplier?: number
+  readonly presentationIntent?: PracticePresentationIntent | null
 }) {
   const navigate = useNavigate()
   const practice = usePracticeSession()
@@ -20,25 +20,7 @@ export function PracticeLaunchButton({ item, children = 'Practice', variant = 'p
   const launch = () => {
     setError(null)
     try {
-      const score = parseMusicXml(item.scoreVersion.canonicalMusicXml)
-      const plan = buildPersistedPracticePlan(score, item.scoreVersion)
-      practice.startSession({
-        arrangementId: item.arrangement.id,
-        scoreVersionId: item.scoreVersion.id,
-        source: {
-          fileName: item.scoreVersion.sourceFileName,
-          sourceFormat: item.scoreVersion.format,
-          musicXmlText: item.scoreVersion.canonicalMusicXml,
-          sourceBytes: item.scoreVersion.sourceBytes,
-          uncompressedBytes: item.scoreVersion.uncompressedBytes,
-        },
-        score,
-        plan,
-        sourceLabel: `${item.scoreVersion.sourceFileName} · v${item.scoreVersion.version}`,
-        isDemo: false,
-        speedMultiplier: 1,
-      })
-      navigate('/practice/session')
+      launchPersistedPractice(item, practice.startSession, navigate, { speedMultiplier, presentationIntent })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'This saved score could not be prepared for practice.')
     }

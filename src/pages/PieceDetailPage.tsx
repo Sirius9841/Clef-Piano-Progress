@@ -1,22 +1,21 @@
-import { ArrowLeft, CalendarDays, FileMusic, History, Play, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarDays, FileMusic, History, Layers3, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, PageHeader, SectionHeading, Stat } from '../components/ui'
 import { ArrangementMasteryPanel } from '../components/Phase13Panels'
 import { CurrentPracticePlanning } from '../components/PracticePlanningPanel'
 import { REPERTOIRE_STATUSES, type RepertoireStatus } from '../domain/music'
-import { parseMusicXml } from '../features/musicxml/parser'
 import { usePersistence, useRepositoryQuery } from '../features/persistence/PersistenceContext'
 import { PersistenceErrorState } from '../features/persistence/PersistenceErrorState'
 import { scoreVersionNumberForAttempt } from '../features/persistence/history'
 import { removeRepertoireSafely, setInterpretationReferenceSafely, updateRepertoireStatusSafely } from '../features/persistence/mutations'
 import type { AttemptSummary, PersistedScoreVersion, RepertoireListItem } from '../features/persistence/types'
 import { comparableAttemptKey, derivePersonalBests, formatPercent, selectLatestHeadlineAttempt } from '../features/progress/model'
-import { usePracticeSession } from '../features/practice/PracticeSessionContext'
-import { buildPersistedPracticePlan } from '../features/practice/persistedPractice'
 import { deriveArrangementMastery } from '../features/mastery-model'
 import type { ArrangementMastery } from '../features/mastery-model'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
+import { PracticeLaunchButton } from '../components/PracticeLaunchButton'
+import { attemptsForScoreVersion, currentInterpretationStatus } from '../components/currentScorePresentation'
 
 interface PieceData {
   readonly item: RepertoireListItem | null
@@ -38,7 +37,6 @@ export function PieceDetailPage() {
   const { arrangementId = '' } = useParams()
   const navigate = useNavigate()
   const persistence = usePersistence()
-  const practice = usePracticeSession()
   const [actionError, setActionError] = useState<string | null>(null)
   const [mutationState, setMutationState] = useState<'idle' | 'saving'>('idle')
   const state = useRepositoryQuery<PieceData>(async (repository) => {
@@ -48,40 +46,14 @@ export function PieceDetailPage() {
   const data = state.status === 'ready' ? state.data : null
   const item = data?.item ?? null
   const attempts = data?.attempts ?? []
-  const latestFull = selectLatestHeadlineAttempt(attempts)
+  const currentScoreAttempts = item ? attemptsForScoreVersion(attempts, item.scoreVersion.id) : []
+  const latestFull = selectLatestHeadlineAttempt(currentScoreAttempts)
   const comparable = latestFull
-    ? attempts.filter((attempt) => comparableAttemptKey(attempt) === comparableAttemptKey(latestFull))
+    ? currentScoreAttempts.filter((attempt) => comparableAttemptKey(attempt) === comparableAttemptKey(latestFull))
     : []
   const personalBests = derivePersonalBests(comparable)
   const mastery: ArrangementMastery | null = item && data ? deriveArrangementMastery({ arrangementId: item.arrangement.id, scoreVersionId: item.scoreVersion.id, attempts, asOf: data.asOf }) : null
-
-  const startPractice = () => {
-    if (!item) return
-    setActionError(null)
-    try {
-      const score = parseMusicXml(item.scoreVersion.canonicalMusicXml)
-      const plan = buildPersistedPracticePlan(score, item.scoreVersion)
-      practice.startSession({
-        arrangementId: item.arrangement.id,
-        scoreVersionId: item.scoreVersion.id,
-        source: {
-          fileName: item.scoreVersion.sourceFileName,
-          sourceFormat: item.scoreVersion.format,
-          musicXmlText: item.scoreVersion.canonicalMusicXml,
-          sourceBytes: item.scoreVersion.sourceBytes,
-          uncompressedBytes: item.scoreVersion.uncompressedBytes,
-        },
-        score,
-        plan,
-        sourceLabel: `${item.scoreVersion.sourceFileName} · v${item.scoreVersion.version}`,
-        isDemo: false,
-        speedMultiplier: 1,
-      })
-      navigate('/practice/session')
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : 'This saved score could not be prepared for practice.')
-    }
-  }
+  const interpretation = item ? currentInterpretationStatus(item.arrangement, item.scoreVersion.id, attempts) : null
 
   const remove = async () => {
     if (!item || !persistence.repository) return
@@ -122,7 +94,7 @@ export function PieceDetailPage() {
   return (
     <div className="page piece-page">
       <Link to="/repertoire" className="back-link"><ArrowLeft size={15} /> Repertoire</Link>
-      <PageHeader eyebrow={`${item.arrangement.difficulty} · ${item.repertoire.status}`} title={item.work.title} description={`${item.work.composer} · ${item.arrangement.name}`} action={<Button icon={Play} onClick={startPractice}>Start practice</Button>} />
+      <PageHeader eyebrow={`${item.arrangement.difficulty} · ${item.repertoire.status}`} title={item.work.title} description={`${item.work.composer} · ${item.arrangement.name}`} action={<PracticeLaunchButton item={item}>Start practice</PracticeLaunchButton>} />
       {actionError && <div className="renderer-inline-error">{actionError}</div>}
       <section className="piece-hero reveal delay-1">
         <div className="piece-cover artwork-1"><span>{item.work.title.split(' ').slice(0, 2).map((word) => word[0]).join('')}</span><i /><div className="cover-caption"><small>SCORE VERSION</small><strong>v{item.scoreVersion.version}</strong></div></div>
@@ -135,6 +107,13 @@ export function PieceDetailPage() {
       </section>
 
       {mastery && <ArrangementMasteryPanel mastery={mastery} />}
+      {interpretation && <section className="panel piece-interpretation-status reveal delay-1">
+        <SectionHeading title="Current interpretation setup" subtitle={`Exact ScoreVersion v${item.scoreVersion.version} preferences · future/current analysis only`} />
+        <div className="interpretation-status-grid">
+          <article><span className="interpretation-label"><Layers3 /> VOICING</span><strong>{interpretation.voicingProfile ? 'Configured' : 'Not configured'}</strong><p>{interpretation.voicingProfile ? `${interpretation.voicingProfile.regions.length} explicit foreground/support region${interpretation.voicingProfile.regions.length === 1 ? '' : 's'} · updated ${formatDate(interpretation.voicingProfile.updatedAt)}` : 'Clef does not infer melody from pitch, staff, hand, voice number, or loudness.'}</p><PracticeLaunchButton item={item} variant="secondary">Configure in Practice</PracticeLaunchButton></article>
+          <article><span className="interpretation-label"><History /> REFERENCE PERFORMANCE</span><strong>{interpretation.referenceAttempt ? 'Saved local reference selected' : interpretation.referenceAttemptId ? 'Reference record unavailable' : 'No reference selected'}</strong>{interpretation.referenceAttempt ? <><p>{formatDate(interpretation.referenceAttempt.performedAt)} · {Math.round(interpretation.referenceAttempt.practiceSpeedMultiplier * 100)}% · attempt {interpretation.referenceAttempt.id}</p><Link className="text-link" to={`/history/${interpretation.referenceAttempt.id}`}>Review selected reference</Link></> : <p>{interpretation.referenceAttemptId ? 'The configured attempt could not be found in current local history.' : 'Choose a compatible current-ScoreVersion take from Performance history.'}</p>}<small>Comparison only · never expressive ground truth or a score.</small></article>
+        </div>
+      </section>}
       <CurrentPracticePlanning arrangementId={item.arrangement.id} scoreVersionId={item.scoreVersion.id} limit={5} />
 
       <section className="panel notation-panel dossier-score reveal delay-2"><div className="score-section-heading notation-heading"><div><span className="score-section-icon paper"><FileMusic /></span><div><h2>Current analysis score</h2><p>{item.scoreVersion.sourceFileName} · exact ScoreVersion v{item.scoreVersion.version}</p></div></div></div><div className="notation-paper dossier-paper"><OsmdScoreRenderer musicXmlText={item.scoreVersion.canonicalMusicXml} zoom={0.58} /></div></section>

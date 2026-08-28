@@ -1,5 +1,6 @@
 import { TECHNIQUE_MODULES } from '../features/technique/catalog'
 import type { PracticeRecommendation } from '../features/practice-planning'
+import type { PracticePresentationIntent } from '../features/practice/PracticeSessionContext'
 
 const kindLabels: Readonly<Record<PracticeRecommendation['kind'], string>> = {
   'focus-section': 'Focus section', 'verify-section': 'Verify section', 'increase-speed': 'Advance speed', 'hold-speed': 'Hold speed', 'reduce-speed': 'Reduce speed',
@@ -29,4 +30,23 @@ export function recommendationWhat(recommendation: PracticeRecommendation): stri
 
 export function recommendationWhy(recommendation: PracticeRecommendation): string {
   return recommendation.reasons[0] ? reasonLabels[recommendation.reasons[0].code] : 'Current qualified evidence supports this next action.'
+}
+
+export function recommendationPresentationIntent(recommendation: PracticeRecommendation): PracticePresentationIntent | null {
+  if (recommendation.target.type === 'technique') return null
+  if (recommendation.target.type === 'section') return {
+    type: 'section',
+    recommendationId: recommendation.id,
+    recommendationKind: recommendation.kind,
+    section: recommendation.target.section,
+  }
+  return {
+    type: recommendation.kind === 'full-run' ? 'full-run' : recommendation.kind === 'widen-scope' ? 'wider-context' : 'arrangement',
+    recommendationId: recommendation.id,
+    recommendationKind: recommendation.kind,
+  }
+}
+
+export function planningQualityPercent(value: number | null): string {
+  return value === null ? 'unavailable' : `${(value * 100).toFixed(1)}%`
 }

@@ -28,6 +28,16 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 - Historical attempt and Technique snapshots are immutable and shown with their preserved engine/version provenance.
 - Phase 7 Practice Priority describes one take. Phase 14 planning is a current, explicit-`asOf`, exact-ScoreVersion derived read model with supporting provenance; recommendations are not persisted.
 
+## Frozen V1 presentation integrity
+
+- A repertoire planning action launches the exact current persisted ScoreVersion through the canonical MusicXML parser and expected-performance builder. Its suggested speed and exact section identity are session-local presentation context; they never become a persisted recommendation or change the analyzer's grading scope.
+- Technique recommendations continue to open their Technique Lab module. They never enter the repertoire Practice launcher.
+- Home, Repertoire, and Piece current-result summaries filter by the exact current ScoreVersion. Older-version takes remain available in history but cannot supply a current-result number, current PB chip, Mastery value, Voicing preference, or reference status.
+- Historical Results use one dominant score and a seven-lane inspector: Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and Voicing. Each lane reads its frozen saved snapshot. Reference comparison remains optional neutral context, never an eighth scored dimension.
+- Phase 7 per-take evidence and Phase 14 current planning are visibly separate. A lowest-dimension statement is limited to the available saved Notes/Rhythm/Tempo values and is not an overall Performance Score.
+- Authored Pedal scoring and physically captured CC64 state are reported separately. Unconfigured historical Voicing is descriptive/unavailable, never zero and never reconstructed from current preferences.
+- Rich Repertoire cards are a bounded current/recent subset. The ledger remains the complete set matching the active search and status filter.
+
 ## Truthful states and accessibility
 
 Unavailable evidence is never displayed as zero. Empty repertoire, missing attempts, absent Technique evidence, unconfigured Voicing, unavailable authored Pedal targets, absent planner recommendations, malformed imports, and repository failures use explicit factual states. Recovery and backup success are not claimed without real infrastructure.
