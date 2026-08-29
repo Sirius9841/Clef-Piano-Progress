@@ -27,6 +27,7 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 - Reference performances are selected local interpretive comparisons, never correctness ground truth.
 - Historical attempt and Technique snapshots are immutable and shown with their preserved engine/version provenance.
 - Phase 7 Practice Priority describes one take. Phase 14 planning is a current, explicit-`asOf`, exact-ScoreVersion derived read model with supporting provenance; recommendations are not persisted.
+- Current Practice Take Review uses Alignment's matched region as played identity. It shows independent evidence cards, only matched measures, at most five problem measures, and one inspector dimension at a time; unresolved localization hides headline metrics and offers explicit candidate confirmation.
 
 ## Frozen V1 presentation integrity
 
@@ -43,6 +44,8 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 Unavailable evidence is never displayed as zero. Empty repertoire, missing attempts, absent Technique evidence, unconfigured Voicing, unavailable authored Pedal targets, absent planner recommendations, malformed imports, and repository failures use explicit factual states. Recovery and backup success are not claimed without real infrastructure.
 
 Controls use native link, button, radio, select, and dialog semantics. Icon-only controls have names, destructive clearing uses a focus-managed confirmation dialog, focus indicators are visible, disabled controls remain distinguishable, and information is never color-only. V1 is intentionally desktop-first and verified at 1440×900, 1280×800, and 1024×768 without horizontal overflow.
+
+Practice transport distinguishes **Ready**, **Waiting for first note…**, **Recording**, and **Take ready**. The timer stays at zero while armed. Intended start can be Beginning, an exact planner-provided section, or Auto; the label states that it is a localization hint rather than grading truth. Detailed analysis is a lazy disclosure beneath the compact review.
 
 ## Local Data and release recovery
 

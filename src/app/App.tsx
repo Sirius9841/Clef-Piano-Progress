@@ -17,6 +17,7 @@ const TechniquePage = lazy(() => import('../pages/TechniquePage').then((module) 
 const TechniqueWorkspacePage = lazy(() => import('../pages/TechniqueWorkspacePage').then((module) => ({ default: module.TechniqueWorkspacePage })))
 const TechniqueHistoryPage = lazy(() => import('../pages/TechniqueHistoryPage').then((module) => ({ default: module.TechniqueHistoryPage })))
 const Phase13QaPage = import.meta.env.DEV ? lazy(() => import('../pages/Phase13QaPage').then((module) => ({ default: module.Phase13QaPage }))) : null
+const Phase152QaPage = import.meta.env.DEV ? lazy(() => import('../pages/Phase152QaPage').then((module) => ({ default: module.Phase152QaPage }))) : null
 
 function RouteLoader() {
   return <div className="route-loader"><strong>Opening score workspace…</strong></div>
@@ -39,6 +40,7 @@ export function App() {
         <Route path="progress" element={<ProgressPage />} />
         <Route path="settings" element={<SettingsPage />} />
         {Phase13QaPage && <Route path="qa/phase-13" element={<Suspense fallback={<RouteLoader />}><Phase13QaPage /></Suspense>} />}
+        {Phase152QaPage && <Route path="qa/phase-15-2" element={<Suspense fallback={<RouteLoader />}><Phase152QaPage /></Suspense>} />}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes></AppErrorBoundary>

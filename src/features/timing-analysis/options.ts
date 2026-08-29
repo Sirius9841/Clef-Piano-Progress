@@ -1,6 +1,6 @@
 import { compareTime, musicalTime, ZERO_TIME, type MusicalTime } from '../musicxml/musicalTime'
 
-export const TIMING_ANALYSIS_ENGINE_VERSION = '1.0.0'
+export const TIMING_ANALYSIS_ENGINE_VERSION = '1.1.0'
 
 export interface TimingAnalysisOptions {
   readonly minimumTimingToleranceMs: number

@@ -37,23 +37,25 @@ describe('PerformanceRecorder', () => {
   ] as const)('freezes %s initial sustain context into the take', (_label, initialSustain, expected) => {
     const { recorder, setNow, startRecording } = harness()
     startRecording(initialSustain)
+    recorder.capture(on(1_050))
     setNow(1_100)
     const recording = recorder.stop()!
     expect(recording.initialSustain).toEqual(expected)
     expect(Object.isFrozen(recording.initialSustain)).toBe(true)
   })
-  it('moves through idle, recording, and an immutable stopped snapshot', () => {
+  it('moves through idle, armed, recording, and an immutable stopped snapshot', () => {
     const { recorder, setNow, startRecording } = harness()
     expect(recorder.state.status).toBe('idle')
     startRecording()
-    expect(recorder.state).toMatchObject({ status: 'recording', recordingId: 'take-1', eventCount: 0 })
+    expect(recorder.state).toMatchObject({ status: 'armed', recordingId: 'take-1' })
     recorder.capture(on(1_015))
+    expect(recorder.state).toMatchObject({ status: 'recording', recordingId: 'take-1', eventCount: 1, startedAtMonotonicMs: 1_015 })
     setNow(1_300)
     const recording = recorder.stop()!
 
     expect(recorder.state.status).toBe('stopped')
     expect(recording.startedAt).toBe('2026-08-20T12:00:00.000Z')
-    expect(recording.durationMs).toBe(300)
+    expect(recording.durationMs).toBe(285)
     expect(Object.isFrozen(recording)).toBe(true)
     expect(Object.isFrozen(recording.practiceContext.includedPartIds)).toBe(true)
     expect(recorder.capture(off(1_400))).toBe(false)
@@ -70,7 +72,7 @@ describe('PerformanceRecorder', () => {
     const recording = recorder.stop()!
 
     expect(recording.events.map(({ sequence, relativeMs, event }) => [sequence, relativeMs, event.type === 'sustain' ? -1 : event.note])).toEqual([
-      [0, 15, 60], [1, 15, 64], [2, 280, 60],
+      [0, 0, 60], [1, 0, 64], [2, 265, 60],
     ])
   })
 
@@ -78,7 +80,35 @@ describe('PerformanceRecorder', () => {
     const { recorder, startRecording } = harness()
     startRecording()
     expect(recorder.capture(on(999))).toBe(false)
-    expect(recorder.stop()?.events).toHaveLength(0)
+    expect(recorder.stop()).toBeNull()
+    expect(recorder.state.status).toBe('idle')
+  })
+
+  it('keeps elapsed musical time at zero while armed and starts only on Note On', () => {
+    const { recorder, setNow, startRecording } = harness()
+    startRecording()
+    expect(recorder.capture(off(1_050))).toBe(false)
+    expect(recorder.capture({ type: 'sustain', timestampMs: 1_100, channel: 0, down: true, value: 96 })).toBe(false)
+    setNow(9_000)
+    expect(recorder.state.status).toBe('armed')
+    expect(recorder.capture(on(9_000))).toBe(true)
+    setNow(9_250)
+    const recording = recorder.stop()!
+
+    expect(recording.events[0]).toMatchObject({ relativeMs: 0, event: { type: 'note-on' } })
+    expect(recording.durationMs).toBe(250)
+    expect(recording.initialSustain).toEqual({ observed: true, down: true, value: 96 })
+    expect(recording.statistics.sustainChangeCount).toBe(0)
+  })
+
+  it('cancels safely while armed and on an armed device disconnect', () => {
+    const { recorder, startRecording } = harness()
+    startRecording()
+    expect(recorder.stop()).toBeNull()
+    expect(recorder.state.status).toBe('idle')
+    startRecording()
+    expect(recorder.handleDeviceDisconnect()).toBeNull()
+    expect(recorder.state.status).toBe('idle')
   })
 
   it('pairs repeated same-channel pitches FIFO and keeps other channels independent', () => {
@@ -89,15 +119,15 @@ describe('PerformanceRecorder', () => {
     const recording = recorder.stop()!
 
     expect(recording.keyPresses.map((press) => [press.attackMs, press.releaseMs, press.channel])).toEqual([
-      [10, 30, 0], [20, 40, 0], [25, 50, 1],
+      [0, 20, 0], [10, 30, 0], [15, 40, 1],
     ])
   })
 
   it('leaves open keys open and reports orphan releases without fabricating presses', () => {
     const { recorder, setNow, startRecording } = harness()
     startRecording()
-    recorder.capture(off(1_010, 62))
     recorder.capture(on(1_020, 60))
+    recorder.capture(off(1_030, 62))
     setNow(1_100)
     const recording = recorder.stop()!
 
@@ -117,7 +147,7 @@ describe('PerformanceRecorder', () => {
     setNow(1_100)
     const recording = recorder.stop()!
 
-    expect(recording.keyPresses[0]?.releaseMs).toBe(30)
+    expect(recording.keyPresses[0]?.releaseMs).toBe(20)
     expect(recording.statistics.sustainChangeCount).toBe(2)
     expect(recording.initialSustain).toEqual({ observed: false, down: null, value: null })
   })
@@ -152,12 +182,13 @@ describe('PerformanceRecorder', () => {
     const first = recorder.stop()!
     setNow(2_000)
     startRecording()
-    setNow(2_010)
+    recorder.capture(on(2_010))
+    setNow(2_020)
     const second = recorder.stop()!
 
     expect(first.id).toBe('take-1')
     expect(second.id).toBe('take-2')
-    expect(second.events).toHaveLength(0)
+    expect(second.events).toHaveLength(1)
     expect(first.events).toHaveLength(1)
   })
 

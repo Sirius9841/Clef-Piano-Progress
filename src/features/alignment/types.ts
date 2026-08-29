@@ -3,6 +3,74 @@ import type { MusicalTime } from '../musicxml/musicalTime'
 
 export type AlignmentStatus = 'aligned' | 'insufficient-data' | 'ambiguous' | 'failed'
 
+export type ScoreRegionLocalizationHint =
+  | Readonly<{ mode: 'auto' }>
+  | Readonly<{ mode: 'beginning' }>
+  | Readonly<{
+      mode: 'section'
+      scoreVersionId: string
+      startMeasureIndex: number
+      endMeasureIndex: number
+      sourceMeasureIds: readonly string[]
+    }>
+  | Readonly<{ mode: 'confirmed'; expectedStartIndex: number; expectedEndIndex: number }>
+
+export type ScoreRegionLocalizationStatus = 'confident' | 'limited' | 'ambiguous' | 'divergent' | 'insufficient-data'
+export type ScoreRegionLocalizationResolution = 'automatic' | 'intended-start' | 'user-confirmed' | 'unresolved'
+
+export interface ScoreRegionCandidateEvidence {
+  readonly normalizedPitchCost: number
+  readonly exactPitchAnchorCount: number
+  readonly exactPitchPairCount: number
+  readonly exactPitchAnchorDensity: number
+  readonly correspondenceCount: number
+  readonly correspondenceDensity: number
+  readonly performedCoverage: number
+  readonly longestUnsupportedGap: number
+  readonly quality: number
+}
+
+export interface ScoreRegionCandidate {
+  readonly id: string
+  readonly expectedStartIndex: number
+  readonly expectedEndIndex: number
+  readonly expectedStartGroupId: string
+  readonly expectedEndGroupId: string
+  readonly performedStartIndex: number
+  readonly performedEndIndex: number
+  readonly measureIndices: readonly number[]
+  readonly measureNumbers: readonly string[]
+  readonly displayRange: string
+  readonly hintAgreement: 'exact' | 'near' | 'none'
+  readonly evidence: ScoreRegionCandidateEvidence
+}
+
+export interface MatchedTakeRegion {
+  readonly expectedStartIndex: number
+  readonly expectedEndIndex: number
+  readonly expectedStartGroupId: string
+  readonly expectedEndGroupId: string
+  readonly performedStartIndex: number
+  readonly performedEndIndex: number
+  readonly performedStartGroupId: string
+  readonly performedEndGroupId: string
+  readonly measureIndices: readonly number[]
+  readonly measureNumbers: readonly string[]
+  readonly displayRange: string
+  readonly confidence: 'confident' | 'limited'
+}
+
+export interface ScoreRegionLocalization {
+  readonly status: ScoreRegionLocalizationStatus
+  readonly resolution: ScoreRegionLocalizationResolution
+  readonly intendedStart: ScoreRegionLocalizationHint
+  readonly selectedCandidateId: string | null
+  readonly candidates: readonly ScoreRegionCandidate[]
+  readonly bestVsSecondQualitySeparation: number | null
+  readonly takeRegion: MatchedTakeRegion | null
+  readonly explanation: string
+}
+
 export interface PerformedAttack {
   readonly id: string
   readonly sourceKeyPressId: string
@@ -107,6 +175,8 @@ export type AlignmentWarningCode =
   | 'DUPLICATE_SIMULTANEOUS_EXPECTED_PITCH'
   | 'PERFORMED_GROUP_WIDE_SPREAD'
   | 'PARTIAL_PERFORMANCE'
+  | 'SCORE_REGION_AMBIGUOUS'
+  | 'SCORE_REGION_DIVERGENT'
   | 'NO_TIME_ANCHORS'
   | 'INPUT_TOO_LARGE'
   | 'PLAN_CONTEXT_MISMATCH'
@@ -143,6 +213,8 @@ export interface AlignmentResult {
   readonly expectedPlanId: string
   readonly recordingId: string
   readonly practiceSpeedMultiplier: number
+  /** Added by alignment 2.0.0. Absent only on frozen historical 1.0.0 snapshots. */
+  readonly localization?: ScoreRegionLocalization
   readonly expectedGroups: readonly ExpectedAlignmentGroup[]
   readonly performedGroups: readonly PerformedOnsetGroup[]
   readonly groupAlignments: readonly GroupAlignment[]

@@ -38,10 +38,10 @@ export function usePerformanceRecording(practiceContext: RecordingPracticeContex
   }, [recordingStartedAt])
 
   useEffect(() => {
-    if (state.status !== 'recording') return
-    const recording = recordingDeviceLifecycle.current.reconcile(midi.selectedDeviceId, recorder)
-    if (!recording) return
-    setElapsedMs(recording?.durationMs ?? 0)
+    if (state.status !== 'recording' && state.status !== 'armed') return
+    const reconciliation = recordingDeviceLifecycle.current.reconcile(midi.selectedDeviceId, recorder)
+    if (!reconciliation.changed) return
+    setElapsedMs(reconciliation.recording?.durationMs ?? 0)
     setState(recorder.state)
   }, [midi.selectedDeviceId, recorder, state.status])
 

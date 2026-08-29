@@ -76,6 +76,8 @@ This repository builds a serious piano progress and performance-analysis applica
 - Preserve arrival sequence for equal-timestamp MIDI events. Never reorder a recording solely by timestamp.
 - React controls the recorder but never owns its authoritative event buffer or note-pairing semantics.
 - Sustain events are preserved, but Phase 3 sustain does not extend physical key-release spans.
+- Starting a take arms the recorder. Musical time and the persisted wall-clock start begin on the first Note On; pre-start CC64 updates initial sustain context but is not recorded as a performed event.
+- An armed take may be cancelled or disconnected without creating a PerformanceRecording. Practice speed and start intent remain locked while armed.
 - Recording tests use injected clocks and IDs, never real sleeps.
 - Treat a selected device whose ID remains present but whose state is no longer `connected` exactly like a removed device: clear selection, keys, and sustain, stop the recorder, and never resume the stopped take after reconnect.
 - Do not infer correctness, alignment, timing quality, or grading inside recorder services or React components.
@@ -88,6 +90,9 @@ This repository builds a serious piano progress and performance-analysis applica
 - Alignment paths are monotonic and must tolerate inserted, deleted, and substituted musical events without cascading shifts.
 - Score timing remains exact `MusicalTime` until the explicit reference-millisecond conversion; recording timing remains monotonic milliseconds.
 - Recording-start silence is represented by alignment offset, never interpreted directly as a rhythm error.
+- Score-region localization precedes fine alignment. It uses pitch structure, order, continuity, and explicit confidence; no timing fit may choose the score region.
+- Beginning and exact Phase 14 section identities are bounded intended-start hints, never grading truth. Repetitive passages with materially close candidates remain ambiguous until confirmed.
+- `MatchedTakeRegion` is the sole played-region identity for modern partial-take grading. Phase 7 Practice Priority and Phase 14 planning sections retain their separate meanings.
 - Affine time-transform fitting must be deterministic, robust to outliers, bounded against absurd scales, and explicit about fallback semantics.
 - Never mutate `ExpectedPerformancePlan` or `PerformanceRecording` during alignment. Results are immutable analysis snapshots.
 - Sustain, releases, and velocity remain preserved inputs but do not control Phase 4 attack correspondence.
@@ -117,6 +122,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Numeric authored tempo changes are authoritative. Qualitative directions such as `rit.`, `rall.`, `accelerando`, and `a tempo` must never become invented exact BPM curves.
 - Wrong-pitch aligned groups may still supply timing observations. Missing and additional notes reduce evidence but are not double-penalized by rhythm.
 - Expected chords contribute one onset position; internal chord spread remains a separate conservative diagnostic.
+- Reject local-tempo windows whose expected and performed onset geometry disagree. Do not clamp corrupted local BPM into a plausible-looking result.
 - Grace events remain outside fixed timing grading. Velocity, releases, duration, articulation, and sustain never affect Phase 6 scores.
 - Timing-analysis code remains React- and OSMD-independent, deterministic, immutable, versioned, and provenance-rich for future measure aggregation.
 - Score-only expressive timing and future reference-performance timing remain conceptually distinct.
@@ -132,6 +138,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Section metrics are rebuilt from underlying evidence. Weak/strong ranking and overlap suppression remain deterministic and centralized.
 - Additional attacks receive score provenance only from safe correspondence or two-sided contextual attribution; never invent notation IDs.
 - Renderer highlighting consumes an application-owned mapping model. OSMD remains isolated and is never analysis truth.
+- Compact Take Review shows only the localized measure range, bounds problem measures, and exposes one evidence dimension at a time. Unresolved localization gates headline metrics rather than guessing.
 - Performance-result logic remains React- and OSMD-independent, immutable, versioned, serializable, and tested for scopes, evidence, boundaries, duplicates, mapping, determinism, and long scores.
 
 ## Expression-analysis rules

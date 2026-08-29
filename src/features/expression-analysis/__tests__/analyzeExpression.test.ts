@@ -293,13 +293,13 @@ describe('expression analysis', () => {
     expect(full.articulation.score).toBeGreaterThan(premature.articulation.score!)
   })
 
-  it('keeps a thin set of correct articulation targets limited instead of double-penalizing pitch errors', () => {
+  it('keeps a thin set of correct articulation targets scored but provisional when localization diverges', () => {
     const plan = makePlan(Array.from({ length: 8 }, (_, index) => [60 + index]))
     const score = withNotation(expressionScore(plan), (note) => ({ ...note, articulations: ['staccato', 'fermata'] }))
     const result = analyze(score, plan, performance(plan, [40, 50, 60, 70, 80, 90, 75, 55], Array(8).fill(0.45), [60, 80, 81, 82, 83, 84, 85, 86]))
     expect(result.articulation.score).toBe(1)
     expect(result.articulation.coverage).toMatchObject({ authoredTargetCount: 8, analyzedTargetCount: 1, ratio: 0.125 })
-    expect(result.articulation.reliability).toBe('limited')
+    expect(result.articulation.reliability).toBe('provisional')
     expect(result.articulation.targets.every((target) => target.kind !== ('fermata' as never))).toBe(true)
   })
 

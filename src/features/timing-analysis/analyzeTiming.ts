@@ -308,8 +308,11 @@ function localTempoSamples(
   alignment: AlignmentResult,
   strong: readonly GroupCorrespondence[],
   options: TimingAnalysisOptions,
-): LocalTempoSample[] {
+): { samples: LocalTempoSample[]; rejectedGeometryCount: number } {
   const samples: LocalTempoSample[] = []
+  let rejectedGeometryCount = 0
+  const expectedIndexes = new Map(alignment.expectedGroups.map((group, index) => [group.id, index]))
+  const performedIndexes = new Map(alignment.performedGroups.map((group, index) => [group.id, index]))
   const windows = buildLocalTempoWindowGeometry(
     strong.map((step) => ({ id: step.id, position: step.expectedGroup.position, step })),
     options.localTempoWindowBeats,
@@ -318,6 +321,12 @@ function localTempoSamples(
   for (const window of windows) {
     const start = window.start.step
     const end = window.end.step
+    const expectedSpan = expectedIndexes.get(end.expectedGroup.id)! - expectedIndexes.get(start.expectedGroup.id)!
+    const performedSpan = performedIndexes.get(end.performedGroup.id)! - performedIndexes.get(start.performedGroup.id)!
+    if (expectedSpan <= 0 || performedSpan <= 0 || expectedSpan !== performedSpan) {
+      rejectedGeometryCount += 1
+      continue
+    }
     const referenceIntervalMs = end.expectedGroup.referenceMs - start.expectedGroup.referenceMs
     const performedIntervalMs = end.performedGroup.representativeMs - start.performedGroup.representativeMs
     if (referenceIntervalMs <= 0 || performedIntervalMs <= 0) continue
@@ -341,7 +350,7 @@ function localTempoSamples(
       targetSource: target.source,
     })
   }
-  return samples
+  return { samples, rejectedGeometryCount }
 }
 
 function directionObservations(
@@ -397,10 +406,11 @@ function buildTempo(
   correspondences: readonly GroupCorrespondence[],
   noteGrading: NoteGradingResult,
   options: TimingAnalysisOptions,
-): TempoAnalysis {
+): { tempo: TempoAnalysis; rejectedGeometryCount: number } {
   const noteGroups = new Map(noteGrading.groupResults.map((group) => [group.groupAlignmentId, group]))
   const strong = correspondences.filter((step) => classifyAnchor(step, noteGroups.get(step.id)?.counts.wrongPitch ?? 0, options).quality === 'strong-anchor')
-  const samples = localTempoSamples(plan, alignment, strong, options)
+  const local = localTempoSamples(plan, alignment, strong, options)
+  const samples = local.samples
   const target = targetSummary(plan, alignment, scope)
   const canUseGlobalScale = strong.length >= 2 && alignment.timeTransform.scaleFitted && alignment.timeTransform.scale > 0
   const globalTimeScale = canUseGlobalScale ? alignment.timeTransform.scale : null
@@ -413,7 +423,7 @@ function buildTempo(
   const availableWeight = availableComponents.reduce((sum, [score, weight]) => sum + (score === null ? 0 : weight), 0)
   const tempoScore = availableWeight === 0 ? null : clamp01(availableComponents.reduce((sum, [score, weight]) => sum + (score === null ? 0 : score * weight), 0) / availableWeight)
   const trend = tempoTrend(samples, options)
-  return {
+  return { tempo: {
     tempoScore,
     targetTempoAccuracyScore: accuracy,
     tempoStabilityScore: stability,
@@ -427,7 +437,7 @@ function buildTempo(
     medianLocalTempoRatio: medianRatio,
     medianAbsoluteLocalLogDeviation,
     directionObservations: directionObservations(plan, alignment, scope, samples, options),
-  }
+  }, rejectedGeometryCount: local.rejectedGeometryCount }
 }
 
 function emptyRhythm(): RhythmAnalysis {
@@ -458,7 +468,8 @@ export function analyzeTiming({ expectedPlan, recording, alignment, noteGrading,
   const ids = scopeGroupIds(alignment, scope)
   const correspondences = alignment.groupAlignments.filter((step): step is GroupCorrespondence => step.kind === 'correspondence' && ids.expected.has(step.expectedGroup.id) && ids.performed.has(step.performedGroup.id))
   const rhythm = unavailableReason ? emptyRhythm() : buildRhythm(expectedPlan, alignment, correspondences, noteGrading, options)
-  const tempo = unavailableReason ? emptyTempo(expectedPlan, alignment, scope) : buildTempo(expectedPlan, alignment, scope, correspondences, noteGrading, options)
+  const tempoBuild = unavailableReason ? { tempo: emptyTempo(expectedPlan, alignment, scope), rejectedGeometryCount: 0 } : buildTempo(expectedPlan, alignment, scope, correspondences, noteGrading, options)
+  const tempo = tempoBuild.tempo
   if (!unavailableReason && rhythm.rhythmScore === null && tempo.tempoScore === null) {
     unavailableReason = 'At least two usable matched onsets are required for timing-interval analysis.'
     warnings.push({ code: 'INSUFFICIENT_TIMING_OBSERVATIONS', severity: 'warning', message: unavailableReason })
@@ -466,6 +477,8 @@ export function analyzeTiming({ expectedPlan, recording, alignment, noteGrading,
   const evidenceCount = Math.max(rhythm.usableObservationCount, rhythm.strongAnchorCount)
   let reliability: TimingAnalysisReliability = unavailableReason ? 'unavailable' : alignment.status === 'ambiguous' || noteGrading.reliability === 'provisional' ? 'provisional' : evidenceCount < 3 ? 'limited' : 'reliable'
   if (!unavailableReason && reliability === 'limited') warnings.push({ code: 'LIMITED_TIMING_EVIDENCE', severity: 'info', message: 'Only one timing interval is available; scores are useful but tempo stability and trend remain limited.' })
+  if (!unavailableReason && tempoBuild.rejectedGeometryCount > 0) warnings.push({ code: 'REJECTED_LOCAL_TEMPO_GEOMETRY', severity: 'info', message: `${tempoBuild.rejectedGeometryCount} local tempo window${tempoBuild.rejectedGeometryCount === 1 ? '' : 's'} were excluded because expected and performed onset progression did not describe the same contiguous geometry.` })
+  if (!unavailableReason && tempoBuild.rejectedGeometryCount > 0 && tempo.localSamples.length < 2 && reliability === 'reliable') reliability = 'limited'
   if (!unavailableReason && reliability === 'provisional') warnings.push({ code: 'PROVISIONAL_ALIGNMENT', severity: 'warning', message: 'Timing results are provisional because the underlying correspondence is ambiguous.' })
   for (const diagnostic of rhythm.chordSpreadDiagnostics.filter((item) => item.classification === 'wide')) warnings.push({ code: 'WIDE_CHORD_SPREAD', severity: 'info', message: `A performed onset spans ${diagnostic.spreadMs.toFixed(1)} ms. Chord spread is reported separately and does not reduce the rhythm score.`, groupAlignmentId: correspondences.find((step) => step.expectedGroup.id === diagnostic.expectedGroupId)?.id })
   for (const direction of tempo.directionObservations) warnings.push({ code: 'QUALITATIVE_TEMPO_ONLY', severity: 'info', sourceEventId: direction.sourceEventId, message: `${direction.text} is interpreted as qualitative direction only; no exact BPM curve was invented.` })
@@ -493,6 +506,7 @@ export function analyzeTiming({ expectedPlan, recording, alignment, noteGrading,
       usableObservationCount: rhythm.usableObservationCount,
       scoredRhythmIntervalCount: rhythm.scoredIntervalCount,
       localTempoSampleCount: tempo.localSamples.length,
+      rejectedLocalTempoWindowCount: tempoBuild.rejectedGeometryCount,
       qualitativeDirectionCount: tempo.directionObservations.length,
       wideChordCount: rhythm.chordSpreadDiagnostics.filter((diagnostic) => diagnostic.classification === 'wide').length,
     },

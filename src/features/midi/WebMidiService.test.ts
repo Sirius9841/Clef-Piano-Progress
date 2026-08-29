@@ -151,7 +151,7 @@ describe('WebMidiService lifecycle', () => {
     access.input.state = 'disconnected'
     now = 1_030
     access.emitStateChange()
-    const stopped = lifecycle.reconcile(runtime.selectedDeviceId, recorder)
+    const stopped = lifecycle.reconcile(runtime.selectedDeviceId, recorder).recording
     expect(runtime).toMatchObject({ selectedDeviceId: null, activeNotes: [], sustainDown: false })
     expect(stopped).toMatchObject({ id: 'take-1', stopReason: 'device-disconnected' })
 

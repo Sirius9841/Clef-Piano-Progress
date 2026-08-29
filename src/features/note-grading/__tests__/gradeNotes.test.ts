@@ -176,11 +176,11 @@ describe('gradeNotes', () => {
     expect(result.metrics.noteScore).toBeCloseTo(2 / 3)
   })
 
-  it('marks useful results provisional when alignment is ambiguous', () => {
+  it('fails aligned-span grading closed when modern score-region localization is unresolved', () => {
     const result = grade([[60], [62]], [61, 63])
-    expect(result.status).toBe('ready')
-    expect(result.reliability).toBe('provisional')
-    expect(result.warnings.map((warning) => warning.code)).toContain('PROVISIONAL_ALIGNMENT')
+    expect(result.status).toBe('unavailable')
+    expect(result.reliability).toBe('unavailable')
+    expect(result.metrics.noteScore).toBeNull()
   })
 
   it('excludes outside-standard-range targets from score denominators', () => {

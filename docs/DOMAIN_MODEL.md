@@ -71,13 +71,13 @@ Planning is not a persisted entity, score, grade, repertoire status, or historic
 
 ## Performance recording
 
-`PerformanceRecording` is session-local observed MIDI truth: ordered normalized events, physical key-press spans, device/context metadata, objective diagnostics, and a wall-clock start time. Fine timing is relative monotonic milliseconds. An open key has no invented release, an orphan Note Off remains an event and warning, and sustain is recorded independently from physical key release.
+`PerformanceRecording` is session-local observed MIDI truth: ordered normalized events, physical key-press spans, device/context metadata, objective diagnostics, and a wall-clock start time. Recorder `armed` state is not a recording: the first Note On establishes monotonic zero and the wall-clock start. Pre-start CC64 establishes initial sustain context without becoming a recorded performance event. Fine timing is relative monotonic milliseconds. An open key has no invented release, an orphan Note Off remains an event and warning, and sustain is recorded independently from physical key release.
 
 When the user explicitly saves a completed analysis, this recording is preserved inside a PerformanceAttempt without changing the frozen recording snapshot.
 
 ## Alignment result
 
-`AlignmentResult` is an immutable, versioned correspondence snapshot between one `ExpectedPerformancePlan` and one `PerformanceRecording`. It contains performed onset groups, monotonic group correspondences, expected-only and performed-only groups, exact attack pairs, an affine reference-to-performance time transform, timing residuals, warnings, and objective diagnostics.
+`AlignmentResult` is an immutable, versioned correspondence snapshot between one `ExpectedPerformancePlan` and one `PerformanceRecording`. Version `2.0.0` includes `ScoreRegionLocalization`: the non-authoritative intended-start hint, ranked explainable candidates, resolution/confidence, and an optional `MatchedTakeRegion` with exact expected/performed group and source-measure bounds. Fine alignment, affine fitting, timing residuals, and attack correspondences are calculated only after a region is structurally resolved.
 
 Alignment facts are deliberately neutral. An unpaired expected attack is not yet a “missed note,” an unpaired performed attack is not yet a “wrong note,” and a timing residual is not yet a rhythm judgment. Phase 5 and later grading layers will interpret these facts without changing the plan, recording, or alignment history.
 
@@ -85,11 +85,11 @@ Alignment facts are deliberately neutral. An unpaired expected attack is not yet
 
 `NoteGradingResult` is the immutable, versioned Phase 5 interpretation of an `AlignmentResult`. It first collapses simultaneous notation attacks with the same MIDI pitch into a single physically observable `ExpectedKeyTarget`, retaining all attack, source-note, measure, part, staff, and voice provenance. It then classifies in-scope targets and observed attacks as correct, wrong-pitch, missed, additional, excluded, or outside scope.
 
-Every result records aligned-span or full-plan scope and reliable, provisional, or unavailable status. Its dedicated note score is pitch-only precision/recall F1. It is not an overall `Performance Score`; timing, tempo, velocity, duration, articulation, chord spread, and pedal data remain uninterpreted by this layer.
+Every result records aligned-span or full-plan scope and reliable, provisional, or unavailable status. For Alignment `2.0.0`, aligned-span bounds come only from the frozen `MatchedTakeRegion`; ambiguous, divergent, or insufficient localization is unavailable. Its dedicated note score is pitch-only precision/recall F1. It is not an overall `Performance Score`; timing, tempo, velocity, duration, articulation, chord spread, and pedal data remain uninterpreted by this layer.
 
 ## Timing analysis result
 
-`TimingAnalysisResult` is the immutable, versioned Phase 6 interpretation of the existing alignment clock and the selected Phase 5 scope. Its `RhythmAnalysis` records matched-onset provenance, local interval ratios, tempo-normalized error, human-timing tolerance, robust rhythm score, chord-spread diagnostics, and measure foundations. Its separate `TempoAnalysis` records effective target tempo, global tempo ratio, local tempo samples, stability, trend, numeric tempo regions, and qualitative direction observations.
+`TimingAnalysisResult` is the immutable, versioned Phase 6 interpretation of the existing alignment clock and the selected Phase 5 scope. Version `1.1.0` rejects local-tempo windows when expected and performed onset-index geometry differ and records that rejection count; rejected geometry reduces evidence rather than producing a clamped plausible-looking BPM. Its `RhythmAnalysis` records matched-onset provenance, local interval ratios, tempo-normalized error, human-timing tolerance, robust rhythm score, chord-spread diagnostics, and measure foundations. Its separate `TempoAnalysis` records effective target tempo, global tempo ratio, trustworthy local tempo samples, stability, trend, numeric tempo regions, and qualitative direction observations.
 
 The global affine `timeScale` describes performed duration per unit of effective reference duration; the musically presented `tempoRatio` is its inverse. A 1.25× time scale therefore means approximately 80% of target tempo. Neither result uses pitch correctness as partial timing credit, and neither uses velocity, release duration, articulation, or pedal data. Notes, Rhythm, and Tempo are not combined into an overall Performance Score yet.
 
@@ -98,6 +98,8 @@ The global affine `timeScale` describes performed duration per unit of effective
 `PerformanceResults` is the immutable, versioned Phase 7 aggregation snapshot for one exact normalized score, expected plan, alignment, note grade, timing analysis, and grading scope. It contains measure results, sliding section results, weak and strong section recommendations, a deterministic musical-order mistake index, accessible heatmap data, and mappings back to expected attacks and normalized source IDs.
 
 Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rhythm, and 20% Tempo, renormalizes missing dimensions, and adjusts the ranking by evidence confidence. It answers “where should this take be reviewed first?” It is explicitly not the attempt's overall Performance Score, arrangement Mastery, a personal best, or a transferable SkillRating. Phase 8 persists the result inside its exact PerformanceAttempt; historical views are read-only and do not silently rerun newer engines.
+
+Phase 15.2 `TakeReview` is a compact current-take projection, not a new persisted analysis entity. It consumes `MatchedTakeRegion` and existing frozen results to show one bounded measure range and one evidence dimension at a time. Its problem list and selected-measure highlight do not replace Phase 7 section identity, Practice Priority, or Phase 14 planning.
 
 ## Expression analysis result
 

@@ -26,6 +26,12 @@ interface ActiveRecording {
   lastTimestampMs: number
 }
 
+interface ArmedRecording {
+  id: string
+  armedAtMonotonicMs: number
+  options: StartRecordingOptions
+}
+
 function defaultCreateId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `recording-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
@@ -57,6 +63,7 @@ function freezeRecording(recording: PerformanceRecording): PerformanceRecording 
 }
 
 export class PerformanceRecorder {
+  private armed: ArmedRecording | null = null
   private active: ActiveRecording | null = null
   private stopped: PerformanceRecording | null = null
 
@@ -72,31 +79,47 @@ export class PerformanceRecorder {
         eventCount: this.active.events.length,
       }
     }
+    if (this.armed) return { status: 'armed', recordingId: this.armed.id, armedAtMonotonicMs: this.armed.armedAtMonotonicMs }
     return this.stopped ? { status: 'stopped', recording: this.stopped } : { status: 'idle' }
   }
 
   start(options: StartRecordingOptions): RecorderState {
     if (this.active) this.stop('replaced')
-    const startedAtMonotonicMs = this.environment.monotonicNow()
-    if (!Number.isFinite(startedAtMonotonicMs)) throw new RangeError('Recorder monotonic start time must be finite.')
+    const armedAtMonotonicMs = this.environment.monotonicNow()
+    if (!Number.isFinite(armedAtMonotonicMs)) throw new RangeError('Recorder monotonic arm time must be finite.')
     this.stopped = null
-    this.active = {
+    this.armed = {
       id: this.environment.createId(),
-      startedAt: this.environment.wallClockNow().toISOString(),
-      startedAtMonotonicMs,
+      armedAtMonotonicMs,
       options: {
         device: { ...options.device },
         practiceContext: options.practiceContext ? { ...options.practiceContext, includedPartIds: options.practiceContext.includedPartIds ? [...options.practiceContext.includedPartIds] : undefined } : {},
         initialSustain: options.initialSustain ? { ...options.initialSustain } : { observed: false, down: null, value: null },
       },
-      events: [],
-      warnings: [],
-      lastTimestampMs: startedAtMonotonicMs,
     }
     return this.state
   }
 
   capture(event: MidiEvent): boolean {
+    const armed = this.armed
+    if (armed) {
+      if (!Number.isFinite(event.timestampMs) || event.timestampMs < armed.armedAtMonotonicMs) return false
+      if (event.type === 'sustain') {
+        armed.options = { ...armed.options, initialSustain: { observed: true, down: event.down, value: event.value } }
+        return false
+      }
+      if (event.type !== 'note-on') return false
+      this.active = {
+        id: armed.id,
+        startedAt: this.environment.wallClockNow().toISOString(),
+        startedAtMonotonicMs: event.timestampMs,
+        options: armed.options,
+        events: [],
+        warnings: [],
+        lastTimestampMs: event.timestampMs,
+      }
+      this.armed = null
+    }
     const active = this.active
     if (!active || !Number.isFinite(event.timestampMs) || event.timestampMs < active.startedAtMonotonicMs) return false
     const sequence = active.events.length
@@ -109,6 +132,10 @@ export class PerformanceRecorder {
   }
 
   stop(reason: RecordingStopReason = 'user'): PerformanceRecording | null {
+    if (this.armed) {
+      this.armed = null
+      return null
+    }
     const active = this.active
     if (!active) return this.stopped
     const stopTimestampMs = this.environment.monotonicNow()
@@ -136,10 +163,15 @@ export class PerformanceRecorder {
   }
 
   handleDeviceDisconnect(): PerformanceRecording | null {
+    if (this.armed) {
+      this.armed = null
+      return null
+    }
     return this.active ? this.stop('device-disconnected') : this.stopped
   }
 
   discard(): void {
+    this.armed = null
     this.active = null
     this.stopped = null
   }

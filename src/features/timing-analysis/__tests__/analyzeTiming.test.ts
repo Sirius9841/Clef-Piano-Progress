@@ -182,6 +182,15 @@ describe('analyzeTiming', () => {
     expect(result.rhythm.rhythmScore).toBeGreaterThan(0.95)
   })
 
+  it('rejects structurally mismatched local tempo windows instead of emitting an absurd finite BPM point', () => {
+    const plan = makePlan([[60], [62], [64], [65], [67]])
+    const result = analyze(plan, melodyRecording([60, 62, 65, 67], [500, 1_000, 1_010, 1_510]), { alignment: { localizationHint: { mode: 'confirmed', expectedStartIndex: 0, expectedEndIndex: 4 } } })
+
+    expect(result.diagnostics.rejectedLocalTempoWindowCount).toBeGreaterThan(0)
+    expect(result.warnings.map((warning) => warning.code)).toContain('REJECTED_LOCAL_TEMPO_GEOMETRY')
+    expect(result.tempo.localSamples.every((sample) => sample.performedQuarterBpm < 500)).toBe(true)
+  })
+
   it('breaks one interval around an additional group without shifting later timing', () => {
     const plan = makePlan([[60], [62], [64], [65], [67]])
     const result = analyze(plan, melodyRecording([60, 62, 61, 64, 65, 67], [500, 1_000, 1_250, 1_500, 2_000, 2_500]))
@@ -216,10 +225,10 @@ describe('analyzeTiming', () => {
     expect(two.tempo.tempoStabilityScore).toBeNull()
   })
 
-  it('marks ambiguous structural timing provisional', () => {
+  it('keeps timing unavailable when score-region localization is unresolved', () => {
     const plan = makePlan([[60], [62], [64]])
     const result = analyze(plan, melodyRecording([61, 63, 65], [500, 1_000, 1_500]))
-    expect(result.reliability).toBe('provisional')
+    expect(result.reliability).toBe('unavailable')
   })
 
   it('preserves residual sign and exact score positions', () => {

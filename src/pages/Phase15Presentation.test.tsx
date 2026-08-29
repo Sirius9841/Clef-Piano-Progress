@@ -47,6 +47,15 @@ describe('Phase 15 frozen presentation guardrails', () => {
     expect(cssSource).toContain('body.practice-focus')
   })
 
+  it('keeps armed capture and compact Take Review truthful in Practice', () => {
+    expect(practiceSource).toContain("capture.state.status === 'armed' ? 'Waiting for first note…'")
+    expect(practiceSource).toContain('A hint for localization, never grading truth.')
+    expect(practiceSource).toContain('<TakeReview')
+    expect(practiceSource).toContain('id="detailed-analysis"')
+    expect(practiceSource).toContain('forensicOpen &&')
+    expect(practiceSource).toContain('Confirm the matched score region before saving this analysis.')
+  })
+
   it('uses an accessible confirmation and makes no backup or recovery success claim', () => {
     expect(settingsSource).toContain('<ConfirmDialog')
     expect(settingsSource).not.toContain('window.confirm')

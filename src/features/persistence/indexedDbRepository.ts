@@ -534,6 +534,73 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed nested snapshots.`)
   }
+  if (alignment.diagnostics.alignmentEngineVersion === '2.0.0') {
+    const localization = alignment.localization
+    const validHint = (hint: unknown): boolean => isObjectRecord(hint) && (
+      hint.mode === 'auto' || hint.mode === 'beginning'
+      || (hint.mode === 'confirmed' && isNonnegativeInteger(hint.expectedStartIndex) && isNonnegativeInteger(hint.expectedEndIndex) && hint.expectedEndIndex >= hint.expectedStartIndex)
+      || (hint.mode === 'section' && typeof hint.scoreVersionId === 'string' && isNonnegativeInteger(hint.startMeasureIndex) && isNonnegativeInteger(hint.endMeasureIndex) && hint.endMeasureIndex >= hint.startMeasureIndex && isStringArray(hint.sourceMeasureIds))
+    )
+    const validCandidate = (candidate: unknown): boolean => isObjectRecord(candidate) && typeof candidate.id === 'string'
+      && isNonnegativeInteger(candidate.expectedStartIndex) && isNonnegativeInteger(candidate.expectedEndIndex) && candidate.expectedEndIndex >= candidate.expectedStartIndex
+      && isNonnegativeInteger(candidate.performedStartIndex) && isNonnegativeInteger(candidate.performedEndIndex) && candidate.performedEndIndex >= candidate.performedStartIndex
+      && typeof candidate.expectedStartGroupId === 'string' && typeof candidate.expectedEndGroupId === 'string'
+      && isStringArray(candidate.measureNumbers) && Array.isArray(candidate.measureIndices) && candidate.measureIndices.every(isNonnegativeInteger)
+      && typeof candidate.displayRange === 'string' && (candidate.hintAgreement === 'exact' || candidate.hintAgreement === 'near' || candidate.hintAgreement === 'none')
+      && isObjectRecord(candidate.evidence) && isFiniteNumber(candidate.evidence.quality) && candidate.evidence.quality >= 0 && candidate.evidence.quality <= 1
+      && isFiniteNumber(candidate.evidence.normalizedPitchCost) && candidate.evidence.normalizedPitchCost >= 0
+      && isNonnegativeInteger(candidate.evidence.exactPitchAnchorCount) && isNonnegativeInteger(candidate.evidence.exactPitchPairCount)
+      && isFiniteNumber(candidate.evidence.exactPitchAnchorDensity) && candidate.evidence.exactPitchAnchorDensity >= 0 && candidate.evidence.exactPitchAnchorDensity <= 1 && isNonnegativeInteger(candidate.evidence.correspondenceCount)
+      && isFiniteNumber(candidate.evidence.correspondenceDensity) && candidate.evidence.correspondenceDensity >= 0 && candidate.evidence.correspondenceDensity <= 1
+      && isFiniteNumber(candidate.evidence.performedCoverage) && candidate.evidence.performedCoverage >= 0 && candidate.evidence.performedCoverage <= 1 && isNonnegativeInteger(candidate.evidence.longestUnsupportedGap)
+    const validRegion = (region: unknown): boolean => isObjectRecord(region) && isNonnegativeInteger(region.expectedStartIndex) && isNonnegativeInteger(region.expectedEndIndex) && region.expectedEndIndex >= region.expectedStartIndex
+      && isNonnegativeInteger(region.performedStartIndex) && isNonnegativeInteger(region.performedEndIndex) && region.performedEndIndex >= region.performedStartIndex
+      && typeof region.expectedStartGroupId === 'string' && typeof region.expectedEndGroupId === 'string' && typeof region.performedStartGroupId === 'string' && typeof region.performedEndGroupId === 'string'
+      && Array.isArray(region.measureIndices) && region.measureIndices.every(isNonnegativeInteger) && isStringArray(region.measureNumbers) && typeof region.displayRange === 'string'
+      && (region.confidence === 'confident' || region.confidence === 'limited')
+    if (!isObjectRecord(localization) || !Array.isArray(alignment.expectedGroups) || !Array.isArray(alignment.performedGroups)
+      || !['confident', 'limited', 'ambiguous', 'divergent', 'insufficient-data'].includes(typeof localization.status === 'string' ? localization.status : '')
+      || !['automatic', 'intended-start', 'user-confirmed', 'unresolved'].includes(typeof localization.resolution === 'string' ? localization.resolution : '')
+      || !validHint(localization.intendedStart) || !Array.isArray(localization.candidates) || !localization.candidates.every(validCandidate)
+      || !isNullableString(localization.selectedCandidateId) || (localization.bestVsSecondQualitySeparation !== null && !isFiniteNumber(localization.bestVsSecondQualitySeparation))
+      || (localization.takeRegion !== null && !validRegion(localization.takeRegion)) || typeof localization.explanation !== 'string'
+      || ((localization.status === 'confident' || localization.status === 'limited') !== (localization.takeRegion !== null))) {
+      throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed score-region localization provenance.`)
+    }
+    const resolved = localization.status === 'confident' || localization.status === 'limited'
+    const selectedCandidate = typeof localization.selectedCandidateId === 'string'
+      ? localization.candidates.find((candidate) => isObjectRecord(candidate) && candidate.id === localization.selectedCandidateId)
+      : null
+    const region = isObjectRecord(localization.takeRegion) ? localization.takeRegion : null
+    const expectedGroups = Array.isArray(alignment.expectedGroups)
+  ? alignment.expectedGroups
+  : []
+
+const performedGroups = Array.isArray(alignment.performedGroups)
+  ? alignment.performedGroups
+  : []
+
+const expectedAt = (index: unknown) => {
+  if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) return null
+  const group = expectedGroups[index]
+  return isObjectRecord(group) ? group : null
+}
+
+const performedAt = (index: unknown) => {
+  if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) return null
+  const group = performedGroups[index]
+  return isObjectRecord(group) ? group : null
+}
+    if ((resolved && (!selectedCandidate || !region || localization.resolution === 'unresolved' || region.confidence !== localization.status))
+      || (!resolved && (localization.selectedCandidateId !== null || localization.takeRegion !== null || localization.resolution !== 'unresolved'))
+      || (region && (expectedAt(region.expectedStartIndex)?.id !== region.expectedStartGroupId || expectedAt(region.expectedEndIndex)?.id !== region.expectedEndGroupId
+        || performedAt(region.performedStartIndex)?.id !== region.performedStartGroupId || performedAt(region.performedEndIndex)?.id !== region.performedEndGroupId))) {
+      throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has inconsistent score-region localization provenance.`)
+    }
+  }
+  if (timing.diagnostics.timingAnalysisEngineVersion === '1.1.0' && !isNonnegativeInteger(timing.diagnostics.rejectedLocalTempoWindowCount)) {
+    throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed local-tempo geometry diagnostics.`)
+  }
   if (
     !isCanonicalIsoTimestamp(recording.startedAt)
     || typeof recording.durationMs !== 'number'

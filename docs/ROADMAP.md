@@ -116,6 +116,12 @@ Clef is a **V1 release candidate**, not a publicly released product. Real MIDI h
 
 Summary repairability is now proven from a fully validated hypothetical post-repair snapshot rather than inferred from the currently visible issue families. The repair write path repeats that fail-before-mutation proof and returns only a healthy final report. Backup inspection also enforces unique logical Repertoire membership and unique attempt IDs within each PracticeSession. Schema `4`, backup format `clef-local-backup` version `1`, all historical record families, and every musical engine/model version remain unchanged.
 
+## Phase 15.2 — Real-Performance Truth + Compact Take Review — complete
+
+Recording now arms until the first Note On, score-region localization deterministically bounds partial takes before fine alignment, repetitive passages fail closed into explicit candidate confirmation, and downstream grading uses the immutable matched region. Timing rejects mismatched local-window geometry instead of clamping implausible BPM samples. Practice presents a compact matched-range Take Review with independent evidence dimensions, a bounded measure map, bounded issues, truthful unavailable Pedal/Voicing states, and lazy forensic detail. Alignment advances from `1.0.0` to `2.0.0`; Timing Analysis advances from `1.0.0` to `1.1.0`. PerformanceAttempt remains V4, IndexedDB remains schema `4`, no migration is required, and historical attempts remain frozen. The manual CA401 release gate is still pending.
+
+Future notation work must replace the current overly dense OSMD `drawingParameters: compacttight` full-score posture with readable page-oriented engraving. It must remain renderer-only and must not change canonical score, localization, or analysis truth.
+
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.
 
 Notes, Rhythm, Tempo, Dynamics, Articulation, Pedal, and configured Voicing remain separate. Dynamics, Articulation, Pedal, and Voicing do not enter personal bests, trends, Practice Priority, Skill Ratings, or Mastery. Reference differences are neutral and have no aggregate score. Acoustic tone/loudness, calibrated half-pedal depth, an overall Performance Score, cloud sync, and accounts remain unimplemented.

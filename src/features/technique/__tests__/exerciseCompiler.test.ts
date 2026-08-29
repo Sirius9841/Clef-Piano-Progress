@@ -325,6 +325,6 @@ describe('Technique exercise compiler', () => {
     const result = analyzeTechnique({ exercise: compiled.snapshot, recording, alignment, noteGrading, timingAnalysis, novelty: { exerciseInstanceId: compiled.snapshot.id, priorSavedAttemptCount: 0, firstSavedAttempt: true } })
     expect(result.facets.every((facet) => facet.score === null)).toBe(true)
     expect(result.status).toBe('unavailable')
-    expect(result.completion.eventCoverageRatio).toBeLessThan(result.completion.spanReachedRatio || 1)
+    expect(result.completion).toMatchObject({ eventCoverageRatio: 0.125, spanReachedRatio: 0.125, completeEnoughForEvidence: false })
   })
 })

@@ -4,6 +4,7 @@ import { ALIGNMENT_ENGINE_VERSION, resolveAlignmentOptions, type AlignmentOption
 import { clusterPerformedOnsets, derivePerformedAttacks } from './performedGroups'
 import { alignGroupSequences, type SequenceAlignmentResult } from './sequenceAlignment'
 import { fitTimeTransform, type TimeFitAnchor } from './timeFit'
+import { localizeScoreRegion } from './localizeScoreRegion'
 import type { ExpectedPerformancePlan } from '../expected-performance/types'
 import type { PerformanceRecording } from '../performance/types'
 import type {
@@ -15,6 +16,7 @@ import type {
   ExpectedAlignmentGroup,
   GroupAlignment,
   PerformedOnsetGroup,
+  ScoreRegionLocalization,
 } from './types'
 
 function stableHash(value: string): string {
@@ -130,6 +132,17 @@ function freezeResult(result: AlignmentResult): AlignmentResult {
     Object.freeze(step)
   }
   result.warnings.forEach(Object.freeze)
+  if (result.localization) {
+    result.localization.candidates.forEach((candidate) => {
+      Object.freeze(candidate.measureIndices); Object.freeze(candidate.measureNumbers); Object.freeze(candidate.evidence); Object.freeze(candidate)
+    })
+    Object.freeze(result.localization.candidates)
+    if (result.localization.takeRegion) {
+      Object.freeze(result.localization.takeRegion.measureIndices); Object.freeze(result.localization.takeRegion.measureNumbers); Object.freeze(result.localization.takeRegion)
+    }
+    if (result.localization.intendedStart.mode === 'section') Object.freeze(result.localization.intendedStart.sourceMeasureIds)
+    Object.freeze(result.localization.intendedStart); Object.freeze(result.localization)
+  }
   Object.freeze(result.expectedGroups); Object.freeze(result.performedGroups); Object.freeze(result.groupAlignments); Object.freeze(result.unmatchedExpectedGroupIds); Object.freeze(result.unmatchedPerformedGroupIds); Object.freeze(result.timeTransform); Object.freeze(result.diagnostics); Object.freeze(result.warnings)
   return Object.freeze(result)
 }
@@ -148,6 +161,7 @@ function finishResult(
   coarseCost: number,
   finalCost: number,
   matrixCellCount: number,
+  localization: ScoreRegionLocalization,
 ): AlignmentResult {
   return freezeResult({
     id: alignmentId(plan.id, recording.id, speed, options),
@@ -155,6 +169,7 @@ function finishResult(
     expectedPlanId: plan.id,
     recordingId: recording.id,
     practiceSpeedMultiplier: speed,
+    localization,
     expectedGroups,
     performedGroups,
     groupAlignments: alignments,
@@ -179,13 +194,14 @@ export function alignPerformance(
   if (recording.practiceContext.expectedPerformancePlanId && recording.practiceContext.expectedPerformancePlanId !== plan.id) warnings.push({ code: 'PLAN_CONTEXT_MISMATCH', severity: 'warning', message: 'The recording references a different expected-performance plan. Alignment continues but context reliability is reduced.' })
 
   if (expected.groups.length === 0 || performed.groups.length === 0) {
+    const localized = localizeScoreRegion(expected.groups, performed.groups, options)
     if (expected.groups.length === 0) warnings.push({ code: 'EMPTY_EXPECTED_PLAN', severity: 'warning', message: 'The expected plan contains no fixed required onset groups.' })
     if (performed.groups.length === 0) warnings.push({ code: 'INSUFFICIENT_ATTACKS', severity: 'info', message: 'The recording contains no note attacks to align.' })
     const alignments: GroupAlignment[] = [
       ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
       ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
     ]
-    return finishResult(plan, recording, speed, options, 'insufficient-data', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, (expected.groups.length + 1) * (performed.groups.length + 1))
+    return finishResult(plan, recording, speed, options, 'insufficient-data', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, (expected.groups.length + 1) * (performed.groups.length + 1), localized.localization)
   }
 
   const matrixCellCount = (expected.groups.length + 1) * (performed.groups.length + 1)
@@ -195,18 +211,42 @@ export function alignPerformance(
       ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
       ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
     ]
-    return finishResult(plan, recording, speed, options, 'failed', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, matrixCellCount)
+    const localization = localizeScoreRegion([], [], options).localization
+    return finishResult(plan, recording, speed, options, 'failed', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, matrixCellCount, localization)
   }
 
-  const coarse = alignGroupSequences(expected.groups, performed.groups, options, null)
-  const fit = fitTimeTransform(timeAnchors(coarse, expected.groups, performed.groups, options), options)
+  const localized = localizeScoreRegion(expected.groups, performed.groups, options)
+  if (!localized.selected) {
+    const alignments: GroupAlignment[] = [
+      ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
+      ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
+    ]
+    warnings.push({ code: 'SCORE_REGION_DIVERGENT', severity: 'warning', message: localized.localization.explanation })
+    return finishResult(plan, recording, speed, options, localized.localization.status === 'insufficient-data' ? 'insufficient-data' : 'ambiguous', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, matrixCellCount, localized.localization)
+  }
+
+  const candidate = localized.selected.candidate
+  const selectedExpected = expected.groups.slice(candidate.expectedStartIndex, candidate.expectedEndIndex + 1)
+  const coarse = alignGroupSequences(selectedExpected, performed.groups, options, null)
+  const fit = fitTimeTransform(timeAnchors(coarse, selectedExpected, performed.groups, options), options)
   warnings.push(...fit.warnings)
-  const refined = alignGroupSequences(expected.groups, performed.groups, options, fit.transform)
-  const alignments = buildGroupAlignments(refined, expected.groups, performed.groups, fit.transform)
+  const refined = alignGroupSequences(selectedExpected, performed.groups, options, fit.transform)
+  const fineAlignments = buildGroupAlignments(refined, selectedExpected, performed.groups, fit.transform)
+  const alignments: GroupAlignment[] = [
+    ...expected.groups.slice(0, candidate.expectedStartIndex).map((expectedGroup, index) => ({ id: `alignment-step:outside-leading:${index}:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
+    ...fineAlignments,
+    ...expected.groups.slice(candidate.expectedEndIndex + 1).map((expectedGroup, index) => ({ id: `alignment-step:outside-trailing:${index}:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
+  ]
   const resultDiagnostics = diagnostics(expected.groups, performed.groups, alignments, fit.transform, coarse.cost, refined.cost, refined.matrixCellCount)
-  let status: AlignmentStatus = resultDiagnostics.groupCorrespondenceCount === 0 ? 'insufficient-data' : resultDiagnostics.exactPitchPairCount === 0 ? 'ambiguous' : 'aligned'
-  if (status === 'ambiguous') warnings.push({ code: 'AMBIGUOUS_ALIGNMENT', severity: 'warning', message: 'Group order produced structural correspondences but no exact pitch anchors; the path is deterministic and should be treated cautiously.' })
+  let status: AlignmentStatus = resultDiagnostics.groupCorrespondenceCount === 0 || localized.localization.status === 'insufficient-data'
+    ? 'insufficient-data'
+    : resultDiagnostics.exactPitchPairCount === 0 || localized.localization.status === 'ambiguous' || localized.localization.status === 'divergent'
+      ? 'ambiguous'
+      : 'aligned'
+  if (status === 'ambiguous' && resultDiagnostics.exactPitchPairCount === 0) warnings.push({ code: 'AMBIGUOUS_ALIGNMENT', severity: 'warning', message: 'Group order produced structural correspondences but no exact pitch anchors; the path is deterministic and should be treated cautiously.' })
+  if (localized.localization.status === 'ambiguous') warnings.push({ code: 'SCORE_REGION_AMBIGUOUS', severity: 'warning', message: localized.localization.explanation })
+  if (localized.localization.status === 'divergent') warnings.push({ code: 'SCORE_REGION_DIVERGENT', severity: 'warning', message: localized.localization.explanation })
   if (resultDiagnostics.groupCorrespondenceCount > 0 && (resultDiagnostics.expectedOnlyGroupCount > 0 || resultDiagnostics.performedOnlyGroupCount > 0)) warnings.push({ code: 'PARTIAL_PERFORMANCE', severity: 'info', message: 'The alignment contains neutral expected-only or performed-only groups, consistent with a partial or structurally divergent take.' })
   if (warnings.some((warning) => warning.code === 'PLAN_CONTEXT_MISMATCH') && status === 'aligned') status = 'ambiguous'
-  return finishResult(plan, recording, speed, options, status, expected.groups, performed.groups, alignments, fit.transform, warnings, coarse.cost, refined.cost, refined.matrixCellCount)
+  return finishResult(plan, recording, speed, options, status, expected.groups, performed.groups, alignments, fit.transform, warnings, coarse.cost, refined.cost, refined.matrixCellCount, localized.localization)
 }

@@ -19,6 +19,50 @@ function alignedPitchPairs(result: AlignmentResult): Array<[number[], number[]]>
 }
 
 describe('alignPerformance', () => {
+  const canonPattern = Array.from({ length: 20 }, (_, index) => [[48, 55, 60], [52, 59, 64], [55, 60, 67], [52, 59, 64]][index % 4]!)
+  const repeatedScore = [...canonPattern, [73], [74], [76], [77], ...canonPattern]
+  const canonTake = makeRecording(canonPattern.flatMap((pitches, groupIndex) => pitches.map((midi, noteIndex) => ({ midi, ms: groupIndex * 500 + noteIndex * 8 }))))
+
+  it('localizes a stopped beginning take and keeps the unplayed repeated tail outside its matched region', () => {
+    const result = alignPerformance(makePlan(repeatedScore), canonTake, { localizationHint: { mode: 'beginning' } })
+
+    expect(result.localization).toMatchObject({ status: 'confident', resolution: 'intended-start' })
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 0, expectedEndIndex: 19, displayRange: 'M1–M20' })
+    expect(result.localization?.takeRegion?.measureIndices).toEqual(Array.from({ length: 20 }, (_, index) => index))
+  })
+
+  it('reports genuinely repeated Auto candidates as unresolved instead of trusting a tiny deterministic win', () => {
+    const result = alignPerformance(makePlan(repeatedScore), canonTake, { localizationHint: { mode: 'auto' } })
+
+    expect(result.status).toBe('ambiguous')
+    expect(result.localization?.status).toBe('ambiguous')
+    expect(result.localization?.takeRegion).toBeNull()
+    expect(result.localization?.candidates.map((candidate) => candidate.displayRange)).toEqual(expect.arrayContaining(['M1–M20', 'M25–M44']))
+  })
+
+  it('uses the exact planning-section start as a strong bounded hint for a deliberate middle start', () => {
+    const result = alignPerformance(makePlan(repeatedScore), canonTake, { localizationHint: { mode: 'section', scoreVersionId: 'score-version:test', startMeasureIndex: 24, endMeasureIndex: 43, sourceMeasureIds: Array.from({ length: 20 }, (_, index) => `P1:measure:${index + 24}`) } })
+
+    expect(result.localization).toMatchObject({ status: 'confident', resolution: 'intended-start' })
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 24, expectedEndIndex: 43, displayRange: 'M25–M44' })
+  })
+
+  it('freezes a user-confirmed repeated region and bounds the fine alignment to it', () => {
+    const result = alignPerformance(makePlan(repeatedScore), canonTake, { localizationHint: { mode: 'confirmed', expectedStartIndex: 24, expectedEndIndex: 43 } })
+
+    expect(result.localization).toMatchObject({ resolution: 'user-confirmed', selectedCandidateId: expect.any(String) })
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 24, expectedEndIndex: 43 })
+    expect(correspondences(result).map((step) => step.expectedGroup.measureIndices[0])).toEqual(Array.from({ length: 20 }, (_, index) => index + 24))
+  })
+
+  it('fails divergent playing closed instead of fabricating a localized high-confidence path', () => {
+    const result = alignPerformance(makePlan(repeatedScore), melodyRecording(Array.from({ length: 20 }, (_, index) => 90 + index % 5), Array.from({ length: 20 }, (_, index) => index * 500)))
+
+    expect(result.status).toBe('ambiguous')
+    expect(result.localization?.status).toBe('divergent')
+    expect(result.localization?.takeRegion).toBeNull()
+  })
+
   it('aligns a perfect melody with fitted offset, scale, and exact attack pairs', () => {
     const plan = makePlan([[60], [62], [64], [65], [67]])
     const recording = melodyRecording([60, 62, 64, 65, 67], [1_500, 2_000, 2_500, 3_000, 3_500])

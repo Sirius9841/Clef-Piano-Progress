@@ -80,6 +80,22 @@ function boundsScope(alignment: AlignmentResult, options: NoteGradingOptions): G
       outsideScopePerformedGroupCount: 0,
     }
   }
+  const localizedRegion = alignment.localization?.takeRegion
+  if (localizedRegion) {
+    return {
+      type,
+      expectedStartIndex: localizedRegion.expectedStartIndex,
+      expectedEndIndex: localizedRegion.expectedEndIndex,
+      performedStartIndex: localizedRegion.performedStartIndex,
+      performedEndIndex: localizedRegion.performedEndIndex,
+      expectedStartGroupId: localizedRegion.expectedStartGroupId,
+      expectedEndGroupId: localizedRegion.expectedEndGroupId,
+      performedStartGroupId: localizedRegion.performedStartGroupId,
+      performedEndGroupId: localizedRegion.performedEndGroupId,
+      outsideScopeExpectedGroupCount: alignment.expectedGroups.length - (localizedRegion.expectedEndIndex - localizedRegion.expectedStartIndex + 1),
+      outsideScopePerformedGroupCount: alignment.performedGroups.length - (localizedRegion.performedEndIndex - localizedRegion.performedStartIndex + 1),
+    }
+  }
   const correspondences = alignment.groupAlignments.filter((step): step is Extract<GroupAlignment, { kind: 'correspondence' }> => step.kind === 'correspondence' && isCredibleCorrespondence(step, options))
   const expectedIndices = correspondences.map((step) => expectedIndex.get(step.expectedGroup.id)).filter((index) => index !== undefined)
   const performedIndices = correspondences.map((step) => performedIndex.get(step.performedGroup.id)).filter((index) => index !== undefined)
@@ -116,6 +132,9 @@ function resolveScope(alignment: AlignmentResult, options: NoteGradingOptions, i
   }
   if (!inputMatches) return { scope, expectedGroupIds: new Set(), performedGroupIds: new Set(), available: false, reliability: 'unavailable', unavailableReason: 'The plan, recording, and alignment identities do not describe the same analysis inputs.' }
   if (alignment.status === 'failed') return { scope, expectedGroupIds: new Set(), performedGroupIds: new Set(), available: false, reliability: 'unavailable', unavailableReason: 'The alignment failed its safety guardrails, so note grading is unavailable.' }
+  if (options.gradingScope === 'aligned-span' && alignment.localization && (alignment.localization.status === 'ambiguous' || alignment.localization.status === 'divergent' || alignment.localization.status === 'insufficient-data')) {
+    return { scope, expectedGroupIds: new Set(), performedGroupIds: new Set(), available: false, reliability: 'unavailable', unavailableReason: alignment.localization.explanation }
+  }
   if (options.gradingScope === 'aligned-span' && (alignment.status === 'insufficient-data' || scope.expectedStartIndex === null || scope.performedStartIndex === null)) {
     return { scope, expectedGroupIds: new Set(), performedGroupIds: new Set(), available: false, reliability: 'unavailable', unavailableReason: 'No credible aligned section could be identified for played-section grading.' }
   }

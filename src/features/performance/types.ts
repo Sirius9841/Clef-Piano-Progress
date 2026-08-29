@@ -1,6 +1,6 @@
 import type { MidiEvent } from '../midi/types'
 
-export type RecorderStatus = 'idle' | 'recording' | 'stopped'
+export type RecorderStatus = 'idle' | 'armed' | 'recording' | 'stopped'
 export type RecordingStopReason = 'user' | 'device-disconnected' | 'replaced'
 
 export interface RecordedDeviceInfo {
@@ -82,5 +82,6 @@ export interface PerformanceRecording {
 
 export type RecorderState =
   | { readonly status: 'idle' }
+  | { readonly status: 'armed'; readonly recordingId: string; readonly armedAtMonotonicMs: number }
   | { readonly status: 'recording'; readonly recordingId: string; readonly startedAt: string; readonly startedAtMonotonicMs: number; readonly eventCount: number }
   | { readonly status: 'stopped'; readonly recording: PerformanceRecording }

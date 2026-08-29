@@ -1,4 +1,6 @@
-export const ALIGNMENT_ENGINE_VERSION = '1.0.0'
+import type { ScoreRegionLocalizationHint } from './types'
+
+export const ALIGNMENT_ENGINE_VERSION = '2.0.0'
 
 export interface AlignmentOptions {
   readonly performedGroupGapMs: number
@@ -17,6 +19,7 @@ export interface AlignmentOptions {
   readonly maxTimeFitAnchors: number
   readonly maxMatrixCells: number
   readonly practiceSpeedMultiplier: number | null
+  readonly localizationHint: ScoreRegionLocalizationHint
 }
 
 export const DEFAULT_ALIGNMENT_OPTIONS: AlignmentOptions = Object.freeze({
@@ -36,6 +39,7 @@ export const DEFAULT_ALIGNMENT_OPTIONS: AlignmentOptions = Object.freeze({
   maxTimeFitAnchors: 256,
   maxMatrixCells: 4_000_000,
   practiceSpeedMultiplier: null,
+  localizationHint: Object.freeze({ mode: 'auto' }),
 })
 
 export function resolveAlignmentOptions(options: Partial<AlignmentOptions> = {}): AlignmentOptions {
@@ -55,5 +59,14 @@ export function resolveAlignmentOptions(options: Partial<AlignmentOptions> = {})
   if (!Number.isInteger(resolved.maxTimeFitAnchors) || !Number.isInteger(resolved.maxMatrixCells)) throw new RangeError('Alignment limits must be integers.')
   if (resolved.performedGroupWarningSpreadMs > resolved.performedGroupMaxSpreadMs) throw new RangeError('Performed-group warning spread cannot exceed maximum spread.')
   if (resolved.practiceSpeedMultiplier !== null && (!Number.isFinite(resolved.practiceSpeedMultiplier) || resolved.practiceSpeedMultiplier <= 0)) throw new RangeError('Practice speed must be a positive finite number.')
-  return Object.freeze(resolved)
+  const hint = resolved.localizationHint
+  if (hint.mode === 'section') {
+    if (!Number.isInteger(hint.startMeasureIndex) || !Number.isInteger(hint.endMeasureIndex) || hint.startMeasureIndex < 0 || hint.endMeasureIndex < hint.startMeasureIndex || !hint.scoreVersionId || !Array.isArray(hint.sourceMeasureIds)) throw new RangeError('Section localization hints require a valid exact PlanningSectionIdentity.')
+  } else if (hint.mode === 'confirmed') {
+    if (!Number.isInteger(hint.expectedStartIndex) || !Number.isInteger(hint.expectedEndIndex) || hint.expectedStartIndex < 0 || hint.expectedEndIndex < hint.expectedStartIndex) throw new RangeError('Confirmed localization bounds must be ordered non-negative group indexes.')
+  } else if (hint.mode !== 'auto' && hint.mode !== 'beginning') throw new RangeError('Unsupported score-region localization hint.')
+  const localizationHint = hint.mode === 'section'
+    ? Object.freeze({ ...hint, sourceMeasureIds: Object.freeze([...hint.sourceMeasureIds]) })
+    : Object.freeze({ ...hint })
+  return Object.freeze({ ...resolved, localizationHint })
 }

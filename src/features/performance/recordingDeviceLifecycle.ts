@@ -12,9 +12,9 @@ export class RecordingDeviceLifecycle {
     this.recordingDeviceId = null
   }
 
-  reconcile(selectedDeviceId: string | null, recorder: PerformanceRecorder): PerformanceRecording | null {
-    if (this.recordingDeviceId === null || this.recordingDeviceId === selectedDeviceId) return null
+  reconcile(selectedDeviceId: string | null, recorder: PerformanceRecorder): { changed: boolean; recording: PerformanceRecording | null } {
+    if (this.recordingDeviceId === null || this.recordingDeviceId === selectedDeviceId) return { changed: false, recording: null }
     this.recordingDeviceId = null
-    return recorder.handleDeviceDisconnect()
+    return { changed: true, recording: recorder.handleDeviceDisconnect() }
   }
 }

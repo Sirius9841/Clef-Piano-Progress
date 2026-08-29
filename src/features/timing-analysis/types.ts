@@ -167,6 +167,7 @@ export type TimingAnalysisWarningCode =
   | 'INSUFFICIENT_TIMING_OBSERVATIONS'
   | 'LIMITED_TIMING_EVIDENCE'
   | 'PROVISIONAL_ALIGNMENT'
+  | 'REJECTED_LOCAL_TEMPO_GEOMETRY'
   | 'WIDE_CHORD_SPREAD'
   | 'QUALITATIVE_TEMPO_ONLY'
 
@@ -187,6 +188,8 @@ export interface TimingAnalysisDiagnostics {
   readonly usableObservationCount: number
   readonly scoredRhythmIntervalCount: number
   readonly localTempoSampleCount: number
+  /** Added by timing-analysis 1.1.0. Absent only on frozen 1.0.0 snapshots. */
+  readonly rejectedLocalTempoWindowCount?: number
   readonly qualitativeDirectionCount: number
   readonly wideChordCount: number
 }
