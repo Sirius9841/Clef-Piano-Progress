@@ -33,17 +33,18 @@ export function usePerformanceResults(
   const generation = useRef(0)
   const current = stored.key === analysisKey ? stored.state : { status: 'idle' as const }
 
-  const analyze = useCallback(async (noteOverride?: NoteGradingResult | null, timingOverride?: TimingAnalysisResult | null) => {
+  const analyze = useCallback(async (noteOverride?: NoteGradingResult | null, timingOverride?: TimingAnalysisResult | null, alignmentOverride?: AlignmentResult | null) => {
     const note = noteOverride ?? noteGrading
     const timing = timingOverride ?? timingAnalysis
-    if (!score || !plan || !alignment || !note || !timing) return null
-    const key = resultKey(score, plan, alignment, note, timing)
+    const activeAlignment = alignmentOverride ?? alignment
+    if (!score || !plan || !activeAlignment || !note || !timing) return null
+    const key = resultKey(score, plan, activeAlignment, note, timing)
     const currentGeneration = ++generation.current
     setStored({ key, state: { status: 'building' } })
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
     try {
       const { buildPerformanceResults } = await import('./buildPerformanceResults')
-      const result = buildPerformanceResults({ normalizedScore: score, expectedPlan: plan, alignment, noteGrading: note, timingAnalysis: timing })
+      const result = buildPerformanceResults({ normalizedScore: score, expectedPlan: plan, alignment: activeAlignment, noteGrading: note, timingAnalysis: timing })
       if (currentGeneration !== generation.current) return null
       if (result.status === 'unavailable') setStored({ key, state: { status: 'unavailable', result, message: result.unavailableReason ?? 'Performance results are unavailable.' } })
       else setStored({ key, state: { status: 'ready', result } })

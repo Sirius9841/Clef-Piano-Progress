@@ -1,5 +1,5 @@
 import { comparePitchMultisets } from './costs'
-import { alignGroupSequences, type SequenceAlignmentResult } from './sequenceAlignment'
+import { alignGroupSequences, sequenceAlignmentMatrixCellCount, type SequenceAlignmentResult } from './sequenceAlignment'
 import type { AlignmentOptions } from './options'
 import type {
   ExpectedAlignmentGroup,
@@ -17,6 +17,16 @@ interface EvaluatedCandidate {
 export interface LocalizationResult {
   readonly localization: ScoreRegionLocalization
   readonly selected: EvaluatedCandidate | null
+  readonly evaluatedCandidateMatrixCount: number
+  readonly rejectedCandidateMatrixCount: number
+  readonly largestEvaluatedMatrixCellCount: number
+  readonly largestRejectedMatrixCellCount: number | null
+}
+
+interface LocalizationSafety {
+  evaluatedCandidateMatrixCount: number
+  evaluatedMatrixCellCounts: number[]
+  rejectedMatrixCellCounts: number[]
 }
 
 function stableHash(value: string): string {
@@ -57,12 +67,23 @@ function hintAgreement(
   hint: ScoreRegionLocalizationHint,
   groups: readonly ExpectedAlignmentGroup[],
   startIndex: number,
+  endIndex: number,
 ): ScoreRegionCandidate['hintAgreement'] {
   if (hint.mode === 'auto') return 'none'
-  if (hint.mode === 'confirmed') return startIndex === hint.expectedStartIndex ? 'exact' : Math.abs(startIndex - hint.expectedStartIndex) <= 2 ? 'near' : 'none'
-  const measureIndex = groups[startIndex]?.measureIndices[0] ?? -1
-  const intended = hint.mode === 'beginning' ? 0 : hint.startMeasureIndex
-  return measureIndex === intended ? 'exact' : Math.abs(measureIndex - intended) <= 1 ? 'near' : 'none'
+  if (hint.mode === 'confirmed') {
+    if (startIndex === hint.expectedStartIndex && endIndex === hint.expectedEndIndex) return 'exact'
+    return startIndex >= hint.expectedStartIndex && endIndex <= hint.expectedEndIndex ? 'near' : 'none'
+  }
+  if (hint.mode === 'beginning') return startIndex === 0 ? 'exact' : startIndex <= 2 ? 'near' : 'none'
+  const sectionStart = groups.findIndex((group) => group.measureIndices.includes(hint.startMeasureIndex))
+  let sectionEnd = -1
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    if (groups[index]!.measureIndices.includes(hint.endMeasureIndex)) { sectionEnd = index; break }
+  }
+  if (sectionStart < 0 || sectionEnd < sectionStart) return 'none'
+  if (startIndex === sectionStart && endIndex === sectionEnd) return 'exact'
+  if (startIndex >= sectionStart && endIndex <= sectionEnd) return 'near'
+  return 'none'
 }
 
 function evaluateCandidate(
@@ -72,11 +93,19 @@ function evaluateCandidate(
   endIndex: number,
   options: AlignmentOptions,
   hint: ScoreRegionLocalizationHint,
+  safety: LocalizationSafety,
   preserveBounds = false,
 ): EvaluatedCandidate | null {
   if (startIndex < 0 || endIndex < startIndex || startIndex >= expectedGroups.length) return null
   const boundedEnd = Math.min(endIndex, expectedGroups.length - 1)
   const segment = expectedGroups.slice(startIndex, boundedEnd + 1)
+  const matrixCellCount = sequenceAlignmentMatrixCellCount(segment.length, performedGroups.length)
+  if (matrixCellCount > options.maxMatrixCells) {
+    safety.rejectedMatrixCellCounts.push(matrixCellCount)
+    return null
+  }
+  safety.evaluatedCandidateMatrixCount += 1
+  safety.evaluatedMatrixCellCounts.push(matrixCellCount)
   const sequence = alignGroupSequences(segment, performedGroups, options, null)
   const correspondences = sequence.steps.filter((step) => step.kind === 'correspondence')
   const exact = correspondences.flatMap((step) => {
@@ -152,7 +181,7 @@ function evaluateCandidate(
     measureIndices,
     measureNumbers,
     displayRange: displayRange(measureNumbers),
-    hintAgreement: hintAgreement(hint, expectedGroups, resolvedStart),
+    hintAgreement: hintAgreement(hint, expectedGroups, resolvedStart, resolvedEnd),
     evidence: {
       normalizedPitchCost,
       exactPitchAnchorCount: exactAnchorCount,
@@ -199,6 +228,26 @@ function proposalStarts(
   return uniqueSorted(starts.length ? starts : [0])
 }
 
+function sectionBounds(groups: readonly ExpectedAlignmentGroup[], hint: Extract<ScoreRegionLocalizationHint, { mode: 'section' }>): { start: number; end: number } | null {
+  const start = groups.findIndex((group) => group.measureIndices.includes(hint.startMeasureIndex))
+  let end = -1
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    if (groups[index]!.measureIndices.includes(hint.endMeasureIndex)) { end = index; break }
+  }
+  return start >= 0 && end >= start ? { start, end } : null
+}
+
+function finish(localization: ScoreRegionLocalization, selected: EvaluatedCandidate | null, safety: LocalizationSafety): LocalizationResult {
+  return {
+    localization,
+    selected,
+    evaluatedCandidateMatrixCount: safety.evaluatedCandidateMatrixCount,
+    rejectedCandidateMatrixCount: safety.rejectedMatrixCellCounts.length,
+    largestEvaluatedMatrixCellCount: safety.evaluatedMatrixCellCounts.length ? Math.max(...safety.evaluatedMatrixCellCounts) : 0,
+    largestRejectedMatrixCellCount: safety.rejectedMatrixCellCounts.length ? Math.max(...safety.rejectedMatrixCellCounts) : null,
+  }
+}
+
 function overlapRatio(left: ScoreRegionCandidate, right: ScoreRegionCandidate): number {
   const overlap = Math.max(0, Math.min(left.expectedEndIndex, right.expectedEndIndex) - Math.max(left.expectedStartIndex, right.expectedStartIndex) + 1)
   return overlap / Math.max(1, Math.min(left.expectedEndIndex - left.expectedStartIndex + 1, right.expectedEndIndex - right.expectedStartIndex + 1))
@@ -227,49 +276,49 @@ export function localizeScoreRegion(
   options: AlignmentOptions,
 ): LocalizationResult {
   const hint = options.localizationHint
+  const safety: LocalizationSafety = { evaluatedCandidateMatrixCount: 0, evaluatedMatrixCellCounts: [], rejectedMatrixCellCounts: [] }
   if (expectedGroups.length === 0 || performedGroups.length === 0) {
-    return {
-      selected: null,
-      localization: {
+    return finish({
         status: 'insufficient-data', resolution: 'unresolved', intendedStart: hint, selectedCandidateId: null, candidates: [], bestVsSecondQualitySeparation: null, takeRegion: null,
         explanation: 'At least one expected and performed onset group is needed to begin score-region localization.',
-      },
-    }
+      }, null, safety)
   }
 
   if (hint.mode === 'confirmed') {
-    const confirmed = evaluateCandidate(expectedGroups, performedGroups, hint.expectedStartIndex, hint.expectedEndIndex, options, hint, true)
+    const confirmed = evaluateCandidate(expectedGroups, performedGroups, hint.expectedStartIndex, hint.expectedEndIndex, options, hint, safety, true)
     if (!confirmed) {
-      return { selected: null, localization: { status: 'divergent', resolution: 'unresolved', intendedStart: hint, selectedCandidateId: null, candidates: [], bestVsSecondQualitySeparation: null, takeRegion: null, explanation: 'The confirmed score region has no credible correspondence with this take.' } }
+      const tooLarge = safety.evaluatedCandidateMatrixCount === 0 && safety.rejectedMatrixCellCounts.length > 0
+      return finish({ status: tooLarge ? 'insufficient-data' : 'divergent', resolution: 'unresolved', intendedStart: hint, selectedCandidateId: null, candidates: [], bestVsSecondQualitySeparation: null, takeRegion: null, explanation: tooLarge ? 'The confirmed score region exceeds the explicit alignment matrix safety limit. No input was truncated.' : 'The confirmed score region has no credible correspondence with this take.' }, null, safety)
     }
     const confidence = confirmed.candidate.evidence.exactPitchAnchorDensity >= 0.6 ? 'confident' : 'limited'
-    return {
-      selected: confirmed,
-      localization: {
+    return finish({
         status: confidence, resolution: 'user-confirmed', intendedStart: hint, selectedCandidateId: confirmed.candidate.id, candidates: [confirmed.candidate], bestVsSecondQualitySeparation: null,
         takeRegion: resolvedTakeRegion(confirmed.candidate, performedGroups, confidence),
         explanation: `The user confirmed ${confirmed.candidate.displayRange}; grading remains bounded to that frozen region.`,
-      },
-    }
+      }, confirmed, safety)
   }
 
   if (performedGroups.length === 1) {
     const matchIndex = expectedGroups.findIndex((group) => pitchFingerprint(group.pitches) === pitchFingerprint(performedGroups[0]!.pitches))
-    const evaluated = evaluateCandidate(expectedGroups, performedGroups, Math.max(0, matchIndex), Math.max(0, matchIndex), options, hint, true)
+    const evaluated = evaluateCandidate(expectedGroups, performedGroups, Math.max(0, matchIndex), Math.max(0, matchIndex), options, hint, safety, true)
     const wholePlan = expectedGroups.length === 1 && evaluated !== null
-    return {
-      selected: evaluated,
-      localization: {
+    const tooLarge = safety.evaluatedCandidateMatrixCount === 0 && safety.rejectedMatrixCellCounts.length > 0
+    return finish({
         status: wholePlan ? 'limited' : 'insufficient-data', resolution: wholePlan ? 'automatic' : 'unresolved', intendedStart: hint, selectedCandidateId: wholePlan ? evaluated.candidate.id : null, candidates: evaluated ? [evaluated.candidate] : [], bestVsSecondQualitySeparation: null,
         takeRegion: wholePlan ? resolvedTakeRegion(evaluated.candidate, performedGroups, 'limited') : null,
-        explanation: wholePlan ? 'The take covers the score’s only onset group; region identity is bounded but evidence remains limited.' : 'One onset can supply a time anchor, but not enough structural evidence to localize a score region.',
-      },
-    }
+        explanation: wholePlan ? 'The take covers the score’s only onset group; region identity is bounded but evidence remains limited.' : tooLarge ? 'The required localization candidate exceeds the explicit alignment matrix safety limit. No input was truncated.' : 'One onset can supply a time anchor, but not enough structural evidence to localize a score region.',
+      }, evaluated, safety)
   }
 
   const windowLength = Math.max(performedGroups.length + 4, Math.ceil(performedGroups.length * 1.35))
-  const evaluated = proposalStarts(expectedGroups, performedGroups, hint)
-    .map((start) => evaluateCandidate(expectedGroups, performedGroups, start, start + windowLength - 1, options, hint))
+  const proposedWindows = proposalStarts(expectedGroups, performedGroups, hint)
+    .map((start) => ({ start, end: start + windowLength - 1 }))
+  if (hint.mode === 'section') {
+    const bounds = sectionBounds(expectedGroups, hint)
+    if (bounds) proposedWindows.unshift(bounds)
+  }
+  const evaluated = proposedWindows
+    .map(({ start, end }) => evaluateCandidate(expectedGroups, performedGroups, start, end, options, hint, safety))
     .filter((candidate): candidate is EvaluatedCandidate => candidate !== null)
   const deduplicated = new Map<string, EvaluatedCandidate>()
   for (const item of evaluated) {
@@ -279,11 +328,12 @@ export function localizeScoreRegion(
   }
   const ranked = [...deduplicated.values()].sort((left, right) => right.candidate.evidence.quality - left.candidate.evidence.quality || left.candidate.expectedStartIndex - right.candidate.expectedStartIndex)
   if (ranked.length === 0) {
-    return { selected: null, localization: { status: 'divergent', resolution: 'unresolved', intendedStart: hint, selectedCandidateId: null, candidates: [], bestVsSecondQualitySeparation: null, takeRegion: null, explanation: 'The performed pitch structure does not provide a credible contiguous score-region match.' } }
+    const tooLarge = safety.evaluatedCandidateMatrixCount === 0 && safety.rejectedMatrixCellCounts.length > 0
+    return finish({ status: tooLarge ? 'insufficient-data' : 'divergent', resolution: 'unresolved', intendedStart: hint, selectedCandidateId: null, candidates: [], bestVsSecondQualitySeparation: null, takeRegion: null, explanation: tooLarge ? 'Every required localization candidate exceeds the explicit alignment matrix safety limit. No input was truncated.' : 'The performed pitch structure does not provide a credible contiguous score-region match.' }, null, safety)
   }
 
   const automaticBest = ranked[0]!
-  const hinted = ranked.find((item) => item.candidate.hintAgreement === 'exact')
+  const hinted = ranked.find((item) => item.candidate.hintAgreement === 'exact') ?? ranked.find((item) => item.candidate.hintAgreement === 'near')
   const selected = hinted && hinted.candidate.evidence.quality >= automaticBest.candidate.evidence.quality - 0.12 && hinted.candidate.evidence.exactPitchAnchorDensity >= 0.4 ? hinted : automaticBest
   const alternatives = ranked.filter((item) => item.candidate.id !== selected.candidate.id && overlapRatio(item.candidate, selected.candidate) < 0.5)
   const second = alternatives[0] ?? ranked.find((item) => item.candidate.id !== selected.candidate.id)
@@ -295,7 +345,7 @@ export function localizeScoreRegion(
     && selected.candidate.performedEndIndex === performedGroups.length - 1
     && selected.candidate.evidence.exactPitchAnchorDensity >= 0.6
   const divergent = selected.candidate.evidence.exactPitchAnchorCount < minimumAnchors || selected.candidate.evidence.exactPitchAnchorDensity < 0.25 || selected.candidate.evidence.performedCoverage < 0.35
-  const hintResolved = selected.candidate.hintAgreement === 'exact' && selected.candidate.evidence.exactPitchAnchorDensity >= 0.4
+  const hintResolved = selected.candidate.hintAgreement !== 'none' && selected.candidate.evidence.exactPitchAnchorDensity >= 0.4
   const ambiguous = !divergent && !completePlanEvidence && !hintResolved && second !== undefined && Math.abs(separation ?? 0) < 0.06
   const confident = !divergent && !ambiguous && selected.candidate.evidence.exactPitchAnchorDensity >= 0.6 && selected.candidate.evidence.correspondenceDensity >= 0.65 && selected.candidate.evidence.longestUnsupportedGap <= Math.max(3, Math.ceil(performedGroups.length * 0.2))
   const status = divergent ? 'divergent' : ambiguous ? 'ambiguous' : confident ? 'confident' : 'limited'
@@ -307,5 +357,5 @@ export function localizeScoreRegion(
     : status === 'divergent'
       ? 'The take lacks enough continuous exact-pitch anchors for a trustworthy score-region claim.'
       : `${selected.candidate.displayRange} is supported by ${selected.candidate.evidence.exactPitchAnchorCount} exact-pitch onset anchors.`
-  return { selected, localization: { status, resolution, intendedStart: hint, selectedCandidateId: takeRegion ? selected.candidate.id : null, candidates, bestVsSecondQualitySeparation: separation, takeRegion, explanation } }
+  return finish({ status, resolution, intendedStart: hint, selectedCandidateId: takeRegion ? selected.candidate.id : null, candidates, bestVsSecondQualitySeparation: separation, takeRegion, explanation }, selected, safety)
 }

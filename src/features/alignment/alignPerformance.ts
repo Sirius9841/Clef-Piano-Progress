@@ -2,7 +2,7 @@ import { comparePitchMultisets, pairGroupAttacks } from './costs'
 import { deriveExpectedAlignmentGroups } from './expectedGroups'
 import { ALIGNMENT_ENGINE_VERSION, resolveAlignmentOptions, type AlignmentOptions } from './options'
 import { clusterPerformedOnsets, derivePerformedAttacks } from './performedGroups'
-import { alignGroupSequences, type SequenceAlignmentResult } from './sequenceAlignment'
+import { alignGroupSequences, sequenceAlignmentMatrixCellCount, type SequenceAlignmentResult } from './sequenceAlignment'
 import { fitTimeTransform, type TimeFitAnchor } from './timeFit'
 import { localizeScoreRegion } from './localizeScoreRegion'
 import type { ExpectedPerformancePlan } from '../expected-performance/types'
@@ -201,18 +201,7 @@ export function alignPerformance(
       ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
       ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
     ]
-    return finishResult(plan, recording, speed, options, 'insufficient-data', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, (expected.groups.length + 1) * (performed.groups.length + 1), localized.localization)
-  }
-
-  const matrixCellCount = (expected.groups.length + 1) * (performed.groups.length + 1)
-  if (matrixCellCount > options.maxMatrixCells) {
-    warnings.push({ code: 'INPUT_TOO_LARGE', severity: 'warning', message: `Alignment requires ${matrixCellCount} matrix cells, exceeding the explicit ${options.maxMatrixCells} safety limit. No input was truncated.` })
-    const alignments: GroupAlignment[] = [
-      ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
-      ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
-    ]
-    const localization = localizeScoreRegion([], [], options).localization
-    return finishResult(plan, recording, speed, options, 'failed', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, matrixCellCount, localization)
+    return finishResult(plan, recording, speed, options, 'insufficient-data', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, 0, localized.localization)
   }
 
   const localized = localizeScoreRegion(expected.groups, performed.groups, options)
@@ -221,15 +210,37 @@ export function alignPerformance(
       ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
       ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
     ]
-    warnings.push({ code: 'SCORE_REGION_DIVERGENT', severity: 'warning', message: localized.localization.explanation })
-    return finishResult(plan, recording, speed, options, localized.localization.status === 'insufficient-data' ? 'insufficient-data' : 'ambiguous', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, matrixCellCount, localized.localization)
+    const allCandidatesUnsafe = localized.evaluatedCandidateMatrixCount === 0 && localized.rejectedCandidateMatrixCount > 0
+    if (allCandidatesUnsafe) warnings.push({ code: 'INPUT_TOO_LARGE', severity: 'warning', message: `Every required localization matrix exceeds the explicit ${options.maxMatrixCells} safety limit (largest required: ${localized.largestRejectedMatrixCellCount ?? 'unknown'} cells). No input was truncated.` })
+    else warnings.push({ code: 'SCORE_REGION_DIVERGENT', severity: 'warning', message: localized.localization.explanation })
+    return finishResult(plan, recording, speed, options, allCandidatesUnsafe ? 'failed' : localized.localization.status === 'insufficient-data' ? 'insufficient-data' : 'ambiguous', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, localized.largestEvaluatedMatrixCellCount, localized.localization)
   }
 
   const candidate = localized.selected.candidate
   const selectedExpected = expected.groups.slice(candidate.expectedStartIndex, candidate.expectedEndIndex + 1)
+  const boundedMatrixCellCount = sequenceAlignmentMatrixCellCount(selectedExpected.length, performed.groups.length)
+  if (boundedMatrixCellCount > options.maxMatrixCells) {
+    warnings.push({ code: 'INPUT_TOO_LARGE', severity: 'warning', message: `The bounded score-region alignment requires ${boundedMatrixCellCount} matrix cells, exceeding the explicit ${options.maxMatrixCells} safety limit. No input was truncated.` })
+    const alignments: GroupAlignment[] = [
+      ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
+      ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
+    ]
+    return finishResult(plan, recording, speed, options, 'failed', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, 0, 0, localized.largestEvaluatedMatrixCellCount, localized.localization)
+  }
   const coarse = alignGroupSequences(selectedExpected, performed.groups, options, null)
   const fit = fitTimeTransform(timeAnchors(coarse, selectedExpected, performed.groups, options), options)
   warnings.push(...fit.warnings)
+  // Guard again at the refined boundary so future coarse/refined segment changes
+  // cannot allocate a matrix under assumptions made by an earlier stage.
+  const refinedMatrixCellCount = sequenceAlignmentMatrixCellCount(selectedExpected.length, performed.groups.length)
+  if (refinedMatrixCellCount > options.maxMatrixCells) {
+    warnings.push({ code: 'INPUT_TOO_LARGE', severity: 'warning', message: `The refined bounded alignment requires ${refinedMatrixCellCount} matrix cells, exceeding the explicit ${options.maxMatrixCells} safety limit. No input was truncated.` })
+    const alignments: GroupAlignment[] = [
+      ...expected.groups.map((expectedGroup, index) => ({ id: `alignment-step:${index}:expected:${expectedGroup.id}`, kind: 'expected-only' as const, expectedGroup })),
+      ...performed.groups.map((performedGroup, index) => ({ id: `alignment-step:${expected.groups.length + index}:performed:${performedGroup.id}`, kind: 'performed-only' as const, performedGroup })),
+    ]
+    return finishResult(plan, recording, speed, options, 'failed', expected.groups, performed.groups, alignments, fallbackTransform(), warnings, coarse.cost, 0, coarse.matrixCellCount, localized.localization)
+  }
   const refined = alignGroupSequences(selectedExpected, performed.groups, options, fit.transform)
   const fineAlignments = buildGroupAlignments(refined, selectedExpected, performed.groups, fit.transform)
   const alignments: GroupAlignment[] = [

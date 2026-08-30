@@ -26,24 +26,26 @@ export function useNoteGradingAnalysis(
   const generation = useRef(0)
   const current = stored.key === analysisKey ? stored : { key: analysisKey, scope: 'aligned-span' as const, state: { status: 'idle' as const } }
 
-  const analyze = useCallback(async (scope: GradingScopeType = current.scope) => {
-    if (!plan || !recording || !alignment) return null
+  const analyze = useCallback(async (scope: GradingScopeType = 'aligned-span', alignmentOverride?: AlignmentResult | null) => {
+    const activeAlignment = alignmentOverride ?? alignment
+    if (!plan || !recording || !activeAlignment) return null
+    const key = `${plan.id}:${recording.id}:${activeAlignment.id}`
     const currentGeneration = ++generation.current
-    setStored({ key: analysisKey, scope, state: { status: 'grading' } })
+    setStored({ key, scope, state: { status: 'grading' } })
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
     try {
       const { gradeNotes } = await import('./gradeNotes')
-      const result = gradeNotes({ expectedPlan: plan, recording, alignment, options: { gradingScope: scope } })
+      const result = gradeNotes({ expectedPlan: plan, recording, alignment: activeAlignment, options: { gradingScope: scope } })
       if (currentGeneration !== generation.current) return null
-      if (result.status === 'unavailable') setStored({ key: analysisKey, scope, state: { status: 'unavailable', result, message: result.unavailableReason ?? 'Note grading is unavailable.' } })
-      else setStored({ key: analysisKey, scope, state: { status: 'ready', result } })
+      if (result.status === 'unavailable') setStored({ key, scope, state: { status: 'unavailable', result, message: result.unavailableReason ?? 'Note grading is unavailable.' } })
+      else setStored({ key, scope, state: { status: 'ready', result } })
       return result
     } catch (cause) {
       if (currentGeneration !== generation.current) return null
-      setStored({ key: analysisKey, scope, state: { status: 'unavailable', message: cause instanceof Error ? cause.message : 'Note grading could not be prepared.' } })
+      setStored({ key, scope, state: { status: 'unavailable', message: cause instanceof Error ? cause.message : 'Note grading could not be prepared.' } })
       return null
     }
-  }, [alignment, analysisKey, current.scope, plan, recording])
+  }, [alignment, plan, recording])
 
   return { state: current.state, scope: current.scope, analyze }
 }

@@ -721,6 +721,9 @@ body.practice-focus .main-content { margin-left:64px; }
 
 /* Phase 15.2 compact, played-region-first Take Review */
 .take-review { min-width:0; margin-top:14px; padding:22px; overflow:hidden; border-color:rgba(196,151,94,.18); background:radial-gradient(circle at 92% 0,rgba(196,151,94,.075),transparent 27%),linear-gradient(145deg,var(--surface),var(--surface-2)); }
+.take-analysis-status { display:flex; align-items:center; gap:14px; min-width:0; margin-top:14px; padding:16px 18px; border-color:rgba(196,151,94,.18); }
+.take-analysis-status > div { min-width:0; flex:1; }.take-analysis-status h2 { margin:3px 0; font:600 17px Fraunces,serif; }.take-analysis-status p { margin:0; color:var(--muted); font-size:10px; line-height:1.5; }.take-analysis-spinner { flex:0 0 auto; color:var(--brass); animation:take-analysis-spin 1s linear infinite; }
+@keyframes take-analysis-spin { to { transform:rotate(360deg); } }
 .take-review > header,.take-review-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
 .take-review h2 { margin:7px 0 4px; font:600 22px Fraunces,serif; }
 .take-review header p { max-width:720px; margin:0; color:var(--muted); font-size:11.5px; line-height:1.5; }

@@ -615,11 +615,25 @@ describe('IndexedDbPianoProgressRepository', () => {
     ['wrong Voicing scope', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, voicingAnalysis: { ...attempt.voicingAnalysis, scope: { ...attempt.voicingAnalysis.scope, expectedEndGroupId: 'wrong' } } })],
     ['wrong Reference ScoreVersion', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, referenceComparison: { ...attempt.referenceComparison, scoreVersionId: 'wrong' } })],
     ['wrong Reference engine version', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, engineVersions: { ...attempt.engineVersions, referenceComparison: 'wrong' } })],
-    ['missing 2.0 localization provenance', (attempt: PerformanceAttemptRecordV4) => { const alignment: Record<string, unknown> = { ...attempt.alignment }; delete alignment.localization; return { ...attempt, alignment } }],
+    ['missing modern localization provenance', (attempt: PerformanceAttemptRecordV4) => { const alignment: Record<string, unknown> = { ...attempt.alignment }; delete alignment.localization; return { ...attempt, alignment } }],
     ['resolved localization without selected candidate identity', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, alignment: { ...attempt.alignment, localization: { ...attempt.alignment.localization!, selectedCandidateId: null } } })],
     ['malformed 1.1 timing geometry diagnostics', (attempt: PerformanceAttemptRecordV4) => ({ ...attempt, timingAnalysis: { ...attempt.timingAnalysis, diagnostics: { ...attempt.timingAnalysis.diagnostics, rejectedLocalTempoWindowCount: -1 } } })],
   ])('returns typed corruption for V4 %s', async (label, corrupt) => {
     const name = `corrupt-v4-${label}`; const repo = repository(name); await repo.initialize(); const fixture = v4AttemptFixture('arrangement', 'score'); await putRawAttempt(name, corrupt(fixture.attempt)); await expect(repo.getAttempt(fixture.attempt.id)).rejects.toMatchObject({ code: 'CORRUPT_RECORD' })
+  })
+
+  it('keeps frozen Alignment 2.0.0 snapshots readable while validating new 2.0.1 snapshots', async () => {
+    const name = 'historical-alignment-2-0-0'
+    const repo = repository(name)
+    await repo.initialize()
+    const fixture = v4AttemptFixture('arrangement', 'score')
+    const historical = {
+      ...fixture.attempt,
+      engineVersions: { ...fixture.attempt.engineVersions, alignment: '2.0.0' },
+      alignment: { ...fixture.attempt.alignment, diagnostics: { ...fixture.attempt.alignment.diagnostics, alignmentEngineVersion: '2.0.0' } },
+    }
+    await putRawAttempt(name, historical)
+    await expect(repo.getAttempt(fixture.attempt.id)).resolves.toEqual(historical)
   })
 
   it.each([

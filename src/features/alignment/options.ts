@@ -1,6 +1,12 @@
 import type { ScoreRegionLocalizationHint } from './types'
 
-export const ALIGNMENT_ENGINE_VERSION = '2.0.0'
+export const ALIGNMENT_ENGINE_VERSION = '2.0.1'
+
+export function scoreRegionLocalizationHintKey(hint: ScoreRegionLocalizationHint): string {
+  if (hint.mode === 'auto' || hint.mode === 'beginning') return JSON.stringify([hint.mode])
+  if (hint.mode === 'confirmed') return JSON.stringify([hint.mode, hint.expectedStartIndex, hint.expectedEndIndex])
+  return JSON.stringify([hint.mode, hint.scoreVersionId, hint.startMeasureIndex, hint.endMeasureIndex, [...hint.sourceMeasureIds].sort()])
+}
 
 export interface AlignmentOptions {
   readonly performedGroupGapMs: number

@@ -1,5 +1,5 @@
 import { AlertCircle, ChevronRight, Map, Music2, Target } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { StatusPill } from '../../components/ui'
 import type { AlignmentResult, ScoreRegionCandidate } from '../alignment/types'
 import type { ExpressionAnalysisResult } from '../expression-analysis/types'
@@ -8,9 +8,8 @@ import type { PerformanceRecording } from '../performance/types'
 import type { VoicingAnalysisResult } from '../voicing-analysis/types'
 import { buildScoreHighlightModel, type ScoreHighlightModel } from './highlightModel'
 import { buildTakePositionView } from './takePosition'
-import type { MeasureResult, PerformanceResults, ResultDimension } from './types'
-
-type ReviewDimension = 'overview' | ResultDimension | 'dynamics' | 'articulation' | 'pedal' | 'voicing'
+import { boundedProblemMeasures, confirmTakeRegionCandidate, INITIAL_TAKE_REVIEW_INTERACTION, takeReviewInteractionReducer, type TakeReviewDimension } from './takeReviewInteraction'
+import type { MeasureResult, PerformanceResults } from './types'
 
 export interface TakeReviewProps {
   readonly alignment: AlignmentResult
@@ -48,7 +47,7 @@ function DimensionValue({ label, value, detail }: { label: string; value: number
 }
 
 function EvidenceInspector({ dimension, measure, results, expression, pedal, voicing, recording }: {
-  dimension: ReviewDimension
+  dimension: TakeReviewDimension
   measure: MeasureResult | null
   results: PerformanceResults
   expression: ExpressionAnalysisResult | null
@@ -74,14 +73,14 @@ function EvidenceInspector({ dimension, measure, results, expression, pedal, voi
 }
 
 export function TakeReview({ alignment, recording, practiceSpeed, results, expression, pedal, voicing, onConfirmRegion, onHighlightChange }: TakeReviewProps) {
-  const [dimension, setDimension] = useState<ReviewDimension>('overview')
+  const [interaction, dispatchInteraction] = useReducer(takeReviewInteractionReducer, INITIAL_TAKE_REVIEW_INTERACTION)
   const localization = alignment.localization
   const region = localization?.takeRegion ?? null
   const takePosition = useMemo(() => region ? buildTakePositionView(region) : null, [region])
   const matchedMeasures = useMemo(() => results && takePosition ? results.measures.filter((measure) => takePosition.matchedMeasureRange.indices.includes(measure.measureIndex)) : [], [results, takePosition])
-  const rankedProblems = useMemo(() => [...matchedMeasures].filter((measure) => measure.analysisState === 'analyzed' && measure.mainIssues.length > 0).sort((left, right) => (right.practicePriority.confidenceAdjustedPriority ?? -1) - (left.practicePriority.confidenceAdjustedPriority ?? -1) || left.measureIndex - right.measureIndex).slice(0, 5), [matchedMeasures])
-  const [selectedMeasureId, setSelectedMeasureId] = useState<string | null>(null)
-  const selectedMeasure = matchedMeasures.find((measure) => measure.id === selectedMeasureId) ?? rankedProblems[0] ?? matchedMeasures[0] ?? null
+  const rankedProblems = useMemo(() => boundedProblemMeasures(matchedMeasures), [matchedMeasures])
+  const allowedMeasureIds = useMemo(() => matchedMeasures.map((measure) => measure.id), [matchedMeasures])
+  const selectedMeasure = matchedMeasures.find((measure) => measure.id === interaction.selectedMeasureId) ?? rankedProblems[0] ?? matchedMeasures[0] ?? null
   const selectedPosition = useMemo(() => region ? buildTakePositionView(region, { measureIndex: selectedMeasure?.measureIndex ?? null }) : null, [region, selectedMeasure?.measureIndex])
 
   useEffect(() => {
@@ -94,23 +93,23 @@ export function TakeReview({ alignment, recording, practiceSpeed, results, expre
 
   if (!localization || !region) {
     const candidates = localization?.candidates ?? []
-    return <section className="panel take-review take-review-unresolved" aria-label="Take Review"><header><div><StatusPill tone="warning"><AlertCircle /> Needs confirmation</StatusPill><h2>Score region unresolved</h2><p>{localization?.explanation ?? 'This historical alignment has no saved played-region provenance.'}</p></div><span>{candidates.length} plausible match{candidates.length === 1 ? '' : 'es'}</span></header>{candidates.length > 0 && <div className="localization-candidates">{candidates.map((candidate, index) => <article key={candidate.id}><div><span>Candidate {String.fromCharCode(65 + index)}</span><strong>{candidate.displayRange}</strong><small>{candidate.evidence.exactPitchAnchorCount} exact onset anchors · {Math.round(candidate.evidence.performedCoverage * 100)}% correspondence coverage</small></div><button onClick={() => onConfirmRegion(candidate)}>Confirm this region <ChevronRight /></button></article>)}</div>}<p className="take-review-gate">Notes, Rhythm, Tempo, and downstream expression evidence remain unavailable until the score region is resolved. Confirmation changes this take’s analysis path only; it never rewrites the score or saved history.</p></section>
+    return <section className="panel take-review take-review-unresolved" aria-label="Take Review"><header><div><StatusPill tone="warning"><AlertCircle /> Needs confirmation</StatusPill><h2>Score region unresolved</h2><p>{localization?.explanation ?? 'This historical alignment has no saved played-region provenance.'}</p></div><span>{candidates.length} plausible match{candidates.length === 1 ? '' : 'es'}</span></header>{candidates.length > 0 && <div className="localization-candidates">{candidates.map((candidate, index) => <article key={candidate.id}><div><span>Candidate {String.fromCharCode(65 + index)}</span><strong>{candidate.displayRange}</strong><small>{candidate.evidence.exactPitchAnchorCount} exact onset anchors · {Math.round(candidate.evidence.performedCoverage * 100)}% correspondence coverage</small></div><button onClick={() => confirmTakeRegionCandidate(candidate, onConfirmRegion)}>Confirm this region <ChevronRight /></button></article>)}</div>}<p className="take-review-gate">Notes, Rhythm, Tempo, and downstream expression evidence remain unavailable until the score region is resolved. Confirmation changes this take’s analysis path only; it never rewrites the score or saved history.</p></section>
   }
 
   if (!results) {
-    return <section className="panel take-review" aria-label="Take Review"><header className="take-review-header"><div><StatusPill tone={localization.status === 'confident' ? 'positive' : 'warning'}><Target /> Matched region</StatusPill><h2>Matched score region · {region.displayRange}</h2><p>{localization.explanation}</p></div><div className="take-review-facts"><span>Localization <strong>{localization.status === 'confident' ? 'Confident' : 'Limited'}</strong></span><span>Recorded <strong>{duration(recording.durationMs)}</strong></span><span>Practice speed <strong>{Math.round(practiceSpeed * 100)}%</strong></span></div></header><div className="take-review-core"><DimensionValue label="Notes" value={null} detail="Build the bounded result" /><DimensionValue label="Rhythm" value={null} detail="Build the bounded result" /><DimensionValue label="Tempo" value={null} detail="Build the bounded result" /></div><p className="take-review-gate">The score region is resolved. Continue the existing analysis steps to build independent, measure-grounded evidence for this bounded take.</p></section>
+    return <section className="panel take-review" aria-label="Take Review"><header className="take-review-header"><div><StatusPill tone={localization.status === 'confident' ? 'positive' : 'warning'}><Target /> Matched region</StatusPill><h2>Matched score region · {region.displayRange}</h2><p>{localization.explanation}</p></div><div className="take-review-facts"><span>Localization <strong>{localization.status === 'confident' ? 'Confident' : 'Limited'}</strong></span><span>Recorded <strong>{duration(recording.durationMs)}</strong></span><span>Practice speed <strong>{Math.round(practiceSpeed * 100)}%</strong></span></div></header><p className="take-review-gate">The region is resolved, but the bounded Notes, Rhythm, and Tempo result is not available yet. No headline values are inferred.</p></section>
   }
 
-  const nav: readonly { id: ReviewDimension; label: string }[] = [
+  const nav: readonly { id: TakeReviewDimension; label: string }[] = [
     { id: 'overview', label: 'Overview' }, { id: 'notes', label: 'Notes' }, { id: 'rhythm', label: 'Rhythm' }, { id: 'tempo', label: 'Tempo' },
     { id: 'dynamics', label: 'Dynamics' }, { id: 'articulation', label: 'Articulation' }, { id: 'pedal', label: 'Pedal' }, { id: 'voicing', label: 'Voicing' },
   ]
   return <section className="panel take-review" aria-label="Take Review">
     <header className="take-review-header"><div><span className="step-label">Take Review</span><h2>Matched score region · {takePosition?.matchedMeasureRange.displayRange}</h2><p>{localization.explanation}</p></div><div className="take-review-facts"><span>Localization <strong>{localization.status === 'confident' ? 'Confident' : 'Limited'}</strong></span><span>Recorded <strong>{duration(recording.durationMs)}</strong></span><span>Practice speed <strong>{Math.round(practiceSpeed * 100)}%</strong></span></div></header>
     <div className="take-review-core" aria-label="Independent core dimensions"><DimensionValue label="Notes" value={results?.summary.notes ?? null} detail="Independent pitch evidence" /><DimensionValue label="Rhythm" value={results?.summary.rhythm ?? null} detail="Independent interval evidence" /><DimensionValue label="Tempo" value={results?.summary.tempo ?? null} detail="Independent speed evidence" /></div>
-    <div className="take-review-map"><div><Map /><span><strong>Matched measures</strong><small>Only the localized take region</small></span></div><div role="group" aria-label="Matched measure map">{matchedMeasures.map((measure) => <button key={measure.id} aria-pressed={measure.id === selectedMeasure?.id} className={measure.id === selectedMeasure?.id ? 'selected' : ''} onClick={() => setSelectedMeasureId(measure.id)}>M{measure.displayMeasureNumber}</button>)}</div></div>
-    <nav className="take-review-nav" aria-label="Take evidence dimension">{nav.map((item) => <button key={item.id} className={dimension === item.id ? 'active' : ''} aria-pressed={dimension === item.id} onClick={() => setDimension(item.id)}>{item.label}</button>)}</nav>
-    <div className="take-review-workspace"><div className="take-review-main"><div className="take-review-context"><Target /><div><span>Current matched position</span><strong>{selectedMeasure ? `Measure ${selectedMeasure.displayMeasureNumber}` : selectedPosition?.matchedMeasureRange.displayRange}</strong><p>{selectedMeasure ? measureIssues(selectedMeasure) : 'No measure-specific evidence is available.'}</p></div></div><div className="take-review-problems"><strong>Useful problem measures</strong>{rankedProblems.length ? rankedProblems.map((measure) => <button key={measure.id} onClick={() => setSelectedMeasureId(measure.id)}><span>M{measure.displayMeasureNumber}</span><small>{measureIssues(measure)}</small></button>) : <p>No problem measure has enough bounded evidence.</p>}</div>{results.strongestSections[0] && <div className="take-review-clean"><Music2 /><span><small>Strongest clean region</small><strong>{results.strongestSections[0].displayRange}</strong></span></div>}</div><aside className="take-review-inspector"><EvidenceInspector dimension={dimension} measure={selectedMeasure} results={results} expression={expression} pedal={pedal} voicing={voicing} recording={recording} /></aside></div>
+    <div className="take-review-map"><div><Map /><span><strong>Matched measures</strong><small>Only the localized take region</small></span></div><div role="group" aria-label="Matched measure map">{matchedMeasures.map((measure) => <button key={measure.id} aria-pressed={measure.id === selectedMeasure?.id} className={measure.id === selectedMeasure?.id ? 'selected' : ''} onClick={() => dispatchInteraction({ type: 'select-measure', measureId: measure.id, allowedMeasureIds })}>M{measure.displayMeasureNumber}</button>)}</div></div>
+    <nav className="take-review-nav" aria-label="Take evidence dimension">{nav.map((item) => <button key={item.id} className={interaction.dimension === item.id ? 'active' : ''} aria-pressed={interaction.dimension === item.id} onClick={() => dispatchInteraction({ type: 'select-dimension', dimension: item.id })}>{item.label}</button>)}</nav>
+    <div className="take-review-workspace"><div className="take-review-main"><div className="take-review-context"><Target /><div><span>Current matched position</span><strong>{selectedMeasure ? `Measure ${selectedMeasure.displayMeasureNumber}` : selectedPosition?.matchedMeasureRange.displayRange}</strong><p>{selectedMeasure ? measureIssues(selectedMeasure) : 'No measure-specific evidence is available.'}</p></div></div><div className="take-review-problems"><strong>Useful problem measures</strong>{rankedProblems.length ? rankedProblems.map((measure) => <button key={measure.id} onClick={() => dispatchInteraction({ type: 'select-measure', measureId: measure.id, allowedMeasureIds })}><span>M{measure.displayMeasureNumber}</span><small>{measureIssues(measure)}</small></button>) : <p>No problem measure has enough bounded evidence.</p>}</div>{results.strongestSections[0] && <div className="take-review-clean"><Music2 /><span><small>Strongest clean region</small><strong>{results.strongestSections[0].displayRange}</strong></span></div>}</div><aside className="take-review-inspector" aria-live="polite"><EvidenceInspector dimension={interaction.dimension} measure={selectedMeasure} results={results} expression={expression} pedal={pedal} voicing={voicing} recording={recording} /></aside></div>
     <a className="take-review-next" href="#detailed-analysis">Open detailed analysis for event-level evidence <ChevronRight /></a>
   </section>
 }

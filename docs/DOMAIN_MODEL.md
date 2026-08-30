@@ -77,7 +77,7 @@ When the user explicitly saves a completed analysis, this recording is preserved
 
 ## Alignment result
 
-`AlignmentResult` is an immutable, versioned correspondence snapshot between one `ExpectedPerformancePlan` and one `PerformanceRecording`. Version `2.0.0` includes `ScoreRegionLocalization`: the non-authoritative intended-start hint, ranked explainable candidates, resolution/confidence, and an optional `MatchedTakeRegion` with exact expected/performed group and source-measure bounds. Fine alignment, affine fitting, timing residuals, and attack correspondences are calculated only after a region is structurally resolved.
+`AlignmentResult` is an immutable, versioned correspondence snapshot between one `ExpectedPerformancePlan` and one `PerformanceRecording`. Version `2.0.1` retains `ScoreRegionLocalization` and hardens both-ended section hints plus pre-allocation safety for every matrix actually constructed. The non-authoritative intended-start hint, ranked candidates, resolution/confidence, and optional `MatchedTakeRegion` remain explicit. Historical `2.0.0` snapshots keep their original frozen semantics.
 
 Alignment facts are deliberately neutral. An unpaired expected attack is not yet a “missed note,” an unpaired performed attack is not yet a “wrong note,” and a timing residual is not yet a rhythm judgment. Phase 5 and later grading layers will interpret these facts without changing the plan, recording, or alignment history.
 
@@ -85,7 +85,7 @@ Alignment facts are deliberately neutral. An unpaired expected attack is not yet
 
 `NoteGradingResult` is the immutable, versioned Phase 5 interpretation of an `AlignmentResult`. It first collapses simultaneous notation attacks with the same MIDI pitch into a single physically observable `ExpectedKeyTarget`, retaining all attack, source-note, measure, part, staff, and voice provenance. It then classifies in-scope targets and observed attacks as correct, wrong-pitch, missed, additional, excluded, or outside scope.
 
-Every result records aligned-span or full-plan scope and reliable, provisional, or unavailable status. For Alignment `2.0.0`, aligned-span bounds come only from the frozen `MatchedTakeRegion`; ambiguous, divergent, or insufficient localization is unavailable. Its dedicated note score is pitch-only precision/recall F1. It is not an overall `Performance Score`; timing, tempo, velocity, duration, articulation, chord spread, and pedal data remain uninterpreted by this layer.
+Every result records aligned-span or full-plan scope and reliable, provisional, or unavailable status. For modern Alignment `2.0.x`, aligned-span bounds come only from the frozen `MatchedTakeRegion`; ambiguous, divergent, or insufficient localization is unavailable. Its dedicated note score is pitch-only precision/recall F1. It is not an overall `Performance Score`; timing, tempo, velocity, duration, articulation, chord spread, and pedal data remain uninterpreted by this layer.
 
 ## Timing analysis result
 

@@ -20,6 +20,10 @@ export interface SequenceAlignmentResult {
   readonly matrixCellCount: number
 }
 
+export function sequenceAlignmentMatrixCellCount(expectedGroupCount: number, performedGroupCount: number): number {
+  return (expectedGroupCount + 1) * (performedGroupCount + 1)
+}
+
 function matchCost(
   expected: ExpectedAlignmentGroup,
   performed: PerformedOnsetGroup,
@@ -46,7 +50,7 @@ export function alignGroupSequences(
 ): SequenceAlignmentResult {
   const width = performedGroups.length + 1
   const height = expectedGroups.length + 1
-  const matrixCellCount = width * height
+  const matrixCellCount = sequenceAlignmentMatrixCellCount(expectedGroups.length, performedGroups.length)
   if (matrixCellCount > options.maxMatrixCells) throw new RangeError(`Alignment requires ${matrixCellCount} matrix cells, exceeding the configured ${options.maxMatrixCells} limit.`)
   const costs = new Float64Array(matrixCellCount)
   const directions = new Uint8Array(matrixCellCount)

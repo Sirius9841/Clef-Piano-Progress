@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, StatusPill } from '../components/ui'
 import { AlignmentPanel } from '../features/alignment/AlignmentPanel'
-import { useAlignmentAnalysis } from '../features/alignment/useAlignmentAnalysis'
 import type { ScoreRegionCandidate, ScoreRegionLocalizationHint } from '../features/alignment/types'
 import { scoreTimeToMilliseconds } from '../features/expected-performance/tempoTimeline'
 import { ExpressionAnalysisPanel } from '../features/expression-analysis/ExpressionAnalysisPanel'
@@ -13,15 +12,15 @@ import { useMidi } from '../features/midi/MidiContext'
 import { PianoKeyboard } from '../features/midi/PianoKeyboard'
 import { formatMusicalTime, ZERO_TIME } from '../features/musicxml/musicalTime'
 import { NoteGradingPanel } from '../features/note-grading/NoteGradingPanel'
-import { useNoteGradingAnalysis } from '../features/note-grading/useNoteGradingAnalysis'
 import type { GradingScopeType } from '../features/note-grading/types'
 import { usePerformanceRecording } from '../features/performance/usePerformanceRecording'
 import { PedalAnalysisPanel } from '../features/pedal-analysis/PedalAnalysisPanel'
 import { usePedalAnalysis } from '../features/pedal-analysis/usePedalAnalysis'
 import { PerformanceResultsPanel } from '../features/performance-results/PerformanceResultsPanel'
 import { TakeReview } from '../features/performance-results/TakeReview'
+import { TakeAnalysisStatus } from '../features/performance-results/TakeAnalysisStatus'
 import type { ScoreHighlightModel } from '../features/performance-results/highlightModel'
-import { usePerformanceResults } from '../features/performance-results/usePerformanceResults'
+import { useTakeAnalysisPipeline } from '../features/performance-results/useTakeAnalysisPipeline'
 import { createDemoPracticeSession } from '../features/practice/demoPractice'
 import { usePracticeSession } from '../features/practice/PracticeSessionContext'
 import { practiceIntentLabel } from '../features/practice/practicePresentation'
@@ -34,7 +33,6 @@ import type { AttemptSummary, PerformanceAttemptRecordV4, PersistedArrangement, 
 import { detectPersonalBestEvents, formatPercent, type PersonalBestEvent } from '../features/progress/model'
 import { OsmdScoreRenderer } from '../features/score-renderer/OsmdScoreRenderer'
 import { TimingAnalysisPanel } from '../features/timing-analysis/TimingAnalysisPanel'
-import { useTimingAnalysis } from '../features/timing-analysis/useTimingAnalysis'
 import { VoicingAnalysisPanel } from '../features/voicing-analysis/VoicingAnalysisPanel'
 import type { VoiceLane, VoicingIntentProfile } from '../features/voicing-analysis/types'
 import { useVoicingAnalysis } from '../features/voicing-analysis/useVoicingAnalysis'
@@ -82,6 +80,7 @@ export function PracticePage() {
   const practiceSessionStartedAt = useRef<string | null>(null)
   const [savedRecordingId, setSavedRecordingId] = useState<string | null>(null)
   const [startModeOverride, setStartModeOverride] = useState<'beginning' | 'section' | 'auto' | null>(null)
+  const [confirmedRegionHint, setConfirmedRegionHint] = useState<Extract<ScoreRegionLocalizationHint, { mode: 'confirmed' }> | null>(null)
   const [forensicOpen, setForensicOpen] = useState(false)
 
   useEffect(() => {
@@ -121,16 +120,16 @@ export function PracticePage() {
   const alignmentSpeed = capture.recording?.practiceContext.speedMultiplier ?? session?.speedMultiplier ?? 1
   const planningSection = session?.presentationIntent?.type === 'section' ? session.presentationIntent.section : null
   const startMode = startModeOverride ?? (planningSection ? 'section' : 'beginning')
-  const localizationHint = useMemo<ScoreRegionLocalizationHint>(() => startMode === 'section' && planningSection
+  const intendedStartHint = useMemo<ScoreRegionLocalizationHint>(() => startMode === 'section' && planningSection
     ? { mode: 'section', scoreVersionId: planningSection.scoreVersionId, startMeasureIndex: planningSection.startMeasureIndex, endMeasureIndex: planningSection.endMeasureIndex, sourceMeasureIds: planningSection.sourceMeasureIds }
     : { mode: startMode === 'section' ? 'beginning' : startMode }, [planningSection, startMode])
-  const alignment = useAlignmentAnalysis(session?.plan ?? null, capture.recording, alignmentSpeed, localizationHint)
-  const alignmentResult = alignment.state.status === 'ready' || alignment.state.status === 'unavailable' ? alignment.state.result ?? null : null
-  const noteGrading = useNoteGradingAnalysis(session?.plan ?? null, capture.recording, alignmentResult)
-  const noteGradingResult = noteGrading.state.status === 'ready' || noteGrading.state.status === 'unavailable' ? noteGrading.state.result ?? null : null
-  const timing = useTimingAnalysis(session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
-  const timingResult = timing.state.status === 'ready' || timing.state.status === 'unavailable' ? timing.state.result ?? null : null
-  const performanceResults = usePerformanceResults(session?.score ?? null, session?.plan ?? null, alignmentResult, noteGradingResult, timingResult)
+  const localizationHint = confirmedRegionHint ?? intendedStartHint
+  const takeAnalysis = useTakeAnalysisPipeline(session?.score ?? null, session?.plan ?? null, capture.recording, alignmentSpeed, localizationHint)
+  const { alignment, noteGrading, timing, performanceResults } = takeAnalysis
+  const alignmentResult = takeAnalysis.state.status === 'ready' || takeAnalysis.state.status === 'needs-confirmation' || takeAnalysis.state.status === 'unavailable' ? takeAnalysis.state.alignment : null
+  const noteGradingResult = takeAnalysis.state.status === 'ready' ? takeAnalysis.state.noteGrading : null
+  const timingResult = takeAnalysis.state.status === 'ready' ? takeAnalysis.state.timing : null
+  const coreResults = takeAnalysis.state.status === 'ready' ? takeAnalysis.state.results : null
   const expression = useExpressionAnalysis(session?.score ?? null, session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult)
   const expressionResult = expression.state.status === 'ready' ? expression.state.result : null
   const pedal = usePedalAnalysis(session?.score ?? null, session?.plan ?? null, capture.recording, alignmentResult, noteGradingResult, expressionResult)
@@ -172,11 +171,12 @@ export function PracticePage() {
     setSaveMessage(null)
     setPersonalBestEvents([])
     setSavedRecordingId(null)
+    setConfirmedRegionHint(null)
     capture.start()
   }
 
-  const confirmRegion = async (candidate: ScoreRegionCandidate) => {
-    await alignment.analyze({ mode: 'confirmed', expectedStartIndex: candidate.expectedStartIndex, expectedEndIndex: candidate.expectedEndIndex })
+  const confirmRegion = (candidate: ScoreRegionCandidate) => {
+    setConfirmedRegionHint({ mode: 'confirmed', expectedStartIndex: candidate.expectedStartIndex, expectedEndIndex: candidate.expectedEndIndex })
   }
 
   const clearTake = () => {
@@ -186,6 +186,7 @@ export function PracticePage() {
     setSaveMessage(null)
     setPersonalBestEvents([])
     setSavedRecordingId(null)
+    setConfirmedRegionHint(null)
   }
 
   const saveVoicingProfile = async (profile: VoicingIntentProfile | null) => {
@@ -209,10 +210,10 @@ export function PracticePage() {
   }
 
   const saveAttempt = async () => {
-    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult?.localization?.takeRegion || !noteGradingResult || !timingResult || performanceResults.state.status !== 'ready' || expression.state.status !== 'ready' || pedal.state.status !== 'ready' || voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' || !persistence.repository) return
+    if (!session?.arrangementId || !session.scoreVersionId || !capture.recording || !alignmentResult?.localization?.takeRegion || !noteGradingResult || !timingResult || !coreResults || expression.state.status !== 'ready' || pedal.state.status !== 'ready' || voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' || !persistence.repository) return
     setSaveStatus('saving'); setSaveMessage(null); setPersonalBestEvents([])
     const recording = capture.recording
-    const result = performanceResults.state.result
+    const result = coreResults
     const attemptId = `attempt:${recording.id}`
     const startedAt = practiceSessionStartedAt.current ?? recording.startedAt
     practiceSessionStartedAt.current = startedAt
@@ -323,7 +324,7 @@ export function PracticePage() {
           <section className={`panel recording-console ${capture.state.status}`}>
             <div className="recording-console-top"><div className="recording-orb"><span /></div><div><span className="step-label">Performance capture</span><h2>{capture.state.status === 'armed' ? 'Waiting for first note…' : capture.state.status === 'recording' ? 'Recording' : capture.recording ? 'Take ready' : 'Ready'}</h2></div><StatusPill tone={capture.state.status === 'recording' || capture.state.status === 'armed' ? 'warning' : capture.recording ? 'positive' : 'neutral'}>{capture.state.status}</StatusPill></div>
             <div className="recording-timer">{formatTimer(capture.elapsedMs)}</div>
-            <label className="take-start-mode"><span>Intended start</span><select aria-label="Intended score start" value={startMode} disabled={capture.state.status === 'armed' || capture.state.status === 'recording'} onChange={(event) => setStartModeOverride(event.target.value as 'beginning' | 'section' | 'auto')}><option value="beginning">Beginning</option>{planningSection && <option value="section">Suggested section · {planningSection.displayRange}</option>}<option value="auto">Auto detect</option></select><small>A hint for localization, never grading truth.</small></label>
+            <label className="take-start-mode"><span>Intended start</span><select aria-label="Intended score start" value={startMode} disabled={capture.state.status === 'armed' || capture.state.status === 'recording'} onChange={(event) => { setConfirmedRegionHint(null); setStartModeOverride(event.target.value as 'beginning' | 'section' | 'auto') }}><option value="beginning">Beginning</option>{planningSection && <option value="section">Suggested section · {planningSection.displayRange}</option>}<option value="auto">Auto detect</option></select><small>A hint for localization, never grading truth.</small></label>
             <div className="live-capture-stats"><div><Activity /><span>Events</span><strong>{activeEventCount}</strong></div><div><Music2 /><span>{capture.recording ? 'Attacks' : 'Keys down'}</span><strong>{activeAttackCount}</strong></div><div><Gauge /><span>Pedal</span><strong>{midi.sustainObserved ? midi.sustainDown ? 'Down' : 'Up' : '—'}</strong></div></div>
             {!midi.selectedDevice && capture.state.status !== 'stopped' && <div className="recording-device-notice"><Cable /><span>Connect and select a MIDI input before recording.</span></div>}
             {capture.recording?.stopReason === 'device-disconnected' && <div className="recording-device-notice warning"><AlertCircle /><span>The MIDI input disconnected. This take was stopped safely.</span></div>}
@@ -345,16 +346,12 @@ export function PracticePage() {
         <section className="panel expected-summary"><div className="section-heading"><div><h2><Music2 /> Expected score</h2><p>Plan data, not a performance grade</p></div></div><div className="summary-metrics"><div><span>Required attacks</span><strong>{plan.statistics.requiredAttackCount}</strong></div><div><span>Onset groups</span><strong>{plan.statistics.onsetGroupCount}</strong></div><div><span>Multi-note groups</span><strong>{plan.statistics.multiNoteGroupCount}</strong></div><div><span>Score span</span><strong>{formatMusicalTime(plan.statistics.totalScoreDuration)}</strong><small>quarter units</small></div></div><div className="timeline-preview"><Clock3 /><span>Reference at 100% <strong>{formatDuration(referenceMs)}</strong></span><span>{capture.recording ? 'Captured' : 'Target'} at {Math.round(displayedSpeed * 100)}% <strong>{formatDuration(practiceMs)}</strong></span>{plan.tempoTimeline.usesFallback && <em>120 BPM fallback before authored tempo</em>}</div></section>
         <section className="panel take-summary"><div className="section-heading"><div><h2><Activity /> Captured take</h2><p>Objective MIDI diagnostics · {capture.recording ? `${Math.round(displayedSpeed * 100)}% practice speed` : 'no take yet'}</p></div></div>{capture.recording ? <><div className="summary-metrics"><div><span>MIDI events</span><strong>{capture.recording.statistics.eventCount}</strong></div><div><span>Note attacks</span><strong>{capture.recording.statistics.noteAttackCount}</strong></div><div><span>Unique pitches</span><strong>{capture.recording.statistics.uniquePitchCount}</strong></div><div><span>Open notes</span><strong>{capture.recording.statistics.openNoteCount}</strong></div></div><div className="take-foot"><span>Captured at {Math.round(displayedSpeed * 100)}%</span><span>{capture.recording.statistics.sustainChangeCount} pedal changes</span><span>{capture.recording.statistics.orphanReleaseCount} orphan releases</span><span>{formatDuration(capture.recording.durationMs)} duration</span></div></> : <div className="take-empty">Record a take to inspect event, pitch, velocity, pedal, and key-release statistics. No grading occurs in this view.</div>}</section>
       </div>
-      {capture.recording && alignmentResult && <TakeReview alignment={alignmentResult} recording={capture.recording} practiceSpeed={displayedSpeed} results={performanceResults.state.status === 'ready' ? performanceResults.state.result : null} expression={expressionResult} pedal={pedalResult} voicing={voicingResult} onConfirmRegion={(candidate) => void confirmRegion(candidate)} onHighlightChange={updateScoreHighlights} />}
-      {performanceResults.state.status === 'ready' ? <>
+      {capture.recording && (takeAnalysis.state.status === 'idle' || takeAnalysis.state.status === 'processing' || takeAnalysis.state.status === 'unavailable') && <TakeAnalysisStatus state={takeAnalysis.state} onRetry={takeAnalysis.retry} />}
+      {capture.recording && alignmentResult && (takeAnalysis.state.status === 'ready' || takeAnalysis.state.status === 'needs-confirmation') && <TakeReview alignment={alignmentResult} recording={capture.recording} practiceSpeed={displayedSpeed} results={coreResults} expression={expressionResult} pedal={pedalResult} voicing={voicingResult} onConfirmRegion={confirmRegion} onHighlightChange={updateScoreHighlights} />}
+      {takeAnalysis.state.status === 'ready' && <>
         <section className="panel save-attempt-panel"><div><span className="step-label">Local performance history</span><h2>{savedRecordingId === capture.recording?.id ? 'Take saved' : 'Keep this analysis'}</h2><p>{session.isDemo ? 'Demo takes remain temporary and are never mixed into your real progress.' : !alignmentResult?.localization?.takeRegion ? 'Confirm the matched score region before saving this analysis.' : voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' ? 'Complete Phase 11 analysis before saving this frozen snapshot.' : 'Saving preserves the raw MIDI recording, exact ScoreVersion, matched region, and every analysis snapshot in one transaction.'}</p>{saveMessage && <span className={saveStatus === 'error' ? 'practice-build-error' : 'save-confirmation'}>{saveStatus === 'saved' ? <CheckCircle2 /> : <AlertCircle />}{saveMessage}</span>}{personalBestEvents.length > 0 && <div className="personal-best-events">{personalBestEvents.map((event) => <span key={event.metric}><Sparkles /> {event.kind === 'first-full-result' ? `First full-score ${event.metric} result` : `New ${event.metric} personal best`}: {formatPercent(event.value)}</span>)}</div>}</div><Button icon={savedRecordingId === capture.recording?.id ? CheckCircle2 : Save} disabled={session.isDemo || saveStatus === 'saving' || savedRecordingId === capture.recording?.id || !alignmentResult?.localization?.takeRegion || voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready'} onClick={() => void saveAttempt()}>{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry save' : savedRecordingId === capture.recording?.id ? 'Saved' : !alignmentResult?.localization?.takeRegion ? 'Confirm score region' : voicing.state.status !== 'ready' || referenceComparison.state.status !== 'ready' ? 'Complete Phase 11 first' : 'Save attempt'}</Button></section>
-        <details id="detailed-analysis" className="technical-analysis-stack" onToggle={(event) => setForensicOpen(event.currentTarget.open)}><summary>Detailed analysis · event-level and engine evidence</summary>{forensicOpen && <div><PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} /><ExpressionAnalysisPanel analysis={expression.state} onAnalyze={() => void expression.analyze()} /><PedalAnalysisPanel analysis={pedal.state} onAnalyze={() => void pedal.analyze()} /><VoicingAnalysisPanel analysis={voicing.state} lanes={detectedLanes} profile={intentProfile} scoreVersionId={session.scoreVersionId ?? 'demo'} maxMeasureIndex={maxMeasureIndex} onSaveProfile={saveVoicingProfile} onAnalyze={() => void voicing.analyze()} /><ReferenceComparisonPanel analysis={referenceComparison.state} candidates={referenceCandidates} selectedReferenceId={selectedReferenceId} onSelectReference={selectReference} /><AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />{alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}{alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}</div>}</details>
-      </> : <>
-        {capture.recording && <AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />}
-        {capture.recording && alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}
-        {capture.recording && alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}
-        {capture.recording && alignmentResult && noteGradingResult && timingResult && <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />}
       </>}
+      {capture.recording && <details id="detailed-analysis" className="technical-analysis-stack" onToggle={(event) => setForensicOpen(event.currentTarget.open)}><summary>Detailed analysis · event-level and engine evidence</summary>{forensicOpen && <div><AlignmentPanel analysis={alignment.state} onAnalyze={() => void alignment.analyze()} />{alignmentResult && <NoteGradingPanel analysis={noteGrading.state} scope={noteGrading.scope} onAnalyze={(scope) => void noteGrading.analyze(scope)} />}{alignmentResult && noteGradingResult && <TimingAnalysisPanel analysis={timing.state} scope={noteGrading.scope} noteGrading={noteGradingResult} onAnalyze={(scope) => void analyzeTiming(scope)} />}{alignmentResult && noteGradingResult && timingResult && <PerformanceResultsPanel analysis={performanceResults.state} scope={noteGrading.scope} onAnalyze={(scope) => void analyzeResults(scope)} onHighlightChange={updateScoreHighlights} />}<ExpressionAnalysisPanel analysis={expression.state} onAnalyze={() => void expression.analyze()} /><PedalAnalysisPanel analysis={pedal.state} onAnalyze={() => void pedal.analyze()} /><VoicingAnalysisPanel analysis={voicing.state} lanes={detectedLanes} profile={intentProfile} scoreVersionId={session.scoreVersionId ?? 'demo'} maxMeasureIndex={maxMeasureIndex} onSaveProfile={saveVoicingProfile} onAnalyze={() => void voicing.analyze()} /><ReferenceComparisonPanel analysis={referenceComparison.state} candidates={referenceCandidates} selectedReferenceId={selectedReferenceId} onSelectReference={selectReference} /></div>}</details>}
     </div>
   )
 }

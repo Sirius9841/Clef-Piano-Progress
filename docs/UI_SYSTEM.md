@@ -27,7 +27,7 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 - Reference performances are selected local interpretive comparisons, never correctness ground truth.
 - Historical attempt and Technique snapshots are immutable and shown with their preserved engine/version provenance.
 - Phase 7 Practice Priority describes one take. Phase 14 planning is a current, explicit-`asOf`, exact-ScoreVersion derived read model with supporting provenance; recommendations are not persisted.
-- Current Practice Take Review uses Alignment's matched region as played identity. It shows independent evidence cards, only matched measures, at most five problem measures, and one inspector dimension at a time; unresolved localization hides headline metrics and offers explicit candidate confirmation.
+- Current Practice automatically prepares the bounded core result after a take stops, then uses Take Review as the normal destination. It shows independent evidence cards, only matched measures, at most five problem measures, and one inspector dimension at a time; unresolved localization hides headline metrics and offers explicit candidate confirmation. Detailed engine panels remain collapsed and lazily mounted forensic evidence.
 
 ## Frozen V1 presentation integrity
 

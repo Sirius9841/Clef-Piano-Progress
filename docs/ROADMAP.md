@@ -120,6 +120,10 @@ Summary repairability is now proven from a fully validated hypothetical post-rep
 
 Recording now arms until the first Note On, score-region localization deterministically bounds partial takes before fine alignment, repetitive passages fail closed into explicit candidate confirmation, and downstream grading uses the immutable matched region. Timing rejects mismatched local-window geometry instead of clamping implausible BPM samples. Practice presents a compact matched-range Take Review with independent evidence dimensions, a bounded measure map, bounded issues, truthful unavailable Pedal/Voicing states, and lazy forensic detail. Alignment advances from `1.0.0` to `2.0.0`; Timing Analysis advances from `1.0.0` to `1.1.0`. PerformanceAttempt remains V4, IndexedDB remains schema `4`, no migration is required, and historical attempts remain frozen. The manual CA401 release gate is still pending.
 
+## Phase 15.2.1 — Final Partial-Take Workflow — complete
+
+Stopped takes now automatically progress through bounded Alignment, aligned-span Notes, Timing, and Performance Results into Take Review. Ambiguity goes directly to confirmation and resumes automatically; localization intent is part of the race-safe analysis identity; Phase 14 section hints use both bounds; and matrix safety applies to each candidate, coarse, and refined matrix actually constructed. Alignment advances to `2.0.1`; Timing remains `1.1.0`, PerformanceAttempt remains V4, IndexedDB remains schema `4`, and no migration is added. Historical Alignment `2.0.0` snapshots remain frozen and readable. Real CA401 validation remains pending.
+
 Future notation work must replace the current overly dense OSMD `drawingParameters: compacttight` full-score posture with readable page-oriented engraving. It must remain renderer-only and must not change canonical score, localization, or analysis truth.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.

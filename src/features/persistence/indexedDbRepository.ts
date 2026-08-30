@@ -534,7 +534,7 @@ function assertAttempt(value: unknown): asserts value is PerformanceAttemptRecor
   ) {
     throw new PianoStorageError('CORRUPT_RECORD', `Stored PerformanceAttempt ${attempt.id} has malformed nested snapshots.`)
   }
-  if (alignment.diagnostics.alignmentEngineVersion === '2.0.0') {
+  if (alignment.diagnostics.alignmentEngineVersion === '2.0.0' || alignment.diagnostics.alignmentEngineVersion === '2.0.1') {
     const localization = alignment.localization
     const validHint = (hint: unknown): boolean => isObjectRecord(hint) && (
       hint.mode === 'auto' || hint.mode === 'beginning'

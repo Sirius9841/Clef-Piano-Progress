@@ -10,18 +10,22 @@ Practice speed and intended-start controls are locked for both armed and recordi
 
 ## Localization before alignment
 
-Alignment `2.0.0` has two stages:
+Alignment `2.0.1` has two stages:
 
 1. Score-region localization proposes bounded contiguous regions from deterministic onset-group pitch fingerprints. Each proposal is evaluated by pitch cost, exact-anchor count and density, monotonic correspondence density, performed coverage, continuity gaps, and an explicit quality value. Timing is excluded from this decision.
 2. After one region is resolved, the existing sequence aligner and robust affine time fit operate only inside those expected bounds. Expected material outside the bounds remains neutral expected-only correspondence data for compatibility, not evidence that it was attempted.
+
+Every localization-candidate, bounded coarse, and bounded refined matrix is checked before allocation. The old hypothetical whole-score × performed matrix is never constructed or used as an early rejection. Unsafe candidates are skipped deterministically; when no required candidate can fit the explicit limit, alignment returns `INPUT_TOO_LARGE` without truncating either input.
 
 The immutable `ScoreRegionLocalization` retains the intended-start hint, up to three explainable candidates, best-versus-second separation, resolution method, explanation, and optional `MatchedTakeRegion`. The matched region records exact expected and performed group bounds plus canonical measure indexes/numbers. This is the only modern played-region identity used by aligned-span grading.
 
 ## Intended-start hints
 
-Direct Practice defaults to **Beginning**. A Phase 14 planning launch carries its exact `PlanningSectionIdentity`—ScoreVersion, start/end measure indexes, and source-measure IDs—as **Suggested Section**. The user may choose **Auto**.
+Direct Practice defaults to **Beginning**. A Phase 14 planning launch carries its exact `PlanningSectionIdentity`—ScoreVersion, start/end measure indexes, and source-measure IDs—as **Suggested Section**. Both measure bounds constrain the intended candidate; exact agreement means the candidate agrees with the full available section bounds, not merely its starting measure. ScoreVersion and source-measure IDs remain provenance because alignment groups do not carry source-measure identity. The user may choose **Auto**.
 
 Hints constrain candidate choice only when the hinted region has credible independent structural evidence. They are never grades, persisted recommendations, or permission to force a poor match. Candidate confirmation freezes explicit expected group bounds and reruns the same engine; it does not edit the score or recording.
+
+The localization hint has a canonical value key covering Auto, Beginning, exact section identity, and confirmed group bounds. Changing intent on a stopped unsaved take invalidates the current pipeline and automatically rebuilds Alignment, aligned-span Notes, Timing, and Performance Results. Generation guards prevent an older recording, intent, confirmation, discarded take, or unmounted component from publishing stale current-take evidence.
 
 ## Ambiguity and divergence
 
@@ -35,6 +39,7 @@ Ambiguous, divergent, and insufficient modern localizations fail closed: current
 - Timing `1.1.0` consumes that scope and rejects local samples whose expected/performed onset-index geometry differs.
 - Performance Results aggregate the same frozen scope.
 - Compact Take Review filters its measure map to the matched measure indexes and presents one independent evidence dimension at a time.
+- Take Review is the ordinary stopped-take destination. The technical engine panels are mounted only after the collapsed forensic disclosure is opened.
 - Phase 7 Practice Priority remains a per-take weak-section aggregate. It is not played-region identity.
 - Phase 14 Planning remains a transient current longitudinal read model. Its section hint does not become historical analysis truth.
 
@@ -42,8 +47,8 @@ Pedal with captured CC64 but no authored pedal target is reported as captured bu
 
 ## Versioning and history
 
-Alignment changes from `1.0.0` to `2.0.0`; Timing Analysis changes from `1.0.0` to `1.1.0`. New fields are version-gated inside those existing immutable snapshots. PerformanceAttempt remains V4 because no new attempt-owned evidence family or store is introduced. IndexedDB remains schema `4`, so no migration is required.
+Alignment advances from `2.0.0` to `2.0.1`; Timing Analysis remains `1.1.0`. PerformanceAttempt remains V4 because no new attempt-owned evidence family or store is introduced. IndexedDB remains schema `4`, so no migration is required.
 
-Historical `1.0.0` snapshots remain readable with no localization field or rejected-window diagnostic. They are never reanalyzed or upgraded in place. Repository validation requires complete localization for Alignment `2.0.0` and a non-negative rejected-window count for Timing `1.1.0`.
+Historical Alignment `1.0.0` snapshots remain readable without localization, and `2.0.0` snapshots remain readable with their frozen localization semantics. They are never reanalyzed or upgraded in place. Repository validation requires complete localization for Alignment `2.0.0` and `2.0.1`, and a non-negative rejected-window count for Timing `1.1.0`.
 
 The automated Phase 15.2 milestone does not pass the manual V1 release gate. A real CA401 validation remains required. Future page-oriented notation work must replace the current overly dense OSMD `drawingParameters: compacttight` posture, strictly as renderer presentation rather than score or analysis truth.

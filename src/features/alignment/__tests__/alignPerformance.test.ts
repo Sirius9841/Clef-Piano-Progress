@@ -47,6 +47,38 @@ describe('alignPerformance', () => {
     expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 24, expectedEndIndex: 43, displayRange: 'M25–M44' })
   })
 
+  it('uses both section bounds while localizing a take that begins inside the suggested section', () => {
+    const score = Array.from({ length: 24 }, (_, index) => [48 + index])
+    const result = alignPerformance(makePlan(score), melodyRecording(score.slice(8, 13).map(([midi]) => midi!), [0, 500, 1_000, 1_500, 2_000]), {
+      localizationHint: { mode: 'section', scoreVersionId: 'score-version:test', startMeasureIndex: 5, endMeasureIndex: 15, sourceMeasureIds: Array.from({ length: 11 }, (_, index) => `P1:measure:${index + 5}`) },
+    })
+
+    expect(result.localization).toMatchObject({ status: 'confident', resolution: 'intended-start' })
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 8, expectedEndIndex: 12 })
+    expect(result.localization?.takeRegion!.expectedStartIndex).toBeGreaterThanOrEqual(5)
+    expect(result.localization?.takeRegion!.expectedEndIndex).toBeLessThanOrEqual(15)
+  })
+
+  it('does not let a poorly supported bounded section hint override a clear structural match', () => {
+    const expected = [[60], [61], [62], [63], [64], [72], [74], [76], [77], [79]]
+    const result = alignPerformance(makePlan(expected), melodyRecording([72, 74, 76, 77, 79], [0, 500, 1_000, 1_500, 2_000]), {
+      localizationHint: { mode: 'section', scoreVersionId: 'score-version:test', startMeasureIndex: 0, endMeasureIndex: 4, sourceMeasureIds: ['m0', 'm1', 'm2', 'm3', 'm4'] },
+    })
+
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 5, expectedEndIndex: 9 })
+    expect(result.localization?.resolution).toBe('automatic')
+  })
+
+  it('requires exact section agreement to include the intended end bound, not only its start measure', () => {
+    const plan = makePlan(Array.from({ length: 12 }, (_, index) => [48 + index]))
+    const result = alignPerformance(plan, melodyRecording([48, 49, 50, 51], [0, 500, 1_000, 1_500]), {
+      localizationHint: { mode: 'section', scoreVersionId: 'score-version:test', startMeasureIndex: 0, endMeasureIndex: 7, sourceMeasureIds: Array.from({ length: 8 }, (_, index) => `m${index}`) },
+    })
+
+    expect(result.localization?.candidates[0]?.hintAgreement).toBe('near')
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: 0, expectedEndIndex: 3 })
+  })
+
   it('freezes a user-confirmed repeated region and bounds the fine alignment to it', () => {
     const result = alignPerformance(makePlan(repeatedScore), canonTake, { localizationHint: { mode: 'confirmed', expectedStartIndex: 24, expectedEndIndex: 43 } })
 
@@ -226,6 +258,7 @@ describe('alignPerformance', () => {
     const one = alignPerformance(makePlan([[60]]), makeRecording([{ midi: 60, ms: 1_250 }]))
 
     expect(emptyRecording.status).toBe('insufficient-data')
+    expect(emptyRecording.diagnostics.matrixCellCount).toBe(0)
     expect(emptyRecording.unmatchedExpectedGroupIds).toHaveLength(2)
     expect(emptyPlan.status).toBe('insufficient-data')
     expect(emptyPlan.unmatchedPerformedGroupIds).toHaveLength(1)
@@ -270,6 +303,31 @@ describe('alignPerformance', () => {
     expect(result.unmatchedExpectedGroupIds).toHaveLength(4)
     expect(result.unmatchedPerformedGroupIds).toHaveLength(4)
     expect(result.warnings.map((warning) => warning.code)).toContain('INPUT_TOO_LARGE')
+  })
+
+  it('localizes a short unique take in a long score without constructing the hypothetical whole-score matrix', () => {
+    const score = Array.from({ length: 800 }, (_, index) => [48 + index % 36, 84 + Math.floor(index / 36) % 24])
+    const start = 317
+    const take = score.slice(start, start + 10)
+    const result = alignPerformance(makePlan(score), makeRecording(take.flatMap((pitches, index) => pitches.map((midi, noteIndex) => ({ midi, ms: index * 500 + noteIndex * 8 })))), { maxMatrixCells: 200 })
+
+    expect((801 * 11)).toBeGreaterThan(200)
+    expect(result.status).toBe('aligned')
+    expect(result.localization?.takeRegion).toMatchObject({ expectedStartIndex: start, expectedEndIndex: start + 9 })
+    expect(result.diagnostics.matrixCellCount).toBeLessThanOrEqual(200)
+    expect(result.expectedGroups).toHaveLength(800)
+  })
+
+  it('fails closed when every required candidate matrix is oversized and preserves all input groups', () => {
+    const pitches = Array.from({ length: 40 }, (_, index) => [48 + index % 36])
+    const performed = pitches.slice(5, 25).map(([midi]) => midi!)
+    const result = alignPerformance(makePlan(pitches), melodyRecording(performed, performed.map((_, index) => index * 500)), { maxMatrixCells: 100 })
+
+    expect(result.status).toBe('failed')
+    expect(result.warnings.map((warning) => warning.code)).toContain('INPUT_TOO_LARGE')
+    expect(result.expectedGroups).toHaveLength(40)
+    expect(result.performedGroups).toHaveLength(20)
+    expect(result.diagnostics.matrixCellCount).toBe(0)
   })
 
   it('aligns several hundred groups with compact iterative backtracking', () => {

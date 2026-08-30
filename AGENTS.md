@@ -92,6 +92,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Recording-start silence is represented by alignment offset, never interpreted directly as a rhythm error.
 - Score-region localization precedes fine alignment. It uses pitch structure, order, continuity, and explicit confidence; no timing fit may choose the score region.
 - Beginning and exact Phase 14 section identities are bounded intended-start hints, never grading truth. Repetitive passages with materially close candidates remain ambiguous until confirmed.
+- Section hints derive candidate bounds from both start and end measures. Every localization, coarse, and refined dynamic-programming matrix is checked against the explicit limit before allocation; a hypothetical whole-score matrix never blocks a safely bounded take.
 - `MatchedTakeRegion` is the sole played-region identity for modern partial-take grading. Phase 7 Practice Priority and Phase 14 planning sections retain their separate meanings.
 - Affine time-transform fitting must be deterministic, robust to outliers, bounded against absurd scales, and explicit about fallback semantics.
 - Never mutate `ExpectedPerformancePlan` or `PerformanceRecording` during alignment. Results are immutable analysis snapshots.
@@ -139,6 +140,7 @@ This repository builds a serious piano progress and performance-analysis applica
 - Additional attacks receive score provenance only from safe correspondence or two-sided contextual attribution; never invent notation IDs.
 - Renderer highlighting consumes an application-owned mapping model. OSMD remains isolated and is never analysis truth.
 - Compact Take Review shows only the localized measure range, bounds problem measures, and exposes one evidence dimension at a time. Unresolved localization gates headline metrics rather than guessing.
+- A stopped take automatically runs the bounded Alignment → Notes → Timing → Performance Results core pipeline. Localization intent is part of the analysis identity, stale async work cannot win, and technical engine panels remain lazy forensic detail.
 - Performance-result logic remains React- and OSMD-independent, immutable, versioned, serializable, and tested for scopes, evidence, boundaries, duplicates, mapping, determinism, and long scores.
 
 ## Expression-analysis rules
