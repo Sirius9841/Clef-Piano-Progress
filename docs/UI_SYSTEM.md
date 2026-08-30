@@ -27,7 +27,7 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 - Reference performances are selected local interpretive comparisons, never correctness ground truth.
 - Historical attempt and Technique snapshots are immutable and shown with their preserved engine/version provenance.
 - Phase 7 Practice Priority describes one take. Phase 14 planning is a current, explicit-`asOf`, exact-ScoreVersion derived read model with supporting provenance; recommendations are not persisted.
-- Current Practice automatically prepares the bounded core result after a take stops, then uses Take Review as the normal destination. It shows independent evidence cards, only matched measures, at most five problem measures, and one inspector dimension at a time; unresolved localization hides headline metrics and offers explicit candidate confirmation. Detailed engine panels remain collapsed and lazily mounted forensic evidence.
+- Current Practice automatically prepares the bounded core result after a take stops, then uses Take Review as the normal destination. It shows independent evidence cards, only matched measures, at most five problem measures, and one inspector dimension at a time; unresolved localization hides headline metrics and offers explicit candidate confirmation. A valid unavailable Timing snapshot preserves Notes while Rhythm and Tempo say Unavailable. Interpretation dimensions populate progressively without blocking the core review. Detailed engine panels remain collapsed, lazily mounted forensic evidence and reset closed for every new take.
 
 ## Frozen V1 presentation integrity
 
@@ -41,7 +41,7 @@ Paper/Night changes OSMD presentation only. OSMD remains a renderer, never the c
 
 ## Truthful states and accessibility
 
-Unavailable evidence is never displayed as zero. Empty repertoire, missing attempts, absent Technique evidence, unconfigured Voicing, unavailable authored Pedal targets, absent planner recommendations, malformed imports, and repository failures use explicit factual states. Recovery and backup success are not claimed without real infrastructure.
+Unavailable evidence is never displayed as zero and never invalidates an independent trustworthy dimension. Empty repertoire, missing attempts, absent Technique evidence, unconfigured Voicing, unavailable authored Pedal targets, absent planner recommendations, malformed imports, and repository failures use explicit factual states. Idle, analyzing, analyzed-unavailable, ready, and error remain distinct; `null` or unrun interpretation analysis is never evidence of no authored target or no configured intent. Recovery and backup success are not claimed without real infrastructure.
 
 Controls use native link, button, radio, select, and dialog semantics. Icon-only controls have names, destructive clearing uses a focus-managed confirmation dialog, focus indicators are visible, disabled controls remain distinguishable, and information is never color-only. V1 is intentionally desktop-first and verified at 1440×900, 1280×800, and 1024×768 without horizontal overflow.
 

@@ -2,10 +2,10 @@ import { AlertCircle, ChevronRight, Map, Music2, Target } from 'lucide-react'
 import { useEffect, useMemo, useReducer } from 'react'
 import { StatusPill } from '../../components/ui'
 import type { AlignmentResult, ScoreRegionCandidate } from '../alignment/types'
-import type { ExpressionAnalysisResult } from '../expression-analysis/types'
-import type { PedalAnalysisResult } from '../pedal-analysis/types'
+import type { ExpressionAnalysisState } from '../expression-analysis/useExpressionAnalysis'
+import type { PedalAnalysisState } from '../pedal-analysis/usePedalAnalysis'
 import type { PerformanceRecording } from '../performance/types'
-import type { VoicingAnalysisResult } from '../voicing-analysis/types'
+import type { VoicingAnalysisState } from '../voicing-analysis/useVoicingAnalysis'
 import { buildScoreHighlightModel, type ScoreHighlightModel } from './highlightModel'
 import { buildTakePositionView } from './takePosition'
 import { boundedProblemMeasures, confirmTakeRegionCandidate, INITIAL_TAKE_REVIEW_INTERACTION, takeReviewInteractionReducer, type TakeReviewDimension } from './takeReviewInteraction'
@@ -16,9 +16,9 @@ export interface TakeReviewProps {
   readonly recording: PerformanceRecording
   readonly practiceSpeed: number
   readonly results: PerformanceResults | null
-  readonly expression: ExpressionAnalysisResult | null
-  readonly pedal: PedalAnalysisResult | null
-  readonly voicing: VoicingAnalysisResult | null
+  readonly expressionAnalysis: ExpressionAnalysisState
+  readonly pedalAnalysis: PedalAnalysisState
+  readonly voicingAnalysis: VoicingAnalysisState
   readonly onConfirmRegion: (candidate: ScoreRegionCandidate) => void
   readonly onHighlightChange: (model: ScoreHighlightModel | null) => void
 }
@@ -42,17 +42,23 @@ function measureIssues(measure: MeasureResult): string {
   return parts.join(' · ') || 'No material issue'
 }
 
-function DimensionValue({ label, value, detail }: { label: string; value: number | null; detail: string }) {
-  return <div className="take-review-dimension-value"><span>{label}</span><strong>{percent(value)}</strong><small>{detail}</small></div>
+function DimensionValue({ label, value, displayValue, detail }: { label: string; value?: number | null; displayValue?: string; detail: string }) {
+  return <div className="take-review-dimension-value"><span>{label}</span><strong>{displayValue ?? percent(value ?? null)}</strong><small>{detail}</small></div>
 }
 
-function EvidenceInspector({ dimension, measure, results, expression, pedal, voicing, recording }: {
+function pendingDimension(label: string, status: 'idle' | 'analyzing' | 'error', message?: string) {
+  if (status === 'analyzing') return <DimensionValue label={label} displayValue="Analyzing…" detail={`Preparing ${label} evidence for this take.`} />
+  if (status === 'error') return <DimensionValue label={label} displayValue="Unavailable" detail={`Analysis error · ${message ?? `${label} analysis could not be completed.`}`} />
+  return <DimensionValue label={label} displayValue="Not analyzed yet" detail={`${label} analysis has not run for this take.`} />
+}
+
+function EvidenceInspector({ dimension, measure, results, expressionAnalysis, pedalAnalysis, voicingAnalysis, recording }: {
   dimension: TakeReviewDimension
   measure: MeasureResult | null
   results: PerformanceResults
-  expression: ExpressionAnalysisResult | null
-  pedal: PedalAnalysisResult | null
-  voicing: VoicingAnalysisResult | null
+  expressionAnalysis: ExpressionAnalysisState
+  pedalAnalysis: PedalAnalysisState
+  voicingAnalysis: VoicingAnalysisState
   recording: PerformanceRecording
 }) {
   if (dimension === 'overview') {
@@ -61,18 +67,30 @@ function EvidenceInspector({ dimension, measure, results, expression, pedal, voi
   if (dimension === 'notes') return <DimensionValue label="Notes" value={measure?.note.noteScore ?? results.summary.notes} detail={measure ? `${measure.note.correct} correct · ${measure.note.wrongPitch} wrong · ${measure.note.missed} missed · ${measure.note.additional} additional` : 'Pitch-only precision and recall evidence'} />
   if (dimension === 'rhythm') return <DimensionValue label="Rhythm" value={measure?.rhythm.rhythmScore ?? results.summary.rhythm} detail={measure ? `${measure.rhythm.scoredIntervalCount} trustworthy intervals` : 'Tempo-normalized local interval control'} />
   if (dimension === 'tempo') return <DimensionValue label="Tempo" value={measure?.tempo.tempoScore ?? results.summary.tempo} detail={measure ? `${measure.tempo.sampleCount} trustworthy local samples` : 'Target speed and local stability remain independent from Rhythm'} />
-  if (dimension === 'dynamics') return <DimensionValue label="Dynamics" value={expression?.dynamics.score ?? null} detail={expression?.dynamics.unavailableReason ?? `${expression?.dynamics.coverage.analyzedTargetCount ?? 0} of ${expression?.dynamics.coverage.authoredTargetCount ?? 0} authored targets analyzed`} />
-  if (dimension === 'articulation') return <DimensionValue label="Articulation" value={expression?.articulation.score ?? null} detail={expression?.articulation.unavailableReason ?? `${expression?.articulation.coverage.analyzedTargetCount ?? 0} of ${expression?.articulation.coverage.authoredTargetCount ?? 0} authored targets analyzed`} />
-  if (dimension === 'pedal') {
-    const captured = recording.statistics.sustainChangeCount
-    const noAuthoredTarget = !pedal || pedal.coverage.authoredPhraseCount === 0
-    return <DimensionValue label="Pedal" value={noAuthoredTarget ? null : pedal.score} detail={noAuthoredTarget ? `Not graded · ${captured ? `CC64 activity captured (${captured} changes)` : 'no CC64 activity captured'} · no authored pedal target in this score` : pedal.unavailableReason ?? `${pedal.coverage.analyzedPhraseCount} of ${pedal.coverage.authoredPhraseCount} authored phrases analyzed`} />
+  if (dimension === 'dynamics') {
+    if (expressionAnalysis.status !== 'ready') return pendingDimension('Dynamics', expressionAnalysis.status, expressionAnalysis.status === 'error' ? expressionAnalysis.message : undefined)
+    const dynamics = expressionAnalysis.result.dynamics
+    return <DimensionValue label="Dynamics" value={dynamics.score} detail={dynamics.coverage.authoredTargetCount === 0 ? 'No authored dynamics in this matched region.' : dynamics.unavailableReason ?? `${dynamics.coverage.analyzedTargetCount} of ${dynamics.coverage.authoredTargetCount} authored targets analyzed`} />
   }
-  const notConfigured = !voicing || voicing.intentProfileSnapshot === null
-  return <DimensionValue label="Voicing" value={notConfigured ? null : voicing.score} detail={notConfigured ? 'Not configured · explicit foreground/support intent is required' : voicing.unavailableReason ?? `${voicing.coverage.analyzedTargetCount} of ${voicing.coverage.configuredTargetCount} configured targets analyzed`} />
+  if (dimension === 'articulation') {
+    if (expressionAnalysis.status !== 'ready') return pendingDimension('Articulation', expressionAnalysis.status, expressionAnalysis.status === 'error' ? expressionAnalysis.message : undefined)
+    const articulation = expressionAnalysis.result.articulation
+    return <DimensionValue label="Articulation" value={articulation.score} detail={articulation.coverage.authoredTargetCount === 0 ? 'No authored articulation in this matched region.' : articulation.unavailableReason ?? `${articulation.coverage.analyzedTargetCount} of ${articulation.coverage.authoredTargetCount} authored targets analyzed`} />
+  }
+  if (dimension === 'pedal') {
+    if (pedalAnalysis.status !== 'ready') return pendingDimension('Pedal', pedalAnalysis.status, pedalAnalysis.status === 'error' ? pedalAnalysis.message : undefined)
+    const pedal = pedalAnalysis.result
+    const captured = recording.statistics.sustainChangeCount
+    if (pedal.coverage.authoredPhraseCount === 0) return <DimensionValue label="Pedal" displayValue="Not graded" detail={`${captured ? `CC64 activity captured (${captured} changes) · ` : ''}No authored pedal target in this score.`} />
+    return <DimensionValue label="Pedal" value={pedal.score} detail={pedal.unavailableReason ?? `${pedal.coverage.analyzedPhraseCount} of ${pedal.coverage.authoredPhraseCount} authored phrases analyzed`} />
+  }
+  if (voicingAnalysis.status !== 'ready') return pendingDimension('Voicing', voicingAnalysis.status, voicingAnalysis.status === 'error' ? voicingAnalysis.message : undefined)
+  const voicing = voicingAnalysis.result
+  if (voicing.intentProfileSnapshot === null) return <DimensionValue label="Voicing" displayValue="Not configured" detail="Explicit foreground/support intent is required." />
+  return <DimensionValue label="Voicing" value={voicing.score} detail={voicing.unavailableReason ?? `${voicing.coverage.analyzedTargetCount} of ${voicing.coverage.configuredTargetCount} configured targets analyzed`} />
 }
 
-export function TakeReview({ alignment, recording, practiceSpeed, results, expression, pedal, voicing, onConfirmRegion, onHighlightChange }: TakeReviewProps) {
+export function TakeReview({ alignment, recording, practiceSpeed, results, expressionAnalysis, pedalAnalysis, voicingAnalysis, onConfirmRegion, onHighlightChange }: TakeReviewProps) {
   const [interaction, dispatchInteraction] = useReducer(takeReviewInteractionReducer, INITIAL_TAKE_REVIEW_INTERACTION)
   const localization = alignment.localization
   const region = localization?.takeRegion ?? null
@@ -109,7 +127,7 @@ export function TakeReview({ alignment, recording, practiceSpeed, results, expre
     <div className="take-review-core" aria-label="Independent core dimensions"><DimensionValue label="Notes" value={results?.summary.notes ?? null} detail="Independent pitch evidence" /><DimensionValue label="Rhythm" value={results?.summary.rhythm ?? null} detail="Independent interval evidence" /><DimensionValue label="Tempo" value={results?.summary.tempo ?? null} detail="Independent speed evidence" /></div>
     <div className="take-review-map"><div><Map /><span><strong>Matched measures</strong><small>Only the localized take region</small></span></div><div role="group" aria-label="Matched measure map">{matchedMeasures.map((measure) => <button key={measure.id} aria-pressed={measure.id === selectedMeasure?.id} className={measure.id === selectedMeasure?.id ? 'selected' : ''} onClick={() => dispatchInteraction({ type: 'select-measure', measureId: measure.id, allowedMeasureIds })}>M{measure.displayMeasureNumber}</button>)}</div></div>
     <nav className="take-review-nav" aria-label="Take evidence dimension">{nav.map((item) => <button key={item.id} className={interaction.dimension === item.id ? 'active' : ''} aria-pressed={interaction.dimension === item.id} onClick={() => dispatchInteraction({ type: 'select-dimension', dimension: item.id })}>{item.label}</button>)}</nav>
-    <div className="take-review-workspace"><div className="take-review-main"><div className="take-review-context"><Target /><div><span>Current matched position</span><strong>{selectedMeasure ? `Measure ${selectedMeasure.displayMeasureNumber}` : selectedPosition?.matchedMeasureRange.displayRange}</strong><p>{selectedMeasure ? measureIssues(selectedMeasure) : 'No measure-specific evidence is available.'}</p></div></div><div className="take-review-problems"><strong>Useful problem measures</strong>{rankedProblems.length ? rankedProblems.map((measure) => <button key={measure.id} onClick={() => dispatchInteraction({ type: 'select-measure', measureId: measure.id, allowedMeasureIds })}><span>M{measure.displayMeasureNumber}</span><small>{measureIssues(measure)}</small></button>) : <p>No problem measure has enough bounded evidence.</p>}</div>{results.strongestSections[0] && <div className="take-review-clean"><Music2 /><span><small>Strongest clean region</small><strong>{results.strongestSections[0].displayRange}</strong></span></div>}</div><aside className="take-review-inspector" aria-live="polite"><EvidenceInspector dimension={interaction.dimension} measure={selectedMeasure} results={results} expression={expression} pedal={pedal} voicing={voicing} recording={recording} /></aside></div>
+    <div className="take-review-workspace"><div className="take-review-main"><div className="take-review-context"><Target /><div><span>Current matched position</span><strong>{selectedMeasure ? `Measure ${selectedMeasure.displayMeasureNumber}` : selectedPosition?.matchedMeasureRange.displayRange}</strong><p>{selectedMeasure ? measureIssues(selectedMeasure) : 'No measure-specific evidence is available.'}</p></div></div><div className="take-review-problems"><strong>Useful problem measures</strong>{rankedProblems.length ? rankedProblems.map((measure) => <button key={measure.id} onClick={() => dispatchInteraction({ type: 'select-measure', measureId: measure.id, allowedMeasureIds })}><span>M{measure.displayMeasureNumber}</span><small>{measureIssues(measure)}</small></button>) : <p>No problem measure has enough bounded evidence.</p>}</div>{results.strongestSections[0] && <div className="take-review-clean"><Music2 /><span><small>Strongest clean region</small><strong>{results.strongestSections[0].displayRange}</strong></span></div>}</div><aside className="take-review-inspector" aria-live="polite"><EvidenceInspector dimension={interaction.dimension} measure={selectedMeasure} results={results} expressionAnalysis={expressionAnalysis} pedalAnalysis={pedalAnalysis} voicingAnalysis={voicingAnalysis} recording={recording} /></aside></div>
     <a className="take-review-next" href="#detailed-analysis">Open detailed analysis for event-level evidence <ChevronRight /></a>
   </section>
 }

@@ -124,6 +124,10 @@ Recording now arms until the first Note On, score-region localization determinis
 
 Stopped takes now automatically progress through bounded Alignment, aligned-span Notes, Timing, and Performance Results into Take Review. Ambiguity goes directly to confirmation and resumes automatically; localization intent is part of the race-safe analysis identity; Phase 14 section hints use both bounds; and matrix safety applies to each candidate, coarse, and refined matrix actually constructed. Alignment advances to `2.0.1`; Timing remains `1.1.0`, PerformanceAttempt remains V4, IndexedDB remains schema `4`, and no migration is added. Historical Alignment `2.0.0` snapshots remain frozen and readable. Real CA401 validation remains pending.
 
+## Phase 15.2.2 — Partial-Result Resilience + Interpretation State Truth — complete
+
+Take Review now preserves trustworthy Notes and bounded measures when a valid Timing snapshot has unavailable Rhythm/Tempo evidence. Expression, Pedal, and Voicing populate progressively without blocking the core review, with explicit idle, analyzing, analyzed-unavailable, ready, and error presentation instead of inferring score semantics from `null`. New takes reset forensic disclosure and take-local highlights. Alignment remains `2.0.1`, Timing remains `1.1.0`, PerformanceAttempt remains V4, IndexedDB remains schema `4`, no migration is required, and historical attempts remain unchanged. Real CA401 validation remains pending.
+
 Future notation work must replace the current overly dense OSMD `drawingParameters: compacttight` full-score posture with readable page-oriented engraving. It must remain renderer-only and must not change canonical score, localization, or analysis truth.
 
 Reference performances will be comparison examples, style references, and interpretive alternatives—not absolute expressive ground truth. Future timing work must distinguish coherent rubato from uncontrolled timing instead of rewarding human-metronome conformity.

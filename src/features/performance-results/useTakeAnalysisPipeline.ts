@@ -36,6 +36,10 @@ export function takeAnalysisPipelineKey(
   return JSON.stringify([score?.id ?? null, plan?.id ?? null, recording?.id ?? null, practiceSpeedMultiplier, scoreRegionLocalizationHintKey(hint)])
 }
 
+export function timingStageFailure(result: TimingAnalysisResult | null): string | null {
+  return result ? null : 'Bounded timing analysis did not produce a result snapshot.'
+}
+
 export function useTakeAnalysisPipeline(
   score: NormalizedScore | null,
   plan: ExpectedPerformancePlan | null,
@@ -90,8 +94,9 @@ export function useTakeAnalysisPipeline(
     update({ status: 'processing', stage: 'timing' })
     const timingResult = await timing.analyze(notes, aligned)
     if (runGeneration !== generation.current) return
-    if (!timingResult || timingResult.status === 'unavailable') {
-      update({ status: 'unavailable', stage: 'timing', alignment: aligned, message: timingResult?.unavailableReason ?? 'Bounded timing evidence could not be prepared.' })
+    const timingFailure = timingStageFailure(timingResult)
+    if (timingFailure || !timingResult) {
+      update({ status: 'unavailable', stage: 'timing', alignment: aligned, message: timingFailure ?? 'Bounded timing evidence could not be prepared.' })
       return
     }
 

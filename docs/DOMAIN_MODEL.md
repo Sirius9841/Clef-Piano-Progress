@@ -99,7 +99,7 @@ The global affine `timeScale` describes performed duration per unit of effective
 
 Its Practice Priority combines available dimension deficits at 45% Notes, 35% Rhythm, and 20% Tempo, renormalizes missing dimensions, and adjusts the ranking by evidence confidence. It answers “where should this take be reviewed first?” It is explicitly not the attempt's overall Performance Score, arrangement Mastery, a personal best, or a transferable SkillRating. Phase 8 persists the result inside its exact PerformanceAttempt; historical views are read-only and do not silently rerun newer engines.
 
-Phase 15.2 `TakeReview` is a compact current-take projection, not a new persisted analysis entity. It consumes `MatchedTakeRegion` and existing frozen results to show one bounded measure range and one evidence dimension at a time. Its problem list and selected-measure highlight do not replace Phase 7 section identity, Practice Priority, or Phase 14 planning.
+Phase 15.2 `TakeReview` is a compact current-take projection, not a new persisted analysis entity. It consumes `MatchedTakeRegion` and existing frozen results to show one bounded measure range and one evidence dimension at a time. A valid unavailable Timing snapshot leaves Notes and bounded measure evidence intact while Rhythm and Tempo remain null; unavailable is never zero and one absent dimension does not invalidate another. Its problem list and selected-measure highlight do not replace Phase 7 section identity, Practice Priority, or Phase 14 planning.
 
 ## Expression analysis result
 
@@ -112,6 +112,8 @@ Phase 15.2 `TakeReview` is a compact current-take projection, not a new persiste
 ## Voicing and reference comparison
 
 `VoicingAnalysisResult` is Phase 11 evidence about performance-relative MIDI attack balance across deterministic part/staff/voice lanes. A score exists only for explicit, region-specific foreground/support intent. `ReferenceComparisonResult` compares two immutable interpretation profiles across exact score overlap and has no correctness or similarity score. Arrangement preferences choose intent and a default saved reference per ScoreVersion; V4 attempts freeze the exact preferences and reference metadata used, so later preference changes cannot alter history.
+
+Current-take interpretation analysis progresses after the core review without adding a persisted state family. Idle or analyzing session state is not evidence that authored expression or pedal targets are absent, and it is not proof that Voicing intent is unconfigured. Those claims come only from completed immutable analysis snapshots.
 
 ## PracticeSession and RepertoireEntry
 

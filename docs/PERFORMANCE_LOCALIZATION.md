@@ -36,14 +36,15 @@ Ambiguous, divergent, and insufficient modern localizations fail closed: current
 ## Downstream semantics
 
 - Note grading bounds aligned-span scope to `MatchedTakeRegion`.
-- Timing `1.1.0` consumes that scope and rejects local samples whose expected/performed onset-index geometry differs.
-- Performance Results aggregate the same frozen scope.
+- Timing `1.1.0` consumes that scope and rejects local samples whose expected/performed onset-index geometry differs. A valid unavailable Timing snapshot remains a result, not an execution failure.
+- Performance Results aggregate the same frozen scope and preserve Notes plus bounded measures when Rhythm or Tempo is unavailable.
 - Compact Take Review filters its measure map to the matched measure indexes and presents one independent evidence dimension at a time.
+- Expression, Pedal, and Voicing then populate progressively through the same current-take identity boundary; unrun `null` state never proves no authored target or no configured intent.
 - Take Review is the ordinary stopped-take destination. The technical engine panels are mounted only after the collapsed forensic disclosure is opened.
 - Phase 7 Practice Priority remains a per-take weak-section aggregate. It is not played-region identity.
 - Phase 14 Planning remains a transient current longitudinal read model. Its section hint does not become historical analysis truth.
 
-Pedal with captured CC64 but no authored pedal target is reported as captured but not graded. Voicing without exact configured intent is not configured. Neither is displayed as zero. There is no overall Performance Score.
+After analysis, Pedal with captured CC64 but no authored pedal target is reported as captured but not graded. Completed Voicing analysis without exact configured intent is not configured. Before those snapshots exist, the dimensions say not analyzed or analyzing instead of inferring either fact. None is displayed as zero. There is no overall Performance Score.
 
 ## Versioning and history
 

@@ -52,7 +52,10 @@ describe('Phase 15 frozen presentation guardrails', () => {
     expect(practiceSource).toContain('A hint for localization, never grading truth.')
     expect(practiceSource).toContain('<TakeReview')
     expect(practiceSource).toContain('id="detailed-analysis"')
+    expect(practiceSource).toContain('open={forensicOpen}')
     expect(practiceSource).toContain('forensicOpen &&')
+    expect(practiceSource.match(/setForensicOpen\(false\)/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(practiceSource).toContain('key={capture.recording.id}')
     expect(practiceSource).toContain('Confirm the matched score region before saving this analysis.')
   })
 
